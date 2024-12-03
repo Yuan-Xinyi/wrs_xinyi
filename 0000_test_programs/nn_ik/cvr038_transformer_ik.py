@@ -32,120 +32,47 @@ lr = 0.001
 save_intervel = 1000
 wandb.init(project="ik")
 dataset_size = '1M'
-backbone = 'IKMLPNet'  # [IKMLPNet, IKMLPScaleNet, IKLSTMNet]
+backbone = 'IKTransformerNet'  # [IKMLPNet, IKMLPScaleNet, IKLSTMNet, IKTransformerNet]
 
 # val and test paras
 val_batch = train_batch
 test_batch = 1
 
-class IKLSTMNet(nn.Module):
-    def __init__(self, input_dim, output_dim, hidden_dim, num_layers, robot):
-        super(IKLSTMNet, self).__init__()
-        self.lstm = nn.LSTM(input_dim, hidden_dim, num_layers, batch_first=True, dropout=0.1)
-        self.linear = nn.Linear(hidden_dim, output_dim)
+class IKTransformerNet(nn.Module):
+    def __init__(self, input_dim, output_dim, num_heads, num_layers, hidden_dim, robot):
+        super(IKTransformerNet, self).__init__()
         self.robot = robot
         self.jnt_ranges = torch.tensor(robot.jnt_ranges, dtype=torch.float32).to(device)
-        nn.init.normal_(self.linear.weight, 0, .02)
-        nn.init.constant_(self.linear.bias, 0.0)
-    
+
+        # Embedding layer to map input to `hidden_dim` for Transformer
+        self.embedding = nn.Linear(input_dim, hidden_dim)
+
+        # Transformer Encoder layers
+        encoder_layer = nn.TransformerEncoderLayer(
+            d_model=hidden_dim, nhead=num_heads, dim_feedforward=hidden_dim * 4, dropout=0.1, batch_first=True
+        )
+        self.transformer = nn.TransformerEncoder(encoder_layer, num_layers=num_layers)
+
+        # Final output layer
+        self.output_layer = nn.Sequential(
+            nn.Linear(hidden_dim, 64),
+            nn.ReLU(),
+            nn.Linear(64, output_dim)
+        )
+
     def forward(self, x):
         # x shape: (batch_size, seq_len, input_dim)
-        enc_x, (h_n, c_n) = self.lstm(x)
-        # enc_x shape: (batch_size, seq_len, hidden_dim)
-        # h_n shape: (num_layers, batch_size, hidden_dim)
-
-        # Take the hidden state from the last layer
-        h_n = h_n[-1]  # shape: (batch_size, hidden_dim)
-
-        out = self.linear(h_n)  # shape: (batch_size, output_dim)
+        x = self.embedding(x)  # Map input to `hidden_dim`
+        x = self.transformer(x)  # Apply Transformer Encoder
+        x = x[:, -1, :]  # Take the output of the last time step (batch_size, hidden_dim)
+        out = self.output_layer(x)  # Final output layer
+        
+        # Scale output to joint ranges
         scaled_output = out * (self.jnt_ranges[:, 1] - self.jnt_ranges[:, 0]) + self.jnt_ranges[:, 0]
         return scaled_output
 
-class IKMLPNet(nn.Module):
-    def __init__(self, input_dim, output_dim):
-        super(IKMLPNet, self).__init__()
-        self.network = nn.Sequential(
-            nn.Linear(input_dim, 256),  # Increased neurons
-            nn.ReLU(),
-            nn.Linear(256, 512),       # New hidden layer with more neurons
-            nn.ReLU(),
-            nn.Linear(512, 256),       # Another hidden layer
-            nn.ReLU(),
-            nn.Linear(256, 128),       # Yet another hidden layer
-            nn.ReLU(),
-            nn.Linear(128, 64),        # Continue reducing dimensions
-            nn.ReLU(),
-            nn.Linear(64, output_dim)  # Final output layer
-        )
-
-    def forward(self, x):
-        return self.network(x)
-
-class IKMLPScaleNet(IKMLPNet):
-    def __init__(self, input_dim, output_dim, robot):
-        super(IKMLPNet, self).__init__()
-        self.network = nn.Sequential(
-            nn.Linear(input_dim, 64),  # input: tgt_pos(3) + tgt_rotmat(9)
-            nn.ReLU(),
-            nn.Linear(64, 128),
-            nn.ReLU(),
-            nn.Linear(128, 64),
-            nn.ReLU(),
-            nn.Linear(64, output_dim),    # output: jnt_values(6)
-            nn.Tanh()
-        )
-        self.robot = robot
-        self.jnt_ranges = torch.tensor(robot.jnt_ranges, dtype=torch.float32).to(device)
-    
-    def forward(self, x):
-        output = self.network(x)  # output: (batch_size, 6)
-        scaled_output = output * (self.jnt_ranges[:, 1] - self.jnt_ranges[:, 0]) + self.jnt_ranges[:, 0]
-        return scaled_output
-
-def ik_test():
-    for _ in range(trail_num):
-        success_rate = 0
-        time_list = []
-        for i in range(nupdate):
-            jnt_values = robot.rand_conf()
-            tgt_pos, tgt_rotmat = robot.fk(jnt_values = jnt_values)  # fk --> pos(3), rotmat(3x3)
-            tic = time.time()
-            result = robot.ik(tgt_pos, tgt_rotmat)
-            toc = time.time()
-            time_list.append(toc-tic)
-            if result is not None:
-                success_rate += 1
-
-        print('Success Rate: ',success_rate/nupdate)
-        plt.plot(range(nupdate), time_list)
-        plt.show()
-
-def dataset_generation(size, file_name):
-    jnt_values_list = []
-    pos_list = []
-    rotmat_list = []
-
-    for _ in tqdm(range(size)):
-        jnt_values = robot.rand_conf()
-        jnt_values_list.append(jnt_values)
-
-        tgt_pos, tgt_rotmat = robot.fk(jnt_values = jnt_values)
-        pos_list.append(tgt_pos.flatten())
-        rotmat_list.append(tgt_rotmat.flatten())
-    
-    jnt_values = np.array(jnt_values_list)
-    pos = np.array(pos_list)
-    rotmat = np.array(rotmat_list)
-
-    np.savez(file_name, jnt_values=jnt_values, tgt_pos=pos, tgt_rotmat=rotmat)
-    print('Dataset generated successfully!')
-
 
 if __name__ == '__main__':
-    # # dataset generation
-    # dataset_generation(10000,'0000_test_programs/nn_ik/dataset_10k.npz')
-    # exit()
-
     # dataset loading
     dataset = np.load(f'0000_test_programs/nn_ik/datasets/dataset_{dataset_size}.npz')
     jnt_values, tgt_pos, tgt_rotmat = dataset['jnt_values'], dataset['tgt_pos'], dataset['tgt_rotmat']
@@ -169,12 +96,11 @@ if __name__ == '__main__':
 
 
     # Initialize the model
-    if backbone == 'IKMLPNet':
-        model = IKMLPNet(input_dim=pos_rotmat.shape[1], output_dim=gth_jnt_values.shape[1]).to(device).float()
-    elif backbone == 'IKMLPScaleNet':
-        model = IKMLPScaleNet(input_dim=pos_rotmat.shape[1], output_dim=gth_jnt_values.shape[1], robot=robot).to(device).float()
-    elif backbone == 'IKLSTMNet':
-        model = IKLSTMNet(input_dim=pos_rotmat.shape[1], output_dim=gth_jnt_values.shape[1], hidden_dim=64, num_layers=2, robot=robot).to(device).float()
+    if backbone == 'IKTransformerNet':
+        model = IKTransformerNet(
+            input_dim=pos_rotmat.shape[1], output_dim=gth_jnt_values.shape[1],
+            num_heads=4, num_layers=3, hidden_dim=128, robot=robot
+            ).to(device)
     else:
         raise ValueError('Invalid backbone name!')
     
@@ -194,7 +120,7 @@ if __name__ == '__main__':
             train_loss = 0
             for pos_rotmat, gth_jnt in train_loader:
                 optimizer.zero_grad()
-                if backbone == 'IKLSTMNet':
+                if backbone == 'IKLSTMNet' or backbone == 'IKTransformerNet':
                     pred_jnt = model(pos_rotmat.unsqueeze(1))
                 else:
                     pred_jnt = model(pos_rotmat)
@@ -210,7 +136,7 @@ if __name__ == '__main__':
             val_loss = 0
             with torch.no_grad():
                 for pos_rotmat, gth_jnt in val_loader:
-                    if backbone == 'IKLSTMNet':
+                    if backbone == 'IKLSTMNet' or backbone == 'IKTransformerNet':
                         pred_jnt = model(pos_rotmat.unsqueeze(1))
                     else:
                         pred_jnt = model(pos_rotmat)
