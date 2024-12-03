@@ -26,15 +26,17 @@ mode = 'train' # ['train' or 'test']
 device = torch.device('cuda' if torch.cuda.is_available() else 'cpu')
 
 # train paras
-train_epoch = 1000
+train_epoch = 10000
 train_batch = 64
 lr = 0.001
-save_intervel = 100
+save_intervel = 500
 wandb.init(project="ik")
+dataset_size = '1M'
+backbone = 'IKMLPScaleNet'  # [IKMLPNet, IKMLPScaleNet]
 
 # val and test paras
-val_batch = 64
-test_batch = 64
+val_batch = train_batch
+test_batch = 1
 
 
 class IKMLPNet(nn.Module):
@@ -52,6 +54,27 @@ class IKMLPNet(nn.Module):
     
     def forward(self, x):
         return self.network(x)
+
+class IKMLPScaleNet(IKMLPNet):
+    def __init__(self, input_dim, output_dim, robot):
+        super(IKMLPNet, self).__init__()
+        self.network = nn.Sequential(
+            nn.Linear(input_dim, 64),  # input: tgt_pos(3) + tgt_rotmat(9)
+            nn.ReLU(),
+            nn.Linear(64, 128),
+            nn.ReLU(),
+            nn.Linear(128, 64),
+            nn.ReLU(),
+            nn.Linear(64, output_dim),    # output: jnt_values(6)
+            nn.Tanh()
+        )
+        self.robot = robot
+        self.jnt_ranges = torch.tensor(robot.jnt_ranges, dtype=torch.float32).to(device)
+    
+    def forward(self, x):
+        output = self.network(x)  # output: (batch_size, 6)
+        scaled_output = output * (self.jnt_ranges[:, 1] - self.jnt_ranges[:, 0]) + self.jnt_ranges[:, 0]
+        return scaled_output
 
 def ik_test():
     for _ in range(trail_num):
@@ -94,10 +117,11 @@ def dataset_generation(size, file_name):
 
 if __name__ == '__main__':
     # # dataset generation
-    # dataset_generation(1000000,'0000_test_programs/nn_ik/dataset_1M.npz')
+    # dataset_generation(10000,'0000_test_programs/nn_ik/dataset_10k.npz')
+    # exit()
 
     # dataset loading
-    dataset = np.load('0000_test_programs/nn_ik/datasets/dataset_1M.npz')
+    dataset = np.load(f'0000_test_programs/nn_ik/datasets/dataset_{dataset_size}.npz')
     jnt_values, tgt_pos, tgt_rotmat = dataset['jnt_values'], dataset['tgt_pos'], dataset['tgt_rotmat']
 
     # dataset pre-processing
@@ -119,19 +143,25 @@ if __name__ == '__main__':
 
 
     # Initialize the model
-    model = IKMLPNet(input_dim=pos_rotmat.shape[1], output_dim=gth_jnt_values.shape[1]).to(device).float()
+    if backbone == 'IKMLPNet':
+        model = IKMLPNet(input_dim=pos_rotmat.shape[1], output_dim=gth_jnt_values.shape[1]).to(device).float()
+    elif backbone == 'IKMLPScaleNet':
+        model = IKMLPScaleNet(input_dim=pos_rotmat.shape[1], output_dim=gth_jnt_values.shape[1], robot=robot).to(device).float()
+    else:
+        raise ValueError('Invalid backbone name!')
+    
     criterion = nn.MSELoss()
     optimizer = optim.Adam(model.parameters(), lr=lr)
 
     if mode == 'train':
         # prepare the save path
         TimeCode = ((datetime.now()).strftime("%m%d_%H%M")).replace(" ", "")
-        rootpath = f'{TimeCode}_IKMLPNet_1M_dataset'
+        rootpath = f'{TimeCode}_IKMLPNet_{dataset_size}dataset'
         save_path = f'0000_test_programs/nn_ik/results/{rootpath}/'
         if os.path.exists(save_path) is False:
             os.makedirs(save_path)
         
-        for epoch in range(train_epoch):
+        for epoch in tqdm(range(train_epoch)):
             model.train()
             train_loss = 0
             for pos_rotmat, gth_jnt in train_loader:
@@ -161,5 +191,22 @@ if __name__ == '__main__':
                 print(f"model been saved in: {PATH}")
                 torch.save(model.state_dict(), PATH)
 
-    
-    wandb.finish()
+        wandb.finish()
+
+    elif mode == 'test':
+        model.load_state_dict(torch.load('0000_test_programs/nn_ik/results/1202_2109_IKMLPNet_1M_dataset/model900'))
+        model.eval()
+        test_loss = 0
+        time_list = []
+        with torch.no_grad():
+            for pos_rotmat, gth_jnt in test_loader:
+                tic = time.time()
+                pred_jnt = model(pos_rotmat)
+                toc = time.time()
+                loss = criterion(pred_jnt, gth_jnt)
+                time_list.append(toc-tic)
+                test_loss += loss.item()
+                print('current time: ',toc-tic) 
+                # print(f'pred_jnt: {pred_jnt}\ngth_jnt: {gth_jnt}\nloss: ',loss)
+        test_loss /= len(test_loader)
+        print(f"Test Loss: {test_loss:.4f}")
