@@ -22,9 +22,9 @@ mcm.mgm.gen_frame().attach_to(base)
 
 robot = cbt.Cobotta(pos=rm.vec(0.1,.3,.5), enable_cc=True)
 nupdate = 100
-trail_num = 3
+trail_num = 100
 seed = 42
-mode = 'inference' # ['train' or 'test',inference]
+mode = 'ik_test' # ['train' or 'test','inference','ik_test']
 device = torch.device('cuda' if torch.cuda.is_available() else 'cpu')
 
 # train paras
@@ -110,24 +110,6 @@ class IKMLPScaleNet(IKMLPNet):
         output = self.network(x)  # output: (batch_size, 6)
         scaled_output = output * (self.jnt_ranges[:, 1] - self.jnt_ranges[:, 0]) + self.jnt_ranges[:, 0]
         return scaled_output
-
-def ik_test():
-    for _ in range(trail_num):
-        success_rate = 0
-        time_list = []
-        for i in range(nupdate):
-            jnt_values = robot.rand_conf()
-            tgt_pos, tgt_rotmat = robot.fk(jnt_values = jnt_values)  # fk --> pos(3), rotmat(3x3)
-            tic = time.time()
-            result = robot.ik(tgt_pos, tgt_rotmat)
-            toc = time.time()
-            time_list.append(toc-tic)
-            if result is not None:
-                success_rate += 1
-
-        print('Success Rate: ',success_rate/nupdate)
-        plt.plot(range(nupdate), time_list)
-        plt.show()
 
 def dataset_generation(size, file_name):
     jnt_values_list = []
@@ -314,3 +296,56 @@ if __name__ == '__main__':
             #     mgm.gen_sphere(pnt).attach_to(base)
 
             base.run()
+
+    elif mode == 'ik_test':
+        model.load_state_dict(torch.load('0000_test_programs/nn_ik/results/1202_2109_IKMLPNet_1M_dataset/model900'))
+        model.eval()
+
+        with torch.no_grad():
+            for _ in range(trail_num):
+                nn_success_rate = 0
+                trad_success_rate = 0
+                nn_faster_count = 0
+
+                time_list_nn = []
+                time_list_trad = []
+                for i in range(nupdate):
+                    jnt_values = robot.rand_conf()
+                    tgt_pos, tgt_rotmat = robot.fk(jnt_values = jnt_values)  # fk --> pos(3), rotmat(3x3)
+                    pos_rotmat = torch.tensor(np.concatenate((tgt_pos.flatten(), tgt_rotmat.flatten()), axis=0), dtype=torch.float32).to(device).unsqueeze(0)
+                    nn_pred_jnt_values = model(pos_rotmat).cpu().numpy()[0]
+                    tic = time.time()
+                    result_nn = robot.ik(tgt_pos, tgt_rotmat,seed_jnt_values=nn_pred_jnt_values)
+                    toc = time.time()
+                    nn_time = toc - tic
+                    time_list_nn.append(nn_time)
+                    
+                    tic = time.time()
+                    result_trad = robot.ik(tgt_pos, tgt_rotmat)
+                    toc = time.time()
+                    trad_time = toc - tic
+                    time_list_trad.append(trad_time)
+
+                    if result_nn is not None:
+                        nn_success_rate += 1
+                    if result_trad is not None:
+                        trad_success_rate += 1
+                    if nn_time < trad_time:
+                        nn_faster_count += 1
+
+                avg_time_nn = sum(time_list_nn) / nupdate
+                avg_time_trad = sum(time_list_trad) / nupdate
+                
+                print('NN Success Rate: ',nn_success_rate/nupdate, 'Trad Success Rate: ',trad_success_rate/nupdate)
+                print('Average NN Time: ', avg_time_nn, 'Average Traditional Time: ', avg_time_trad)
+                print('NN Faster Ratio: ', nn_faster_count/nupdate)
+                plt.plot(range(nupdate), time_list_nn, label='IK with NN seed')
+                plt.plot(range(nupdate), time_list_trad, label='Traditional IK Time')
+                for x in range(nupdate):
+                            plt.axvline(x=x, color='gray', linestyle='--', linewidth=0.5, alpha=0.5)
+        
+                
+                plt.xlabel('Update Step')
+                plt.ylabel('Time (s)')
+                plt.legend()
+                plt.show()
