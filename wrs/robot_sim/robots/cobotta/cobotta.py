@@ -63,9 +63,10 @@ if __name__ == '__main__':
 
     base = wd.World(cam_pos=[1.7, 1.7, 1.7], lookat_pos=[0, 0, .3])
     mcm.mgm.gen_frame().attach_to(base)
-    robot = Cobotta(pos=rm.vec(0.168, .3, 0), rotmat=rm.rotmat_from_euler(0, 0, rm.pi / 2), enable_cc=True)
+    # robot = Cobotta(pos=rm.vec(0.168, .3, 0), rotmat=rm.rotmat_from_euler(0, 0, rm.pi / 2), enable_cc=True)
+    robot = Cobotta(enable_cc=True)
     # robot.jaw_to(.02)
-    robot.gen_meshmodel(alpha=.5, toggle_tcp_frame=False, toggle_jnt_frames=False).attach_to(base)
+    # robot.gen_meshmodel(alpha=.5, toggle_tcp_frame=False, toggle_jnt_frames=False).attach_to(base)
     # robot.gen_stickmodel(toggle_tcp_frame=True, toggle_jnt_frames=True).attach_to(base)
     tgt_pos = np.array([-0.12, .23, .058])
     # tgt_rotmat = rm.rotmat_from_axangle([0, 1, 0], math.pi * 2 / 3)

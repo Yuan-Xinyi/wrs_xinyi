@@ -20,7 +20,8 @@ from wrs import rm, mcm, wd
 base = wd.World(cam_pos=[1.7, 1.7, 1.7], lookat_pos=[0, 0, .3])
 mcm.mgm.gen_frame().attach_to(base)
 
-robot = cbt.Cobotta(pos=rm.vec(0.1,.3,.5), enable_cc=True)
+# robot = cbt.Cobotta(pos=rm.vec(0.1,.3,.5), enable_cc=True)
+robot = cbt.Cobotta(pos=rm.vec(0.0,.0,.0), enable_cc=True)
 nupdate = 100
 trail_num = 100
 seed = 42
@@ -33,7 +34,7 @@ train_batch = 64
 lr = 0.001
 save_intervel = 1000
 wandb.init(project="ik")
-dataset_size = '1M'
+dataset_size = '1M_loc_rotquat' # [1M, 1M_loc_rotmat, 1M_loc_rotv, 1M_loc_rotquat]
 backbone = 'IKMLPNet'  # [IKMLPNet, IKMLPScaleNet, IKLSTMNet]
 
 # val and test paras
@@ -111,7 +112,7 @@ class IKMLPScaleNet(IKMLPNet):
         scaled_output = output * (self.jnt_ranges[:, 1] - self.jnt_ranges[:, 0]) + self.jnt_ranges[:, 0]
         return scaled_output
 
-def dataset_generation(size, file_name):
+def dataset_generation_rotmat(size, file_name, loc_coord=False, rot='rotmat'):
     jnt_values_list = []
     pos_list = []
     rotmat_list = []
@@ -120,7 +121,14 @@ def dataset_generation(size, file_name):
         jnt_values = robot.rand_conf()
         jnt_values_list.append(jnt_values)
 
-        tgt_pos, tgt_rotmat = robot.fk(jnt_values = jnt_values)
+        tgt_pos, tgt_rotmat = robot.fk(jnt_values = jnt_values)  # world corrdinate
+        if loc_coord:
+            tgt_pos, tgt_rotmat = rm.real_pose(robot.pos, robot.rotmat, tgt_pos, tgt_rotmat)  # local corrdinate
+        if rot == 'rotv':
+            tgt_rotmat = rm.rotmat_to_wvec(tgt_rotmat)
+        elif rot == 'quaternion':
+            tgt_rotmat = rm.rotmat_to_quaternion(tgt_rotmat)
+
         pos_list.append(tgt_pos.flatten())
         rotmat_list.append(tgt_rotmat.flatten())
     
@@ -134,7 +142,7 @@ def dataset_generation(size, file_name):
 
 if __name__ == '__main__':
     # # dataset generation
-    # dataset_generation(10000,'0000_test_programs/nn_ik/dataset_10k.npz')
+    # dataset_generation_rotmat(1000000,'0000_test_programs/nn_ik/dataset_1M_loc_rotquat.npz', loc_coord=False, rot='quaternion')
     # exit()
 
     # dataset loading
@@ -298,7 +306,8 @@ if __name__ == '__main__':
             base.run()
 
     elif mode == 'ik_test':
-        model.load_state_dict(torch.load('0000_test_programs/nn_ik/results/1202_2109_IKMLPNet_1M_dataset/model900'))
+        rot = 'quaternion' # ['rotmat', 'rotv', 'quaternion']
+        model.load_state_dict(torch.load('0000_test_programs/nn_ik/results/1205_1535_IKMLPNet_1M_loc_rotquatdataset/model1000'))
         model.eval()
 
         with torch.no_grad():
@@ -312,7 +321,12 @@ if __name__ == '__main__':
                 for i in range(nupdate):
                     jnt_values = robot.rand_conf()
                     tgt_pos, tgt_rotmat = robot.fk(jnt_values = jnt_values)  # fk --> pos(3), rotmat(3x3)
-                    pos_rotmat = torch.tensor(np.concatenate((tgt_pos.flatten(), tgt_rotmat.flatten()), axis=0), dtype=torch.float32).to(device).unsqueeze(0)
+                    # rot format conversion
+                    if rot == 'rotv':
+                        rotmat = rm.rotmat_to_wvec(tgt_rotmat)
+                    elif rot == 'quaternion':
+                        rotmat = rm.rotmat_to_quaternion(tgt_rotmat)
+                    pos_rotmat = torch.tensor(np.concatenate((tgt_pos.flatten(), rotmat.flatten()), axis=0), dtype=torch.float32).to(device).unsqueeze(0)
                     nn_pred_jnt_values = model(pos_rotmat).cpu().numpy()[0]
                     tic = time.time()
                     result_nn = robot.ik(tgt_pos, tgt_rotmat,seed_jnt_values=nn_pred_jnt_values)
@@ -340,7 +354,7 @@ if __name__ == '__main__':
                 print('Average NN Time: ', avg_time_nn, 'Average Traditional Time: ', avg_time_trad)
                 print('NN Faster Ratio: ', nn_faster_count/nupdate)
                 plt.plot(range(nupdate), time_list_nn, label='IK with NN seed')
-                plt.plot(range(nupdate), time_list_trad, label='Traditional IK Time')
+                plt.plot(range(nupdate), time_list_trad, label='IK')
                 for x in range(nupdate):
                             plt.axvline(x=x, color='gray', linestyle='--', linewidth=0.5, alpha=0.5)
         
