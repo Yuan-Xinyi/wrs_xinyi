@@ -14,8 +14,6 @@ import torch.optim as optim
 import numpy as np
 from sklearn.model_selection import train_test_split
 from torch.utils.data import DataLoader, TensorDataset
-import time
-from wrs import rm, mcm, wd
 
 base = wd.World(cam_pos=[1.7, 1.7, 1.7], lookat_pos=[0, 0, .3])
 mcm.mgm.gen_frame().attach_to(base)
@@ -24,7 +22,7 @@ robot = cbt.Cobotta(pos=rm.vec(0.1,.3,.5), enable_cc=True)
 nupdate = 100
 trail_num = 3
 seed = 42
-mode = 'inference' # ['train' or 'test',inference]
+mode = 'inference' # ['train' or 'test']
 device = torch.device('cuda' if torch.cuda.is_available() else 'cpu')
 
 # train paras
@@ -67,24 +65,17 @@ class IKMLPNet(nn.Module):
     def __init__(self, input_dim, output_dim):
         super(IKMLPNet, self).__init__()
         self.network = nn.Sequential(
-            # nn.Linear(input_dim, 256),  # Increased neurons
-            # nn.ReLU(),
-            # nn.Linear(256, 512),       # New hidden layer with more neurons
-            # nn.ReLU(),
-            # nn.Linear(512, 256),       # Another hidden layer
-            # nn.ReLU(),
-            # nn.Linear(256, 128),       # Yet another hidden layer
-            # nn.ReLU(),
-            # nn.Linear(128, 64),        # Continue reducing dimensions
-            # nn.ReLU(),
-            # nn.Linear(64, output_dim)  # Final output layer
-            nn.Linear(input_dim, 64),  # input: tgt_pos(3) + tgt_rotmat(9)
+            nn.Linear(input_dim, 256),  # Increased neurons
             nn.ReLU(),
-            nn.Linear(64, 128),
+            nn.Linear(256, 512),       # New hidden layer with more neurons
             nn.ReLU(),
-            nn.Linear(128, 64),
+            nn.Linear(512, 256),       # Another hidden layer
             nn.ReLU(),
-            nn.Linear(64, output_dim),    # output: jnt_values(6)
+            nn.Linear(256, 128),       # Yet another hidden layer
+            nn.ReLU(),
+            nn.Linear(128, 64),        # Continue reducing dimensions
+            nn.ReLU(),
+            nn.Linear(64, output_dim)  # Final output layer
         )
 
     def forward(self, x):
@@ -275,42 +266,22 @@ if __name__ == '__main__':
     elif mode == 'inference':
         model.load_state_dict(torch.load('0000_test_programs/nn_ik/results/1202_2109_IKMLPNet_1M_dataset/model900'))
         model.eval()
-        # base = wd.World(cam_pos=[1.7, 1.7, 1.7], lookat_pos=[0, 0, .3])
-        # mcm.mgm.gen_frame().attach_to(base)
-        # robot = cbt.Cobotta(pos=rm.vec(0.168, .3, 0), rotmat=rm.rotmat_from_euler(0, 0, rm.pi / 2), enable_cc=True)
-        # # robot.jaw_to(.02)
+        test_loss = 0
+        loss_list = []
+        time_list = []
+
         with torch.no_grad():
-            robot.gen_meshmodel(alpha=.5, toggle_tcp_frame=False, toggle_jnt_frames=False).attach_to(base)
-            # robot.gen_stickmodel(toggle_tcp_frame=True, toggle_jnt_frames=True).attach_to(base)
-            tgt_pos = np.array([0.3, .23, .58])
-            # tgt_rotmat = rm.rotmat_from_axangle([0, 1, 0], math.pi * 2 / 3)
-            # tgt_rotmat = rm.rotmat_from_quaternion([0.707, -0.707, 0, 0])
-            tgt_rotmat = rm.rotmat_from_quaternion([0.156, 0.988, 0, 0])
-            mcm.mgm.gen_frame(pos=tgt_pos, rotmat=tgt_rotmat).attach_to(base)
-            # base.run()
-            pos_rotmat = torch.tensor(np.concatenate((tgt_pos.flatten(), tgt_rotmat.flatten()), axis=0), dtype=torch.float32).to(device).unsqueeze(0)
-            jnt_values_model = model(pos_rotmat)
-            jnt_values = robot.ik(tgt_pos=tgt_pos, tgt_rotmat=tgt_rotmat, toggle_dbg=False)
-            print('nn jnt_values: ', jnt_values_model, 'ik jnt_values: ', jnt_values)
-            if jnt_values is not None:
-                robot.goto_given_conf(jnt_values=jnt_values)
-                robot.gen_meshmodel(alpha=.5, toggle_tcp_frame=False, toggle_jnt_frames=False).attach_to(base)
-                robot.gen_stickmodel(toggle_tcp_frame=True, toggle_jnt_frames=True).attach_to(base)
-            # robot.show_cdprim()
-            # robot.unshow_cdprim()
+            for pos_rotmat, gth_jnt in tqdm(test_loader):
+                tic = time.time()
+                pred_jnt = model(pos_rotmat)
+                toc = time.time()
+                loss = criterion(pred_jnt, gth_jnt)
+                time_list.append(toc-tic)
+                test_loss += loss.item()
+                loss_list.append(loss.item())
+                # print('current time: ',toc-tic, 'current loss: ',loss) 
+                if loss > 2:
+                    print(f'pred_jnt: {pred_jnt}\ngth_jnt: {gth_jnt}\nloss: ',loss)
 
-            robot.goto_given_conf(jnt_values=jnt_values_model.squeeze(1).cpu().numpy()[0])
-            robot.gen_meshmodel(alpha=.5, toggle_tcp_frame=True, toggle_jnt_frames=False).attach_to(base)
-            # robot.show_cdprim()
-            base.run()
-            box = mcm.gen_box(xyz_lengths=np.array([0.1, .1, .1]), pos=tgt_pos, rgb=np.array([1, 1, 0]), alpha=.3)
-            box.attach_to(base)
-            tic = time.time()
-            result, contacts = robot.is_collided(obstacle_list=[box], toggle_contacts=True)
-            print(result)
-            toc = time.time()
-            print(toc - tic)
-            # for pnt in contacts:
-            #     mgm.gen_sphere(pnt).attach_to(base)
-
-            base.run()
+        test_loss /= len(test_loader)
+        print(f"Test Loss: {test_loss:.4f}")
