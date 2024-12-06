@@ -18,6 +18,7 @@ import wrs.robot_sim._kinematics.jlchain as rkjlc
 import wrs.robot_sim._kinematics.model_generator as rkmg
 import wrs.modeling.geometric_model as mgm
 import wrs.basis.utils as bu
+import time
 
 
 # for debugging purpose
@@ -249,7 +250,11 @@ class DDIKSolver(object):
             rel_pos, rel_rotmat = rm.rel_pose(self.jlc.pos, self.jlc.rotmat, tgt_pos, tgt_rotmat)
             rel_rotvec = self._rotmat_to_vec(rel_rotmat)
             query_point = np.concatenate((rel_pos, rel_rotvec))
+            tic = time.time()
             dist_value_array, nn_indx_array = self.query_tree.query(query_point, k=self._k_max, workers=-1)
+            toc = time.time()
+            query_time = (toc - tic) * 1000
+            print(f"Querying the KDT-tree took {query_time:.3f} ms.")
             if type(nn_indx_array) is int:
                 nn_indx_array = [nn_indx_array]
             for id, nn_indx in enumerate(nn_indx_array):

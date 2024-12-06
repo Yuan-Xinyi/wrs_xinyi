@@ -34,7 +34,7 @@ train_batch = 64
 lr = 0.001
 save_intervel = 1000
 wandb.init(project="ik")
-dataset_size = '1M_loc_rotquat' # [1M, 1M_loc_rotmat, 1M_loc_rotv, 1M_loc_rotquat]
+dataset_size = '1M' # [1M, 1M_loc_rotmat, 1M_loc_rotv, 1M_loc_rotquat]
 backbone = 'IKMLPNet'  # [IKMLPNet, IKMLPScaleNet, IKLSTMNet]
 
 # val and test paras
@@ -142,7 +142,7 @@ def dataset_generation_rotmat(size, file_name, loc_coord=False, rot='rotmat'):
 
 if __name__ == '__main__':
     # # dataset generation
-    # dataset_generation_rotmat(1000000,'0000_test_programs/nn_ik/dataset_1M_loc_rotquat.npz', loc_coord=False, rot='quaternion')
+    # dataset_generation_rotmat(10000000,'0000_test_programs/nn_ik/dataset_10M_loc_rotquat.npz', loc_coord=False, rot='quaternion')
     # exit()
 
     # dataset loading
@@ -306,8 +306,9 @@ if __name__ == '__main__':
             base.run()
 
     elif mode == 'ik_test':
-        rot = 'quaternion' # ['rotmat', 'rotv', 'quaternion']
-        model.load_state_dict(torch.load('0000_test_programs/nn_ik/results/1205_1535_IKMLPNet_1M_loc_rotquatdataset/model1000'))
+        rot = 'rotmat' # ['rotmat', 'rotv', 'quaternion']
+        # model.load_state_dict(torch.load('0000_test_programs/nn_ik/results/1205_1535_IKMLPNet_1M_loc_rotquatdataset/model1000'))
+        model.load_state_dict(torch.load('0000_test_programs/nn_ik/results/1202_2109_IKMLPNet_1M_dataset/model900'))
         model.eval()
 
         with torch.no_grad():
@@ -326,6 +327,8 @@ if __name__ == '__main__':
                         rotmat = rm.rotmat_to_wvec(tgt_rotmat)
                     elif rot == 'quaternion':
                         rotmat = rm.rotmat_to_quaternion(tgt_rotmat)
+                    else:
+                        rotmat = tgt_rotmat
                     pos_rotmat = torch.tensor(np.concatenate((tgt_pos.flatten(), rotmat.flatten()), axis=0), dtype=torch.float32).to(device).unsqueeze(0)
                     nn_pred_jnt_values = model(pos_rotmat).cpu().numpy()[0]
                     tic = time.time()

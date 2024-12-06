@@ -1,6 +1,6 @@
 import time
 from wrs import wd, mcm, rm
-import wrs.robot_sim.manipulators.cobotta_arm.cobotta_arm as cbta
+import wrs.robot_sim.manipulators.cobotta.cvr038 as cbta
 import wrs.robot_sim._kinematics.ikgeo.sp4_lib as sp4_lib
 import wrs.robot_sim._kinematics.ikgeo.sp3_lib as sp3_lib
 import wrs.robot_sim._kinematics.ikgeo.sp1_lib as sp1_lib
@@ -100,7 +100,7 @@ for i in range(n_value):
             # print(result)
             new_result.append(result)
     toc=time.time()
-    # print("1D search time: ", toc-tic)
+    # print("1D search1 time: ", toc-tic)
     geoik_time.append(toc-tic)
     tic = time.time()
     arm.ik(tgt_pos=tgt_pos, tgt_rotmat=tgt_rotmat)

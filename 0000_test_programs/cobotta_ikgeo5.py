@@ -1,6 +1,6 @@
 import time
 from wrs import wd, mcm, rm
-import wrs.robot_sim.manipulators.cobotta_arm.cobotta_arm as cbta
+import wrs.robot_sim.manipulators.cobotta.cvr038 as cbta
 import wrs.robot_sim._kinematics.ikgeo.sp4_lib as sp4_lib
 import wrs.robot_sim._kinematics.ikgeo.sp3_lib as sp3_lib
 import wrs.robot_sim._kinematics.ikgeo.sp1_lib as sp1_lib
