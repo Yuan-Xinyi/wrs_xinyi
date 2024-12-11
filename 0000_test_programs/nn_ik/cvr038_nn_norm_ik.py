@@ -25,7 +25,7 @@ robot = cbt.Cobotta(enable_cc=True)
 nupdate = 100
 trail_num = 100
 seed = 42
-mode = 'train' # ['train' or 'test','inference','ik_test']
+mode = 'ik_test' # ['train' or 'test','inference','ik_test']
 device = torch.device('cuda' if torch.cuda.is_available() else 'cpu')
 
 # train paras
@@ -316,9 +316,11 @@ if __name__ == '__main__':
             base.run()
 
     elif mode == 'ik_test':
-        rot = 'rotmat' # ['rotmat', 'rotv', 'quaternion']
+        rot = 'quaternion' # ['rotmat', 'rotv', 'quaternion']
+        norm_jnt = True
         # model.load_state_dict(torch.load('0000_test_programs/nn_ik/results/1205_1535_IKMLPNet_1M_loc_rotquatdataset/model1000'))
-        model.load_state_dict(torch.load('0000_test_programs/nn_ik/results/1202_2109_IKMLPNet_1M_dataset/model900'))
+        # model.load_state_dict(torch.load('0000_test_programs/nn_ik/results/1202_2109_IKMLPNet_1M_dataset/model900'))
+        model.load_state_dict(torch.load('0000_test_programs/nn_ik/results/1210_1646_IKMLPNet_1M_loc_rotquat_normed/model7400'))
         model.eval()
 
         with torch.no_grad():
@@ -340,7 +342,10 @@ if __name__ == '__main__':
                     else:
                         rotmat = tgt_rotmat
                     pos_rotmat = torch.tensor(np.concatenate((tgt_pos.flatten(), rotmat.flatten()), axis=0), dtype=torch.float32).to(device).unsqueeze(0)
+                    
                     nn_pred_jnt_values = model(pos_rotmat).cpu().numpy()[0]
+                    if norm_jnt:
+                        nn_pred_jnt_values = nn_pred_jnt_values * (robot.jnt_ranges[:, 1] - robot.jnt_ranges[:, 0]) + robot.jnt_ranges[:, 0]
                     tic = time.time()
                     result_nn = robot.ik(tgt_pos, tgt_rotmat,seed_jnt_values=nn_pred_jnt_values)
                     toc = time.time()
