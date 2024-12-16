@@ -19,10 +19,14 @@ import wrs.robot_sim._kinematics.model_generator as rkmg
 import wrs.modeling.geometric_model as mgm
 import wrs.basis.utils as bu
 import time
+import json
 
 
-# for debugging purpose
-
+# for seed data collection purpose
+def append_to_logfile(filename, data):
+    with open(filename, "a") as f: 
+        json.dump(data, f) 
+        f.write("\n")
 
 class DDIKSolver(object):
     def __init__(self, jlc, path=None, identifier_str='test', backbone_solver='n', rebuild=False):
@@ -238,6 +242,7 @@ class DDIKSolver(object):
         author: weiwei
         date: 20231107
         """
+        collect_successful_seed = False
         max_n_iter = self._max_n_iter if max_n_iter is None else max_n_iter
         if seed_jnt_values is not None:
             return self._backbone_solver(tgt_pos=tgt_pos,
@@ -250,11 +255,11 @@ class DDIKSolver(object):
             rel_pos, rel_rotmat = rm.rel_pose(self.jlc.pos, self.jlc.rotmat, tgt_pos, tgt_rotmat)
             rel_rotvec = self._rotmat_to_vec(rel_rotmat)
             query_point = np.concatenate((rel_pos, rel_rotvec))
-            tic = time.time()
+            # tic = time.time()
             dist_value_array, nn_indx_array = self.query_tree.query(query_point, k=self._k_max, workers=-1)
-            toc = time.time()
-            query_time = (toc - tic) * 1000
-            print(f"Querying the KDT-tree took {query_time:.3f} ms.")
+            # toc = time.time()
+            # query_time = (toc - tic) * 1000
+            # print(f"Querying the KDT-tree took {query_time:.3f} ms.")
             if type(nn_indx_array) is int:
                 nn_indx_array = [nn_indx_array]
             for id, nn_indx in enumerate(nn_indx_array):
@@ -288,6 +293,10 @@ class DDIKSolver(object):
                         print(f"Updating query tree, {id} explored...")
                         self.persist_data()
                         break
+                    if collect_successful_seed == True:
+                        data = {"source": 'KDTree',"target": query_point.tolist(), "seed_jnt_value": seed_jnt_values.tolist(), "jnt_result": result.tolist()}
+                        append_to_logfile("successful_seed_dataset.json", data)
+
                     return result
             # failed to find a solution, use optimization methods to solve and update the database?
         return None

@@ -3,7 +3,14 @@ import wrs.robot_sim._kinematics.ik_num as ikn
 import wrs.robot_sim._kinematics.ikgeo.sp4_lib as sp4_lib
 import wrs.robot_sim._kinematics.ikgeo.sp3_lib as sp3_lib
 import wrs.robot_sim._kinematics.ikgeo.sp1_lib as sp1_lib
+import numpy as np
+import json
 
+# for seed data collection purpose
+def append_to_logfile(filename, data):
+    with open(filename, "a") as f: 
+        json.dump(data, f) 
+        f.write("\n")
 
 def err_given_q4(q4, jlc, p06, R06):
     R34 = rm.rotmat_from_axangle(jlc.jnts[3].loc_motion_ax, q4)
@@ -117,6 +124,7 @@ def solve_q56(jlc, R06, q1, q2, q3, q4):
 
 
 def ik(jlc, tgt_pos, tgt_rotmat, n_div = 36, seed_jnt_values=None, option='single'):
+    collect_successful_seed = False
     _backbone_solver = ikn.NumIKSolver(jlc)
     # if seed_jnt_values is not None:
     #     result = _backbone_solver(tgt_pos, tgt_rotmat, seed_jnt_values)
@@ -137,7 +145,15 @@ def ik(jlc, tgt_pos, tgt_rotmat, n_div = 36, seed_jnt_values=None, option='singl
             result = _backbone_solver(tgt_pos=tgt_pos, tgt_rotmat=tgt_rotmat, seed_jnt_values=[q1, q2, q3, q4, q5, q6],
                                       max_n_iter=7)
             if result is not None:
+                if collect_successful_seed == True:
+                    '''data format transformation'''
+                    rel_rotvec = rm.rotmat_to_wvec(rel_rotmat)
+                    query_point = np.concatenate((rel_pos, rel_rotvec))
+                    seed_jnt_values = [q1, q2, q3, q4, q5, q6]
+                    data = {"source": 'ikgeo',"target": query_point.tolist(), "seed_jnt_value": seed_jnt_values, "jnt_result": result.tolist()}
+                    append_to_logfile("successful_seed_dataset.json", data)                
                 candidate_jnt_values.append(result)
+    
     if len(candidate_jnt_values) > 0:
         filtered_result = rm.np.array(candidate_jnt_values)
         if seed_jnt_values is None:

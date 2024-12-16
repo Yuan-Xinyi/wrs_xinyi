@@ -343,9 +343,10 @@ if __name__ == '__main__':
                         rotmat = tgt_rotmat
                     pos_rotmat = torch.tensor(np.concatenate((tgt_pos.flatten(), rotmat.flatten()), axis=0), dtype=torch.float32).to(device).unsqueeze(0)
                     
-                    nn_pred_jnt_values = model(pos_rotmat).cpu().numpy()[0]
+                    normed_jnt_values = model(pos_rotmat).cpu().numpy()[0]
                     if norm_jnt:
-                        nn_pred_jnt_values = nn_pred_jnt_values * (robot.jnt_ranges[:, 1] - robot.jnt_ranges[:, 0]) + robot.jnt_ranges[:, 0]
+                        nn_pred_jnt_values = (normed_jnt_values + 1) / 2 * (robot.jnt_ranges[:, 1] - robot.jnt_ranges[:, 0]) + robot.jnt_ranges[:, 0]
+                        # nn_pred_jnt_values = nn_pred_jnt_values * (robot.jnt_ranges[:, 1] - robot.jnt_ranges[:, 0]) + robot.jnt_ranges[:, 0]
                     tic = time.time()
                     result_nn = robot.ik(tgt_pos, tgt_rotmat,seed_jnt_values=nn_pred_jnt_values)
                     toc = time.time()

@@ -95,7 +95,7 @@ class CVR038(mi.ManipulatorInterface):
         :param toggle_dbg:
         :return:
         """
-        toggle_update = False
+        toggle_update = True
         # directly use specified ik
         self.jlc._ik_solver._k_max = 5
         rel_rotmat = tgt_rotmat @ self.loc_tcp_rotmat.T
@@ -105,7 +105,7 @@ class CVR038(mi.ManipulatorInterface):
             # mcm.mgm.gen_myc_frame(pos=tgt_pos, rotmat=tgt_rotmat).attach_to(base)
             result = ikgeo.ik(jlc=self.jlc, tgt_pos=rel_pos, tgt_rotmat=rel_rotmat, seed_jnt_values=None)
             if result is None:
-                print("No valid solutions found")
+                # print("No valid solutions found")
                 return None
             else:
                 if toggle_update:
