@@ -44,6 +44,8 @@ class DDIKSolver(object):
             path = os.path.join(os.path.dirname(current_file_dir), "_data_files")
         self._fname_tree = os.path.join(path, f"{identifier_str}_ikdd_tree.pkl")
         self._fname_jnt = os.path.join(path, f"{identifier_str}_jnt_data.pkl")
+        self._fname_jmat_inv = os.path.join(path, f"{identifier_str}_jmat_inv.pkl")
+        self._fname_jmat = os.path.join(path, f"{identifier_str}_jmat.pkl")
         self._k_bbs = 100  # number of nearest neighbours examined by the backbone solver
         self._k_max = 200  # maximum nearest neighbours explored by the evolver
         self._max_n_iter = 7  # max_n_iter of the backbone solver
@@ -66,14 +68,19 @@ class DDIKSolver(object):
                     self.query_tree = pickle.load(f_tree)
                 with open(self._fname_jnt, 'rb') as f_jnt:
                     self.jnt_data = pickle.load(f_jnt)
+                with open(self._fname_jmat_inv, 'rb') as f_jnt:
+                    self.jmat_inv = pickle.load(f_jnt)
+                with open(self._fname_jmat, 'rb') as f_jnt:
+                    self.jmat = pickle.load(f_jnt)
             except FileNotFoundError:
-                self.query_tree, self.jnt_data = self._build_data()
+                self.jmat, self.jmat_inv, self.query_tree, self.jnt_data = self._build_data()
                 self.persist_data()
                 self.evolve_data(n_times=100)
 
     def __call__(self,
                  tgt_pos,
                  tgt_rotmat,
+                 best_sol_num,
                  seed_jnt_values=None,
                  max_n_iter=None,
                  toggle_evolve=True,
@@ -89,6 +96,7 @@ class DDIKSolver(object):
         """
         return self.ik(tgt_pos=tgt_pos,
                        tgt_rotmat=tgt_rotmat,
+                       best_sol_num=best_sol_num,
                        seed_jnt_values=seed_jnt_values,
                        max_n_iter=max_n_iter,
                        toggle_evolve=toggle_evolve,
@@ -128,6 +136,9 @@ class DDIKSolver(object):
         # gen sampled qs and their correspondent flange poses
         query_data = []
         jnt_data = []
+        jmat_inv_data = []
+        jamt_data = []
+
         for id in tqdm(range(len(sampled_qs))):
             jnt_values = sampled_qs[id]
             flange_pos, flange_rotmat = self.jlc.fk(jnt_values=jnt_values, toggle_jacobian=False)
@@ -136,8 +147,11 @@ class DDIKSolver(object):
             rel_rotvec = self._rotmat_to_vec(rel_rotmat)
             query_data.append(np.concatenate((rel_pos, rel_rotvec)))
             jnt_data.append(jnt_values)
+            jmat_inv = np.linalg.pinv(self.jlc.jacobian(jnt_values=jnt_values))
+            jmat_inv_data.append(jmat_inv)
+            jamt_data.append(self.jlc.jacobian(jnt_values=jnt_values))
         query_tree = scipy.spatial.cKDTree(query_data)
-        return query_tree, jnt_data
+        return jamt_data, jmat_inv_data, query_tree, jnt_data
 
     def multiepoch_evolve(self, n_times_per_epoch=10000, target_success_rate=.96):
         """
@@ -200,6 +214,8 @@ class DDIKSolver(object):
                     else:
                         # if solved, add the new jnts to the data and update the kd tree
                         tree_data = np.vstack((self.query_tree.data, query_point))
+                        self.jmat_inv.append(np.linalg.pinv(self.jlc.jacobian(jnt_values=result)))
+                        self.jmat.append(self.jlc.jacobian(jnt_values=result))
                         self.jnt_data.append(result)
                         self.query_tree = scipy.spatial.cKDTree(tree_data)
                         evolved_nns.append(self._k_bbs + id)
@@ -224,11 +240,16 @@ class DDIKSolver(object):
             pickle.dump(self.query_tree, f_tree)
         with open(self._fname_jnt, 'wb') as f_jnt:
             pickle.dump(self.jnt_data, f_jnt)
+        with open(self._fname_jmat_inv, 'wb') as f_jmat_inv:
+            pickle.dump(self.jmat_inv, f_jmat_inv)
+        with open(self._fname_jmat, 'wb') as f_jmat:
+            pickle.dump(self.jmat, f_jmat)
         print("ddik data file saved.")
 
     def ik(self,
            tgt_pos,
            tgt_rotmat,
+           best_sol_num,
            seed_jnt_values=None,
            max_n_iter=None,
            toggle_evolve=True,
@@ -262,8 +283,58 @@ class DDIKSolver(object):
             # print(f"Querying the KDT-tree took {query_time:.3f} ms.")
             if type(nn_indx_array) is int:
                 nn_indx_array = [nn_indx_array]
-            for id, nn_indx in enumerate(nn_indx_array):
+            
+            '''xinyi: rank the jnt_seed by the delta_q'''
+            seed_candidates = np.array([[nn_indx] + [0] * 8 for nn_indx in nn_indx_array], dtype=float)
+            jmat_pinv_batch = np.array([self.jmat_inv[idx] for idx in nn_indx_array])
+            tgt_candidates = np.array([self.query_tree.data[idx] for idx in nn_indx_array])  # target stored in the tree
+            tgt_gth = np.tile(query_point, (len(nn_indx_array), 1))
+            tgt_delta = np.abs(tgt_candidates - tgt_gth)
+            
+            delta_q_batch = np.einsum('ijk,ik->ij', jmat_pinv_batch, tgt_delta)
+            delta_q_l2norm = np.linalg.norm(delta_q_batch, axis=1).reshape(-1, 1)
+            seed_candidates[:, -2] = delta_q_l2norm[:,0]
+            seed_candidates[:, 1:-2] = delta_q_batch
+            
+            sorted_indices = np.argsort(seed_candidates[:, -2])
+            seed_candidates_sorted = seed_candidates[sorted_indices]
+            nn_indx_array = seed_candidates_sorted[:, 0]
+            nn_indx_array = nn_indx_array.astype(int)
+
+            '''evaluate the manipulability of the seed candidates'''
+            # Yoshikawa manipulability
+            jmat_batch = np.array([self.jmat[idx] for idx in nn_indx_array])
+            w = np.sqrt(np.linalg.det(jmat_batch @ np.transpose(jmat_batch, axes=(0, 2, 1))))
+            seed_candidates_sorted[:, -1] = w
+
+            # seed_candidates_sorted = seed_candidates_sorted[seed_candidates_sorted[:, -1] >= 0.001]
+            # seed_candidates_sorted = seed_candidates_sorted[seed_candidates_sorted[:, 0] >= 2000]
+            nn_indx_array = seed_candidates_sorted[:, 0]
+            nn_indx_array = nn_indx_array.astype(int)
+
+
+            # 2
+            # seed_candidates = np.array([[nn_indx] + [0] for nn_indx in nn_indx_array])
+            # jmat_pinv_batch = np.array([self.jmat_inv[idx] for idx in nn_indx_array])
+            # tgt_candidates = np.array([self.query_tree.data[idx] for idx in nn_indx_array])
+
+            # tgt_gth = np.tile(query_point, (len(nn_indx_array), 1))
+            # tgt_delta = tgt_candidates - tgt_gth
+            # delta_q_batch = np.einsum('ijk,ik->ij', jmat_pinv_batch, tgt_delta)
+
+            # abs_max_delta_q = np.max(np.abs(delta_q_batch), axis=1).reshape(-1, 1)
+            # seed_candidates[:, -1] = abs_max_delta_q[:,0]
+            # sorted_indices = np.argsort(seed_candidates[:, -1])
+            # seed_candidates_sorted = seed_candidates[sorted_indices]
+            # nn_indx_array = seed_candidates_sorted[:, 0].astype(int)
+            
+            for id, nn_indx in enumerate(nn_indx_array[0:best_sol_num]):
                 seed_jnt_values = self.jnt_data[nn_indx]
+                next_jnt_values = seed_candidates_sorted[id, 1:-2] + seed_jnt_values
+                
+                jnt_limits = self.jlc.jnt_ranges
+                dist_to_limits = np.where(next_jnt_values >= 0, jnt_limits[:, 1] - next_jnt_values, next_jnt_values - jnt_limits[:, 0])
+                
                 if toggle_dbg:
                     rkmg.gen_jlc_stick_by_jnt_values(self.jlc,
                                                      jnt_values=seed_jnt_values,
@@ -281,21 +352,39 @@ class DDIKSolver(object):
                     # print(result)
                     # if id == self._k_max-1:
                     #     base.run()
+
+                    print(f"Not found for id: {id}, KDT_indx: {nn_indx}, norm: {seed_candidates_sorted[id, -2]}\n"
+                          f"delta_q: {seed_candidates_sorted[id, 1:-2]} \n"
+                          f"delta_q_std: {np.std(seed_candidates_sorted[id, 1:-2])} \n"
+                          f"next_q: {next_jnt_values} \n"
+                          f"limits dist: {dist_to_limits} \n"
+                          f"Yoshikawa manipulability: {seed_candidates_sorted[id,-1]} \n")
+
                     if toggle_evolve:
                         continue
                     else:
                         return None
                 else:
-                    if id > self._k_bbs:
-                        tree_data = np.vstack((self.query_tree.data, query_point))
-                        self.jnt_data.append(result)
-                        self.query_tree = scipy.spatial.cKDTree(tree_data)
-                        print(f"Updating query tree, {id} explored...")
-                        self.persist_data()
-                        break
-                    if collect_successful_seed == True:
-                        data = {"source": 'KDTree',"target": query_point.tolist(), "seed_jnt_value": seed_jnt_values.tolist(), "jnt_result": result.tolist()}
-                        append_to_logfile("successful_seed_dataset.json", data)
+                    # if id > self._k_bbs:
+                    #     tree_data = np.vstack((self.query_tree.data, query_point))
+                    #     self.jnt_data.append(result)
+                    #     self.jmat_inv.append(np.linalg.pinv(self.jlc.jacobian(jnt_values=result)))
+                    #     self.query_tree = scipy.spatial.cKDTree(tree_data)
+                    #     print(f"Updating query tree, {id} explored...")
+                    #     self.persist_data()
+                    #     break
+                    # if collect_successful_seed == True:
+                    #     data = {"source": 'KDTree',"target": query_point.tolist(), "seed_jnt_value": seed_jnt_values.tolist(), "jnt_result": result.tolist()}
+                    #     append_to_logfile("successful_seed_dataset.json", data)
+                    
+                    print("\n" + "*" * 150)
+                    print(f"Solution Found for id: {id}, KDT_indx: {nn_indx}, norm: {seed_candidates_sorted[id, -2]}\n"
+                          f"delta_q: {seed_candidates_sorted[id, 1:-2]} \n"
+                          f"delta_q_std: {np.std(seed_candidates_sorted[id, 1:-2])} \n"
+                          f"next_q: {next_jnt_values} \n"
+                          f"limits dist: {dist_to_limits} \n"
+                          f"Yoshikawa manipulability: {seed_candidates_sorted[id,-1]} \n")
+                    print("*" * 150 + "\n")
 
                     return result
             # failed to find a solution, use optimization methods to solve and update the database?

@@ -24,9 +24,9 @@ mcm.mgm.gen_frame().attach_to(base)
 # robot = cbt.Cobotta(pos=rm.vec(0.1,.3,.5), enable_cc=True)
 robot = cbt.Cobotta(pos=rm.vec(0.0,.0,.0), enable_cc=True)
 nupdate = 100
-trail_num = 100
+trail_num = 10
 seed = 42
-mode = 'train' # ['train' or 'test','inference','ik_test']
+mode = 'ik_test' # ['train' or 'test','inference','ik_test']
 device = torch.device('cuda' if torch.cuda.is_available() else 'cpu')
 
 # train paras
@@ -34,13 +34,28 @@ train_epoch = 10000
 train_batch = 64
 lr = 0.001
 save_intervel = 100
-wandb.init(project="ik")
 dataset_size = '1M' # [1M, 1M_loc_rotmat, 1M_loc_rotv, 1M_loc_rotquat]
 backbone = 'MDN'
 
 # val and test paras
 val_batch = train_batch
 test_batch = 1
+
+class IKMLPNet(nn.Module):
+    def __init__(self, input_dim, output_dim):
+        super(IKMLPNet, self).__init__()
+        self.network = nn.Sequential(
+            nn.Linear(input_dim, 64),  # input: tgt_pos(3) + tgt_rotmat(9)
+            nn.ReLU(),
+            nn.Linear(64, 128),
+            nn.ReLU(),
+            nn.Linear(128, 64),
+            nn.ReLU(),
+            nn.Linear(64, output_dim),    # output: jnt_values(6)
+        )
+
+    def forward(self, x):
+        return self.network(x)
 
 class MDN(nn.Module):
     def __init__(self, input_dim, output_dim, num_mixtures):
@@ -105,6 +120,8 @@ def mdn_loss(pi, mu, sigma, y):
     loss = -torch.log(weighted_gauss.sum(dim=1) + epsilon)
     return loss.mean()
 
+def rgb2color(rgb):
+    return tuple(x / 255.0 for x in rgb)
 
 if __name__ == '__main__':
     # dataset loading
@@ -144,6 +161,7 @@ if __name__ == '__main__':
 
     if mode == 'train':
         # prepare the save path
+        wandb.init(project="ik")
         TimeCode = ((datetime.now()).strftime("%m%d_%H%M")).replace(" ", "")
         rootpath = f'{TimeCode}_{backbone}_{dataset_size}dataset'
         save_path = f'0000_test_programs/nn_ik/results/{rootpath}/'
@@ -182,143 +200,223 @@ if __name__ == '__main__':
 
         wandb.finish()
 
-    # elif mode == 'test':
-    #     model.load_state_dict(torch.load('0000_test_programs/nn_ik/results/1202_2109_IKMLPNet_1M_dataset/model900'))
-    #     model.eval()
-    #     test_loss = 0
-    #     loss_list = []
-    #     time_list = []
 
-    #     with torch.no_grad():
-    #         for pos_rotmat, gth_jnt in tqdm(test_loader):
-    #             tic = time.time()
-    #             pred_jnt = model(pos_rotmat)
-    #             toc = time.time()
-    #             loss = criterion(pred_jnt, gth_jnt)
-    #             time_list.append(toc-tic)
-    #             test_loss += loss.item()
-    #             loss_list.append(loss.item())
-    #             # print('current time: ',toc-tic, 'current loss: ',loss) 
-    #             if loss > 2:
-    #                 print(f'pred_jnt: {pred_jnt}\ngth_jnt: {gth_jnt}\nloss: ',loss)
+    elif mode == 'test':
+        # Load the model checkpoint
+        model.load_state_dict(torch.load('0000_test_programs/nn_ik/results/1202_2109_MDN_1M_dataset/model900'))
+        model.eval()  # Set the model to evaluation mode
 
-    #     test_loss /= len(test_loader)
-    #     print(f"Test Loss: {test_loss:.4f}")
-        
-    #     loss = np.array(loss_list)
-    #     plt.figure(figsize=(10, 6))
-    #     plt.hist(loss, bins=20, density=True, alpha=0.6, color='g', label="Histogram")
+        test_loss = 0.0  # Initialize cumulative test loss
+        loss_list = []   # List to store individual losses for analysis
+        time_list = []   # List to record inference time per test sample
 
-    #     sns.kdeplot(loss, color='b', label="KDE Curve")
+        # Perform testing without gradient computation
+        with torch.no_grad():
+            for pos_rotmat, gth_jnt in tqdm(test_loader, desc="Testing MDN"):
+                # Measure the time taken for the forward pass
+                start_time = time.time()
+                pi, mu, sigma = model(pos_rotmat)  # Forward pass through the MDN
+                end_time = time.time()
 
-    #     plt.title("Probability Distribution of MSE Loss Differences")
-    #     plt.xlabel("MSE Loss Difference")
-    #     plt.ylabel("Density")
-    #     plt.legend()
-    #     plt.grid()
-    #     plt.show()
+                # Compute the MDN loss
+                loss = mdn_loss(pi, mu, sigma, gth_jnt)
+                time_list.append(end_time - start_time)  # Record inference time
+                test_loss += loss.item()  # Accumulate loss
+                loss_list.append(loss.item())  # Store individual loss for analysis
 
-    # elif mode == 'inference':
-    #     model.load_state_dict(torch.load('0000_test_programs/nn_ik/results/1202_2109_IKMLPNet_1M_dataset/model900'))
-    #     model.eval()
-    #     # base = wd.World(cam_pos=[1.7, 1.7, 1.7], lookat_pos=[0, 0, .3])
-    #     # mcm.mgm.gen_frame().attach_to(base)
-    #     # robot = cbt.Cobotta(pos=rm.vec(0.168, .3, 0), rotmat=rm.rotmat_from_euler(0, 0, rm.pi / 2), enable_cc=True)
-    #     # # robot.jaw_to(.02)
-    #     with torch.no_grad():
-    #         robot.gen_meshmodel(alpha=.5, toggle_tcp_frame=False, toggle_jnt_frames=False).attach_to(base)
-    #         # robot.gen_stickmodel(toggle_tcp_frame=True, toggle_jnt_frames=True).attach_to(base)
-    #         tgt_pos = np.array([0.3, .23, .58])
-    #         # tgt_rotmat = rm.rotmat_from_axangle([0, 1, 0], math.pi * 2 / 3)
-    #         # tgt_rotmat = rm.rotmat_from_quaternion([0.707, -0.707, 0, 0])
-    #         tgt_rotmat = rm.rotmat_from_quaternion([0.156, 0.988, 0, 0])
-    #         mcm.mgm.gen_frame(pos=tgt_pos, rotmat=tgt_rotmat).attach_to(base)
-    #         # base.run()
-    #         pos_rotmat = torch.tensor(np.concatenate((tgt_pos.flatten(), tgt_rotmat.flatten()), axis=0), dtype=torch.float32).to(device).unsqueeze(0)
-    #         jnt_values_model = model(pos_rotmat)
-    #         jnt_values = robot.ik(tgt_pos=tgt_pos, tgt_rotmat=tgt_rotmat, toggle_dbg=False)
-    #         print('nn jnt_values: ', jnt_values_model, 'ik jnt_values: ', jnt_values)
-    #         if jnt_values is not None:
-    #             robot.goto_given_conf(jnt_values=jnt_values)
-    #             robot.gen_meshmodel(alpha=.5, toggle_tcp_frame=False, toggle_jnt_frames=False).attach_to(base)
-    #             robot.gen_stickmodel(toggle_tcp_frame=True, toggle_jnt_frames=True).attach_to(base)
-    #         # robot.show_cdprim()
-    #         # robot.unshow_cdprim()
+                # Log samples with high loss for debugging
+                if loss > 2.0:
+                    print(f"Ground Truth Joint Angles: {gth_jnt}")
+                    print(f"Predicted Mixtures:\n- Pi: {pi}\n- Mu: {mu}\n- Sigma: {sigma}")
+                    print(f"Loss: {loss.item()}")
 
-    #         robot.goto_given_conf(jnt_values=jnt_values_model.squeeze(1).cpu().numpy()[0])
-    #         robot.gen_meshmodel(alpha=.5, toggle_tcp_frame=True, toggle_jnt_frames=False).attach_to(base)
-    #         # robot.show_cdprim()
-    #         base.run()
-    #         box = mcm.gen_box(xyz_lengths=np.array([0.1, .1, .1]), pos=tgt_pos, rgb=np.array([1, 1, 0]), alpha=.3)
-    #         box.attach_to(base)
-    #         tic = time.time()
-    #         result, contacts = robot.is_collided(obstacle_list=[box], toggle_contacts=True)
-    #         print(result)
-    #         toc = time.time()
-    #         print(toc - tic)
-    #         # for pnt in contacts:
-    #         #     mgm.gen_sphere(pnt).attach_to(base)
+        # Compute the average test loss
+        test_loss /= len(test_loader)
+        print(f"Average Test Loss: {test_loss:.4f}")
 
-    #         base.run()
+        # Convert the loss list to a numpy array for visualization
+        loss_array = np.array(loss_list)
 
-    # elif mode == 'ik_test':
-    #     rot = 'rotmat' # ['rotmat', 'rotv', 'quaternion']
-    #     # model.load_state_dict(torch.load('0000_test_programs/nn_ik/results/1205_1535_IKMLPNet_1M_loc_rotquatdataset/model1000'))
-    #     model.load_state_dict(torch.load('0000_test_programs/nn_ik/results/1202_2109_IKMLPNet_1M_dataset/model900'))
-    #     model.eval()
+        # Plot the histogram and KDE curve for the loss distribution
+        plt.figure(figsize=(10, 6))
+        plt.hist(loss_array, bins=20, density=True, alpha=0.6, color='g', label="Histogram")
+        sns.kdeplot(loss_array, color='b', label="KDE Curve")
 
-    #     with torch.no_grad():
-    #         for _ in range(trail_num):
-    #             nn_success_rate = 0
-    #             trad_success_rate = 0
-    #             nn_faster_count = 0
+        # Add plot titles and labels
+        plt.title("Probability Distribution of MDN Loss")
+        plt.xlabel("MDN Loss")
+        plt.ylabel("Density")
+        plt.legend()
+        plt.grid()
+        plt.show()
 
-    #             time_list_nn = []
-    #             time_list_trad = []
-    #             for i in range(nupdate):
-    #                 jnt_values = robot.rand_conf()
-    #                 tgt_pos, tgt_rotmat = robot.fk(jnt_values = jnt_values)  # fk --> pos(3), rotmat(3x3)
-    #                 # rot format conversion
-    #                 if rot == 'rotv':
-    #                     rotmat = rm.rotmat_to_wvec(tgt_rotmat)
-    #                 elif rot == 'quaternion':
-    #                     rotmat = rm.rotmat_to_quaternion(tgt_rotmat)
-    #                 else:
-    #                     rotmat = tgt_rotmat
-    #                 pos_rotmat = torch.tensor(np.concatenate((tgt_pos.flatten(), rotmat.flatten()), axis=0), dtype=torch.float32).to(device).unsqueeze(0)
-    #                 nn_pred_jnt_values = model(pos_rotmat).cpu().numpy()[0]
-    #                 tic = time.time()
-    #                 result_nn = robot.ik(tgt_pos, tgt_rotmat,seed_jnt_values=nn_pred_jnt_values)
-    #                 toc = time.time()
-    #                 nn_time = toc - tic
-    #                 time_list_nn.append(nn_time)
+
+    elif mode == 'inference':
+        model.load_state_dict(torch.load('0000_test_programs/nn_ik/results/1216_1735_MDN_1Mdataset/model7200'))
+        model.eval()
+
+        with torch.no_grad():
+            robot.gen_meshmodel(alpha=.5, toggle_tcp_frame=False, toggle_jnt_frames=False).attach_to(base)
+            # base.run()
+            jnt_values = robot.rand_conf()
+            tgt_pos, tgt_rotmat = robot.fk(jnt_values = jnt_values)
+            mcm.mgm.gen_frame(pos=tgt_pos, rotmat=tgt_rotmat).attach_to(base)
+
+            rotv = rm.rotmat_to_wvec(tgt_rotmat)
+            pos_rot = torch.tensor(np.concatenate((tgt_pos.flatten(), rotv.flatten()), axis=0), dtype=torch.float32).to(device).unsqueeze(0)
+            
+            with torch.no_grad():
+                pi, mu, sigma  = model(pos_rot)
+            pi, mu, sigma = pi.squeeze(0), mu.squeeze(0), sigma.squeeze(0)
+            max_pi_idx = torch.argmax(pi).item()
+            seed_jnt_mdn = mu[max_pi_idx].cpu().numpy()
+
+            result = robot.ik(tgt_pos=tgt_pos, tgt_rotmat=tgt_rotmat,seed_jnt_values=seed_jnt_mdn, toggle_dbg=False)
+            print('seed jnt: ', seed_jnt_mdn, 'ik jnt_values: ', result)
+            
+            if result is not None:
+                robot.goto_given_conf(jnt_values=result)
+                robot.gen_meshmodel(alpha=.5, toggle_tcp_frame=False, toggle_jnt_frames=False).attach_to(base)
+                robot.gen_stickmodel(toggle_tcp_frame=True, toggle_jnt_frames=True).attach_to(base)
+
+            robot.goto_given_conf(jnt_values=result)
+            robot.gen_meshmodel(alpha=.5, toggle_tcp_frame=True, toggle_jnt_frames=False).attach_to(base)
+
+            base.run()
+            box = mcm.gen_box(xyz_lengths=np.array([0.1, .1, .1]), pos=tgt_pos, rgb=np.array([1, 1, 0]), alpha=.3)
+            box.attach_to(base)
+            tic = time.time()
+            result, contacts = robot.is_collided(obstacle_list=[box], toggle_contacts=True)
+            print(result)
+            toc = time.time()
+            print(toc - tic)
+
+            base.run()
+
+    elif mode == 'ik_test':
+        # # only compare the MDN and the ik
+        # model.load_state_dict(torch.load('0000_test_programs/nn_ik/results/1216_1735_MDN_1Mdataset/model7200'))
+        # model.eval()
+
+        # with torch.no_grad():
+        #     for _ in range(trail_num):
+        #         nn_success_rate = 0
+        #         trad_success_rate = 0
+        #         nn_faster_count = 0
+
+        #         time_list_nn = []
+        #         time_list_trad = []
+        #         for i in range(nupdate):
+        #             jnt_values = robot.rand_conf()
+        #             tgt_pos, tgt_rotmat = robot.fk(jnt_values = jnt_values)  # fk --> pos(3), rotmat(3x3)
+        #             rotv = rm.rotmat_to_wvec(tgt_rotmat)
+        #             pos_rot = torch.tensor(np.concatenate((tgt_pos.flatten(), rotv.flatten()), axis=0), dtype=torch.float32).to(device).unsqueeze(0)
                     
-    #                 tic = time.time()
-    #                 result_trad = robot.ik(tgt_pos, tgt_rotmat)
-    #                 toc = time.time()
-    #                 trad_time = toc - tic
-    #                 time_list_trad.append(trad_time)
+        #             with torch.no_grad():
+        #                 pi, mu, sigma  = model(pos_rot)
+        #             pi, mu, sigma = pi.squeeze(0), mu.squeeze(0), sigma.squeeze(0)
+        #             max_pi_idx = torch.argmax(pi).item()
+        #             seed_jnt_mdn = mu[max_pi_idx].cpu().numpy()
 
-    #                 if result_nn is not None:
-    #                     nn_success_rate += 1
-    #                 if result_trad is not None:
-    #                     trad_success_rate += 1
-    #                 if nn_time < trad_time:
-    #                     nn_faster_count += 1
+        #             tic = time.time()
+        #             result_nn = robot.ik(tgt_pos, tgt_rotmat,seed_jnt_values=seed_jnt_mdn)
+        #             toc = time.time()
+        #             nn_time = toc - tic
+        #             time_list_nn.append(nn_time)
+                    
+        #             tic = time.time()
+        #             result_trad = robot.ik(tgt_pos, tgt_rotmat)
+        #             toc = time.time()
+        #             trad_time = toc - tic
+        #             time_list_trad.append(trad_time)
 
-    #             avg_time_nn = sum(time_list_nn) / nupdate
-    #             avg_time_trad = sum(time_list_trad) / nupdate
+        #             if result_nn is not None:
+        #                 nn_success_rate += 1
+        #             if result_trad is not None:
+        #                 trad_success_rate += 1
+        #             if nn_time < trad_time:
+        #                 nn_faster_count += 1
+
+        #         avg_time_nn = sum(time_list_nn) / nupdate
+        #         avg_time_trad = sum(time_list_trad) / nupdate
                 
-    #             print('NN Success Rate: ',nn_success_rate/nupdate, 'Trad Success Rate: ',trad_success_rate/nupdate)
-    #             print('Average NN Time: ', avg_time_nn, 'Average Traditional Time: ', avg_time_trad)
-    #             print('NN Faster Ratio: ', nn_faster_count/nupdate)
-    #             plt.plot(range(nupdate), time_list_nn, label='IK with NN seed')
-    #             plt.plot(range(nupdate), time_list_trad, label='IK')
-    #             for x in range(nupdate):
-    #                         plt.axvline(x=x, color='gray', linestyle='--', linewidth=0.5, alpha=0.5)
+        #         print('NN Success Rate: ',nn_success_rate/nupdate, 'Trad Success Rate: ',trad_success_rate/nupdate)
+        #         print('Average NN Time: ', avg_time_nn, 'Average Traditional Time: ', avg_time_trad)
+        #         print('NN Faster Ratio: ', nn_faster_count/nupdate)
+        #         plt.plot(range(nupdate), time_list_nn, label='IK with MDN seed')
+        #         plt.plot(range(nupdate), time_list_trad, label='IK')
+        #         for x in range(nupdate):
+        #                     plt.axvline(x=x, color='gray', linestyle='--', linewidth=0.5, alpha=0.5)
         
                 
-    #             plt.xlabel('Update Step')
-    #             plt.ylabel('Time (s)')
-    #             plt.legend()
-    #             plt.show()
+        #         plt.xlabel('Update Step')
+        #         plt.ylabel('Time (s)')
+        #         plt.legend()
+        #         plt.show()
+
+        # compare the MDN, the ik and the NN
+        nn_model = IKMLPNet(input_dim=6, output_dim=6).to(device).float()
+        nn_model.load_state_dict(torch.load('0000_test_programs/nn_ik/results/1216_1412_IKMLPNet_1Mdataset/model1000'))
+        model.eval()
+        model.load_state_dict(torch.load('0000_test_programs/nn_ik/results/1216_1735_MDN_1Mdataset/model7200'))
+        model.eval()
+        
+        fig_dir = "0000_test_programs/nn_ik/res_figs/mdn_nn_ik"
+        os.makedirs(fig_dir, exist_ok=True)
+
+        with torch.no_grad():
+            for idx in range(trail_num):
+
+                time_list_mdn = []
+                time_list_trad = []
+                time_list_nn = []
+                
+                for i in range(nupdate):
+                    jnt_values = robot.rand_conf()
+                    tgt_pos, tgt_rotmat = robot.fk(jnt_values = jnt_values)  # fk --> pos(3), rotmat(3x3)
+                    rotv = rm.rotmat_to_wvec(tgt_rotmat)
+                    pos_rot = torch.tensor(np.concatenate((tgt_pos.flatten(), rotv.flatten()), axis=0), dtype=torch.float32).to(device).unsqueeze(0)
+                    
+                    with torch.no_grad():
+                        pi, mu, sigma  = model(pos_rot)
+                    pi, mu, sigma = pi.squeeze(0), mu.squeeze(0), sigma.squeeze(0)
+                    max_pi_idx = torch.argmax(pi).item()
+                    seed_jnt_mdn = mu[max_pi_idx].cpu().numpy()
+
+                    with torch.no_grad():
+                        seed_jnt_nn = nn_model(pos_rot).cpu().numpy()[0]
+
+                    tic = time.time()
+                    result_mdn = robot.ik(tgt_pos, tgt_rotmat,seed_jnt_values=seed_jnt_mdn)
+                    toc = time.time()
+                    mdn_time = toc - tic
+                    time_list_mdn.append(mdn_time)
+
+                    tic = time.time()
+                    result_nn = robot.ik(tgt_pos, tgt_rotmat,seed_jnt_values=seed_jnt_nn)
+                    toc = time.time()
+                    nn_time = toc - tic
+                    time_list_nn.append(nn_time)
+                    
+                    tic = time.time()
+                    result_trad = robot.ik(tgt_pos, tgt_rotmat)
+                    toc = time.time()
+                    trad_time = toc - tic
+                    time_list_trad.append(trad_time)
+
+                width = 1.5
+                plt.figure(figsize=(20, 5))
+                plt.plot(range(nupdate), time_list_nn, label='IK with NN seed', color=rgb2color((130, 176, 210)), linewidth=width)
+                plt.plot(range(nupdate), time_list_trad, label='IK',  color=rgb2color((250, 127, 111)), linewidth=width)
+                plt.plot(range(nupdate), time_list_mdn, label='IK with MDN seed', color=rgb2color((255, 190, 122)), linewidth=width)
+                # for x in range(nupdate):
+                #             plt.axvline(x=x, color='gray', linestyle='--', linewidth=0.5, alpha=0.5)
+                
+                plt.xlabel('samples')
+                plt.ylabel('Time (s)')
+                plt.legend()
+                # plt.show()
+
+                save_path = os.path.join(fig_dir, f"ik_timing_plot_{idx + 1:03d}.png")
+                plt.savefig(save_path, bbox_inches='tight')  # Save the figure with tight layout
+                plt.close()  # Close the figure to free memory

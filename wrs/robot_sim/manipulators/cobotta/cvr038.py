@@ -81,6 +81,7 @@ class CVR038(mi.ManipulatorInterface):
     def ik(self,
            tgt_pos,
            tgt_rotmat,
+           best_sol_num,
            seed_jnt_values=None,
            option="single",
            toggle_dbg=False):
@@ -95,32 +96,35 @@ class CVR038(mi.ManipulatorInterface):
         :param toggle_dbg:
         :return:
         """
-        toggle_update = True
+        toggle_update = False
         # directly use specified ik
-        self.jlc._ik_solver._k_max = 5
+        self.jlc._ik_solver._k_max = 200
         rel_rotmat = tgt_rotmat @ self.loc_tcp_rotmat.T
         rel_pos = tgt_pos - tgt_rotmat @ self.loc_tcp_pos
-        result = self.jlc.ik(tgt_pos=rel_pos, tgt_rotmat=rel_rotmat, seed_jnt_values=seed_jnt_values)
-        if result is None:
-            # mcm.mgm.gen_myc_frame(pos=tgt_pos, rotmat=tgt_rotmat).attach_to(base)
-            result = ikgeo.ik(jlc=self.jlc, tgt_pos=rel_pos, tgt_rotmat=rel_rotmat, seed_jnt_values=None)
-            if result is None:
-                # print("No valid solutions found")
-                return None
-            else:
-                if toggle_update:
-                    rel_pos, rel_rotmat = rm.rel_pose(self.jlc.pos, self.jlc.rotmat, rel_pos, rel_rotmat)
-                    rel_rotvec = self.jlc._ik_solver._rotmat_to_vec(rel_rotmat)
-                    query_point = np.concatenate((rel_pos, rel_rotvec))
-                    # update dd driven file
-                    tree_data = np.vstack((self.jlc._ik_solver.query_tree.data, query_point))
-                    self.jlc._ik_solver.jnt_data.append(result)
-                    self.jlc._ik_solver.query_tree = scipy.spatial.cKDTree(tree_data)
-                    print(f"Updating query tree, {id} explored...")
-                    self.jlc._ik_solver.persist_data()
-                return result
-        else:
-            return result
+        result = self.jlc.ik(tgt_pos=rel_pos, tgt_rotmat=rel_rotmat, seed_jnt_values=seed_jnt_values, best_sol_num = best_sol_num)
+
+        return result
+    
+        # if result is None:
+        #     # mcm.mgm.gen_myc_frame(pos=tgt_pos, rotmat=tgt_rotmat).attach_to(base)
+        #     result = ikgeo.ik(jlc=self.jlc, tgt_pos=rel_pos, tgt_rotmat=rel_rotmat, seed_jnt_values=None)
+        #     if result is None:
+        #         # print("No valid solutions found")
+        #         return None
+        #     else:
+        #         if toggle_update:
+        #             rel_pos, rel_rotmat = rm.rel_pose(self.jlc.pos, self.jlc.rotmat, rel_pos, rel_rotmat)
+        #             rel_rotvec = self.jlc._ik_solver._rotmat_to_vec(rel_rotmat)
+        #             query_point = np.concatenate((rel_pos, rel_rotvec))
+        #             # update dd driven file
+        #             tree_data = np.vstack((self.jlc._ik_solver.query_tree.data, query_point))
+        #             self.jlc._ik_solver.jnt_data.append(result)
+        #             self.jlc._ik_solver.query_tree = scipy.spatial.cKDTree(tree_data)
+        #             print(f"Updating query tree, {id} explored...")
+        #             self.jlc._ik_solver.persist_data()
+        #         return result
+        # else:
+        #     return result
 
 
 if __name__ == '__main__':

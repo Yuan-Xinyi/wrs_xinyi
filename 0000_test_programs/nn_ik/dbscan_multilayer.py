@@ -12,9 +12,9 @@ data = np.vstack((
     np.random.normal(loc=[6, 0, 3], scale=0.5, size=(n_points, 3))
 ))
 
-
+num = 1500
 dataset = np.load(f'0000_test_programs/nn_ik/datasets/effective_seedset_1M.npz') # ['source', 'target', 'seed_jnt_value', 'jnt_result']
-_, tgt_pos = dataset['target'][:5000, :3], dataset['target'][:5000, 3:]
+tgt_pos, _ = dataset['target'][:1500, :3], dataset['target'][:1500, 3:]
 
 # Step 2: Apply DBSCAN clustering
 # dbscan = DBSCAN(eps=0.05, min_samples=10)  # Adjust `eps` and `min_samples` as needed
@@ -41,3 +41,4 @@ ax.set_ylabel("Y")
 ax.set_zlabel("Z")
 ax.legend()
 plt.show()
+
