@@ -5,12 +5,14 @@ import matplotlib.pyplot as plt
 from tqdm import tqdm
 import wrs.robot_sim._kinematics.jlchain as rkjlc
 import numpy as np
+import wrs
+import pickle
 
 base = wd.World(cam_pos=[1.7, 1.7, 1.7], lookat_pos=[0, 0, .3])
-mcm.mgm.gen_frame().attach_to(base)
+# mcm.mgm.gen_frame().attach_to(base)
 
 robot = cbt.Cobotta(pos=rm.vec(0.1,.3,.5), enable_cc=True)
-nupdate = 1
+nupdate = 1000
 
 '''original version'''
 # while True:
@@ -90,13 +92,68 @@ nupdate = 1
 # plt.show()
 
 success_rate = 0
+time_list = []
 for i in range(nupdate):
     robot.get_jnt_values()
     robot.jnt_ranges
     jnt_values = robot.rand_conf()
+    print(jnt_values)
+    # jnt_values = np.array([-1.2935607032013121, 1.6634372002455124, 1.986319875862302, 0.8050965371297347, 1.4874555191511198, -0.6103529336325728])
     tgt_pos, tgt_rotmat = robot.fk(jnt_values=jnt_values)
-    result = robot.ik(tgt_pos, tgt_rotmat, best_sol_num=200)
+
+    tic = time.time()
+    result = robot.ik(tgt_pos, tgt_rotmat, best_sol_num = 5)
+    toc = time.time()
+    time_list.append(toc-tic)
     if result is not None:
         success_rate += 1
 
 print(success_rate/nupdate)
+plt.plot(range(nupdate), time_list)
+plt.show()
+
+
+'''visualize the best solutions'''
+# # mcm.mgm.gen_frame().attach_to(base)
+# arm = cbt.Cobotta(pos=rm.vec(0.1,.3,.5), enable_cc=True)
+# with open('wrs/robot_sim/_data_files/cobotta_arm_jnt_data.pkl', 'rb') as f_jnt:
+#     kdt_jnt_data = pickle.load(f_jnt)
+
+# arm_mesh = arm.gen_meshmodel(alpha=.3)
+# arm_mesh.attach_to(base)
+# # base.run()
+# # tmp_arm_stick = arm.gen_stickmodel(toggle_flange_frame=True)
+# # tmp_arm_stick.attach_to(base)
+
+# #  wrs.robot_sim._kinematics.ik_dd.DDIKSolver
+# # jnt_values = np.array([-1.2935607032013121, 1.6634372002455124, 1.986319875862302, 0.8050965371297347, 1.4874555191511198, -0.6103529336325728])
+# # nn_index = np.array([35957, 35837, 35117, 36697, 30197, 35237, 36577, 29477, 36338, 30698])
+
+# jnt_values = np.array([-0.25096607, -0.94363903,  1.96662395, -1.59687914,  0.10637626,  0.34194314])
+# nn_index = np.array([ 1222,  4523,  6862,  4403,   932,  4938,  4697,  3823,  3703, 10578])
+# tgt_pos, tgt_rotmat = arm.fk(jnt_values=jnt_values)
+# mcm.mgm.gen_frame(pos=tgt_pos, rotmat=tgt_rotmat).attach_to(base)
+
+# for idx in nn_index:
+#     jnt_seed = kdt_jnt_data[idx]
+#     arm.goto_given_conf(jnt_values=jnt_seed)
+#     if idx == nn_index[1]:
+#         arm_mesh = arm.gen_meshmodel(alpha=.2,rgb=[1,0,0])
+#         arm_mesh.attach_to(base)
+#     tmp_arm_stick = arm.gen_stickmodel(toggle_flange_frame=True)
+#     tmp_arm_stick.attach_to(base)
+
+# arm.goto_given_conf(jnt_values=jnt_values)
+# arm_mesh = arm.gen_meshmodel(alpha=.2,rgb=[0,0,1])
+# arm_mesh.attach_to(base)
+
+# seed_pos, seed_rotmat = robot.fk(jnt_values=kdt_jnt_data[nn_index[0]])
+# print('first seed pos:', seed_pos, '\n first seed seed_rotmat:\n', seed_rotmat)
+# mcm.mgm.gen_frame(pos=seed_pos, rotmat=seed_rotmat).attach_to(base)
+
+# seed_pos, seed_rotmat = robot.fk(jnt_values=kdt_jnt_data[nn_index[1]])
+# print('second seed pos:', seed_pos, '\n first seed seed_rotmat:\n', seed_rotmat)
+# mcm.mgm.gen_frame(pos=seed_pos, rotmat=seed_rotmat).attach_to(base)
+
+# base.run()
+
