@@ -20,7 +20,11 @@ import wrs.modeling.geometric_model as mgm
 import wrs.basis.utils as bu
 import time
 import json
+import joblib
 
+file = '1222_1642_LR_seed_selection_large_balanced'
+LR_model = joblib.load(f"0000_test_programs/nn_ik/results/{file}/logistic_regression_model.pkl")
+LR_scaler = joblib.load(f"0000_test_programs/nn_ik/results/{file}/scaler.pkl")
 
 # for seed data collection purpose
 def append_to_logfile(filename, data):
@@ -299,6 +303,7 @@ class DDIKSolver(object):
             
             sorted_indices = np.argsort(seed_candidates[:, -2])
             seed_candidates_sorted = seed_candidates[sorted_indices]
+            seed_candidates_sorted = seed_candidates_sorted[:best_sol_num,:]
             nn_indx_array = seed_candidates_sorted[:, 0]
             nn_indx_array = nn_indx_array.astype(int)
 
@@ -333,16 +338,33 @@ class DDIKSolver(object):
             # sorted_indices = np.argsort(seed_candidates[:, -1])
             # seed_candidates_sorted = seed_candidates[sorted_indices]
             # nn_indx_array = seed_candidates_sorted[:, 0].astype(int)
+
+            '''xinyi: use the LR model to predict the class of the seed'''
+            jnt_batch = np.array([self.jnt_data[idx] for idx in nn_indx_array])
+            limited_obs = False
+            if limited_obs == True:
+                LR_input = LR_scaler.transform(np.concatenate([seed_candidates_sorted[:, 1:-2], jnt_batch], axis=1))
+            else:
+                tgt_batch = np.array([self.query_tree.data[idx] for idx in nn_indx_array])
+                tgt_gth = np.tile(query_point, (len(nn_indx_array), 1))
+                tgt_delta = np.abs(tgt_batch - tgt_gth)
+                LR_input = LR_scaler.transform(np.concatenate([tgt_batch, tgt_delta, 
+                                                               seed_candidates_sorted[:, 1:-2], jnt_batch], axis=1))
+            LR_output = LR_model.predict(LR_input)
+            seed_candidates_sorted[:, -1] = LR_output
+            seed_candidates_sorted = seed_candidates_sorted[seed_candidates_sorted[:, -1] == 1]
+            nn_indx_array = seed_candidates_sorted[:, 0].astype(int)
             
-            for id, nn_indx in enumerate(nn_indx_array[0:best_sol_num]):
-                print('indx array: ', nn_indx_array[0:best_sol_num])
+            
+            for id, nn_indx in enumerate(nn_indx_array[0:1]):
+                # print('indx array: ', nn_indx_array[0:best_sol_num])
                 # f"np.array({repr(nn_indx_array[0:best_sol_num].tolist())}"
                 seed_jnt_values = self.jnt_data[nn_indx]
                 # next_jnt_values = seed_candidates_sorted[id, 1:-2] + seed_jnt_values
                 
                 # jnt_limits = self.jlc.jnt_ranges
                 # dist_to_limits = np.where(next_jnt_values >= 0, jnt_limits[:, 1] - next_jnt_values, next_jnt_values - jnt_limits[:, 0])
-                
+
                 if toggle_dbg:
                     rkmg.gen_jlc_stick_by_jnt_values(self.jlc,
                                                      jnt_values=seed_jnt_values,
@@ -369,6 +391,7 @@ class DDIKSolver(object):
                     #       f"limits dist: {dist_to_limits} \n"
                     #       f"delta_q_sum: {seed_candidates_sorted[id,-1]} \n")
                     # print("*" * 150 + "\n")
+                    print(f"Solution Not Found. LR prediction: {seed_candidates_sorted[id,-1]}")
                     if collect_seed_selection == True:
                         data = {"label": '0',
                                 "query_point": query_point.tolist(),
@@ -401,7 +424,8 @@ class DDIKSolver(object):
                     #       f"limits dist: {dist_to_limits} \n"
                     #       f"delta_q_sum: {seed_candidates_sorted[id,-1]} \n")
                     # print("*" * 150 + "\n")
-                    print(f"Solution Found for id: {id}, KDT_indx: {nn_indx}")
+
+                    # print(f"Solution Found for id: {id}, KDT_indx: {nn_indx}")
                     if collect_seed_selection == True:
                         data = {"label": '1',
                                 "query_point": query_point.tolist(),
@@ -409,7 +433,7 @@ class DDIKSolver(object):
                                 "delta_q": seed_candidates[id, 1:-2].tolist(), 
                                 "seed_jnt_value": seed_jnt_values.tolist()}
                         append_to_logfile("seed_selection_dataset.json", data)
-
+                    # print(f"Successful Result. LR prediction: {seed_candidates_sorted[id,-1]}")
                     return result
             # failed to find a solution, use optimization methods to solve and update the database?
         return None

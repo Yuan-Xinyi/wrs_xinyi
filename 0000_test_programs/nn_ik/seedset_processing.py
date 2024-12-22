@@ -1,8 +1,9 @@
 import json
 import numpy as np
 
-filename = "0000_test_programs/nn_ik/datasets/ik_time_label.json"
-output_filename = "0000_test_programs/nn_ik/datasets/ik_time_label.npz"
+file = 'seed_selection_larger_dataset'
+filename = f"0000_test_programs/nn_ik/datasets/{file}.json"
+output_filename = f"0000_test_programs/nn_ik/datasets/{file}.npz"
 
 data = []
 with open(filename, "r") as f:

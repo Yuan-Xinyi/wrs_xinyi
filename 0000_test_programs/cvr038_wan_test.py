@@ -7,6 +7,7 @@ import wrs.robot_sim._kinematics.jlchain as rkjlc
 import numpy as np
 import wrs
 import pickle
+import json
 
 base = wd.World(cam_pos=[1.7, 1.7, 1.7], lookat_pos=[0, 0, .3])
 # mcm.mgm.gen_frame().attach_to(base)
@@ -91,18 +92,23 @@ nupdate = 1000
 # plt.legend()
 # plt.show()
 
+# data = {}
+
+# with open("seed_selection_dataset.json", "w") as json_file:
+#     json.dump(data, json_file)
+
 success_rate = 0
 time_list = []
 for i in range(nupdate):
     robot.get_jnt_values()
     robot.jnt_ranges
     jnt_values = robot.rand_conf()
-    print(jnt_values)
+    # print(jnt_values)
     # jnt_values = np.array([-1.2935607032013121, 1.6634372002455124, 1.986319875862302, 0.8050965371297347, 1.4874555191511198, -0.6103529336325728])
     tgt_pos, tgt_rotmat = robot.fk(jnt_values=jnt_values)
 
     tic = time.time()
-    result = robot.ik(tgt_pos, tgt_rotmat, best_sol_num = 5)
+    result = robot.ik(tgt_pos, tgt_rotmat, best_sol_num = 100)
     toc = time.time()
     time_list.append(toc-tic)
     if result is not None:
