@@ -25,7 +25,7 @@ robot = cbt.Cobotta(pos=rm.vec(0.0,.0,.0), enable_cc=True)
 nupdate = 100
 trail_num = 100
 seed = 42
-mode = 'train' # ['train' or 'test','inference','ik_test']
+mode = 'test' # ['train' or 'test','inference','ik_test']
 device = torch.device('cuda' if torch.cuda.is_available() else 'cpu')
 
 # train paras
@@ -302,7 +302,7 @@ if __name__ == '__main__':
             base.run()
 
     elif mode == 'ik_test':
-        rot = 'rotmat' # ['rotmat', 'rotv', 'quaternion']
+        rot = 'rotv' # ['rotmat', 'rotv', 'quaternion']
         # model.load_state_dict(torch.load('0000_test_programs/nn_ik/results/1205_1535_IKMLPNet_1M_loc_rotquatdataset/model1000'))
         model.load_state_dict(torch.load('0000_test_programs/nn_ik/results/1202_2109_IKMLPNet_1M_dataset/model900'))
         model.eval()

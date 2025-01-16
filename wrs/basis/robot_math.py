@@ -894,7 +894,7 @@ def diff_between_poses(src_pos,
     delta = np.zeros(6)
     delta[0:3] = (tgt_pos - src_pos)
     delta[3:6] = delta_w_between_rotmat(src_rotmat, tgt_rotmat)
-    pos_err = np.linalg.norm(delta[:3])
+    pos_err = np.linalg.norm(delta[:3])  # l2 norm
     rot_err = np.linalg.norm(delta[3:6])
     return pos_err, rot_err, delta
 

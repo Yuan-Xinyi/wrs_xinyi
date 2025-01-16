@@ -453,6 +453,7 @@ class NumIKSolver(object):
                                                                           src_rotmat=flange_rotmat,
                                                                           tgt_pos=tgt_pos,
                                                                           tgt_rotmat=tgt_rotmat)
+            # if error is small enough
             if f2t_pos_err < 1e-4 and f2t_rot_err < 1e-3:
                 return iter_jnt_values
             clamped_err_vec = self._clamp_tgt_err(f2t_pos_err, f2t_rot_err, f2t_err_vec)
@@ -470,8 +471,8 @@ class NumIKSolver(object):
             delta_jnt_values = clamping + wln @ j_mat.T @ np.linalg.inv(
                 j_mat @ wln @ j_mat.T + lam * np.eye(j_mat.shape[1])) @ (clamped_err_vec - j_mat @ clamping)
             iter_jnt_values = iter_jnt_values + delta_jnt_values
-            iter_jnt_values = np.mod(iter_jnt_values, 2 * np.pi)
-            iter_jnt_values = np.where(iter_jnt_values > np.pi, iter_jnt_values - 2 * np.pi, iter_jnt_values)
+            iter_jnt_values = np.mod(iter_jnt_values, 2 * np.pi)  # map back to 2pi
+            iter_jnt_values = np.where(iter_jnt_values > np.pi, iter_jnt_values - 2 * np.pi, iter_jnt_values) # map back to [-pi, pi]
             if toggle_dbg:
                 jnt_values = self.jlc.get_jnt_values()
                 self.jlc.goto_given_conf(jnt_values=iter_jnt_values)
