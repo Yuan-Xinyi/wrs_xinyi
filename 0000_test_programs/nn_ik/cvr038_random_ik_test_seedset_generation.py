@@ -15,7 +15,7 @@ data = {}
 with open("successful_seed_dataset.json", "w") as json_file:
     json.dump(data, json_file)
 
-for _ in tqdm(range(10000)):
+for _ in tqdm(range(100)):
     success_rate = 0
     time_list = []
     for _ in range(nupdate):
@@ -27,8 +27,3 @@ for _ in tqdm(range(10000)):
         time_list.append(toc-tic)
         if result is not None:
             success_rate += 1
-
-    print(success_rate)
-
-    # plt.plot(range(nupdate), time_list)
-    # plt.show()

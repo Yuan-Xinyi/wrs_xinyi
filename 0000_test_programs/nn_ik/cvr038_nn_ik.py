@@ -29,10 +29,10 @@ mode = 'ik_test' # ['train' or 'test','inference','ik_test']
 device = torch.device('cuda' if torch.cuda.is_available() else 'cpu')
 
 # train paras
-train_epoch = 10000
+train_epoch = 1000
 train_batch = 64
 lr = 0.001
-save_intervel = 1000
+save_intervel = 200
 wandb.init(project="ik")
 dataset_size = '1M' # [1M, 1M_loc_rotmat, 1M_loc_rotv, 1M_loc_rotquat]
 backbone = 'IKMLPNet'  # [IKMLPNet, IKMLPScaleNet, IKLSTMNet]
