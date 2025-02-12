@@ -47,8 +47,10 @@ class DDIKSolver(object):
         self._fname_jnt = os.path.join(path, f"{identifier_str}_jnt_data.pkl")
         self._fname_jmat_inv = os.path.join(path, f"{identifier_str}_jmat_inv.pkl")
         self._fname_jmat = os.path.join(path, f"{identifier_str}_jmat.pkl")
-        self._k_bbs = 100  # number of nearest neighbours examined by the backbone solver
-        self._k_max = 200  # maximum nearest neighbours explored by the evolver
+        # self._k_bbs = 100  # number of nearest neighbours examined by the backbone solver
+        # self._k_max = 200  # maximum nearest neighbours explored by the evolver
+        self._k_bbs = 50  # number of nearest neighbours examined by the backbone solver
+        self._k_max = 50  # maximum nearest neighbours explored by the evolver
         self._max_n_iter = 7  # max_n_iter of the backbone solver
         if backbone_solver == 'n':
             self._backbone_solver = ikn.NumIKSolver(self.jlc)
@@ -128,13 +130,15 @@ class DDIKSolver(object):
             return np.array([0])
 
     def _build_data(self):
+        # margin = rm.pi / 18
+        margin = 0 
         # gen sampled qs
         sampled_jnts = []
         n_intervals = np.linspace(8, 4, self.jlc.n_dof, endpoint=False)
         print(f"Buidling Data for DDIK using the following joint granularity: {n_intervals.astype(int)}...")
         for i in range(self.jlc.n_dof):
             sampled_jnts.append(
-                np.linspace(self.jlc.jnt_ranges[i][0], self.jlc.jnt_ranges[i][1], int(n_intervals[i]+2))[1:-1])
+                np.linspace(self.jlc.jnt_ranges[i][0]+margin, self.jlc.jnt_ranges[i][1]-margin, int(n_intervals[i]+2))[1:-1])
         grid = np.meshgrid(*sampled_jnts)
         sampled_qs = np.vstack([x.ravel() for x in grid]).T
         # gen sampled qs and their correspondent flange poses
@@ -149,6 +153,7 @@ class DDIKSolver(object):
             # relative to base
             rel_pos, rel_rotmat = rm.rel_pose(self.jlc.pos, self.jlc.rotmat, flange_pos, flange_rotmat)
             rel_rotvec = self._rotmat_to_vec(rel_rotmat)
+
             query_data.append(np.concatenate((rel_pos, rel_rotvec)))
             jnt_data.append(jnt_values)
             jmat_inv = np.linalg.pinv(self.jlc.jacobian(jnt_values=jnt_values), rcond=1e-4)
@@ -314,20 +319,23 @@ class DDIKSolver(object):
             nn_indx_array = seed_candidates_sorted[:, 0]
             nn_indx_array = nn_indx_array.astype(int)
 
-            '''resort by jnt values'''
-            # selected_idx_array = nn_indx_array[:3]
-            # jnt_batch = np.array([self.jnt_data[idx] for idx in selected_idx_array])
-            # jnt_l2norm = np.linalg.norm(jnt_batch, axis=1)
-            # # deltaq_jnt = np.multiply(delta_q_l2norm, jnt_l2norm)
-            # # delta_q_l2norm = deltaq_jnt
-            # sorted_indices = np.argsort(jnt_l2norm)
+            '''resort by how much the next jnt val is close to the limit'''
+            cut_off_num = 5
+            selected_idx_array = nn_indx_array[:cut_off_num]
+            delta_q_selected = seed_candidates_sorted[:cut_off_num,1:-1]
+            jnt_batch = np.array([self.jnt_data[idx] for idx in selected_idx_array])
+            next_jnt_batch = jnt_batch + delta_q_selected
+
+            lower_diff = next_jnt_batch - self.jlc.jnt_ranges[:, 0]
+            upper_diff = self.jlc.jnt_ranges[:, 1] - next_jnt_batch
+            dist_to_jnt_limit = np.minimum(lower_diff, upper_diff)
+            dist_to_jnt_limit_norm = np.linalg.norm(dist_to_jnt_limit, axis=1)
+
+            '''resorting'''
+            # sorted_indices = np.argsort(dist_to_jnt_limit_norm)
             # selected_idx_array = selected_idx_array[sorted_indices]
             # selected_idx_array = selected_idx_array.astype(int)
             # nn_indx_array = selected_idx_array
-
-            '''print the seed_candidates'''
-            # print(f'delta_q is: {repr(seed_candidates[0:best_sol_num, -1])}')
-            # print("*" * 150 + "\n")
 
             for id, nn_indx in enumerate(nn_indx_array[0:best_sol_num]):
                 seed_jnt_values = self.jnt_data[nn_indx]
@@ -351,6 +359,8 @@ class DDIKSolver(object):
                     #     base.run()
 
                     # print(f"Solution Not Found for id: {id}, KDT_indx: {nn_indx}.")
+                    # print(f'jnt limit dist: {dist_to_jnt_limit_norm[id]}: {dist_to_jnt_limit[id]}')
+                    # print(f"delta_q: {seed_candidates_sorted[id,-1]}: {seed_candidates_sorted[id,1:-1]}\n")
 
                     # if collect_seed_selection == True:
                     #     data = {"label": '0',
@@ -375,7 +385,9 @@ class DDIKSolver(object):
                         append_to_logfile("successful_seed_dataset.json", data)
                     
                     # print(f"Solution Found for id: {id}, KDT_indx: {nn_indx}")
-                    # print(f"Successful Result.: {repr(result)}")
+                    # print(f'jnt limit dist: {dist_to_jnt_limit_norm[id]}: {dist_to_jnt_limit[id]}')
+                    # print(f"delta_q: {seed_candidates_sorted[id,-1]}: {seed_candidates_sorted[id,1:-1]}")
+                    # print(f"Successful Result.: {repr(result)}\n")
 
                     return result
             # failed to find a solution, use optimization methods to solve and update the database?

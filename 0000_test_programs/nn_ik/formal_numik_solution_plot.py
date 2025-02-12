@@ -49,8 +49,8 @@ if __name__ == '__main__':
         with open('wrs/robot_sim/_data_files/cobotta_arm_jnt_data.pkl', 'rb') as f_jnt:
             kdt_jnt_data = pickle.load(f_jnt)
 
-        jnt_values = [-1.64687134, -0.05937932,  0.41633812, -0.51442139,  0.17952632,
-       -1.59769146]
+        jnt_values = [-2.40210859, -0.0359831 ,  2.0971162 , -0.89396651, -0.19446883,
+       -2.0861704 ]
 
         tgt_pos, tgt_rotmat = robot.fk(jnt_values = jnt_values)
         mcm.mgm.gen_dashed_frame(pos=tgt_pos, rotmat=tgt_rotmat).attach_to(base)
@@ -140,10 +140,10 @@ if __name__ == '__main__':
         # base.run()
         
         '''plot 2 seeds'''
-        success_idx = 11526
-        fail_idx = 3012
-        result = [-1.64695508, -0.05947959,  0.41655433, -0.51444488,  0.17941488,
-       -1.5975811 ]
+        success_idx = 12148
+        fail_idx = 17727
+        result = [-2.40210838, -0.03598387,  2.09711674, -0.89396575, -0.19446817,
+       -2.08617136]
         
         robot.goto_given_conf(jnt_values=kdt_jnt_data[fail_idx])
         arm_mesh = robot.gen_meshmodel(alpha=0.2, rgb=[0,0,1])

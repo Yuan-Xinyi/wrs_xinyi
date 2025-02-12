@@ -22,7 +22,7 @@ robot = cbt.Cobotta(pos=rm.vec(0.1,.3,.5), enable_cc=True)
 
 
 
-nupdate = 10
+nupdate = 10000
 
 if __name__ == '__main__':
 # while True:
@@ -39,7 +39,7 @@ if __name__ == '__main__':
         # print('jnt', repr(jnt_values))
         tgt_pos, tgt_rotmat = robot.fk(jnt_values = jnt_values)
         tic = time.time()
-        result = robot.ik(tgt_pos, tgt_rotmat, best_sol_num = 3)
+        result = robot.ik(tgt_pos, tgt_rotmat, best_sol_num = 1)
         toc = time.time()
         time_list.append(toc-tic)
         if result is not None:
@@ -51,12 +51,12 @@ if __name__ == '__main__':
             pos_err_list.append(pos_err)
             rot_err_list.append(rot_err)
              
-    print('=============================')
+    print('==========================================================')
     print(f'Average time: {np.mean(time_list) * 1000:.2f} ms')
     print(f'success rate: {success_num / nupdate * 100:.2f}%')
     print(f'Average position error: {np.mean(pos_err_list)}')
     print(f'Average rotation error: {np.mean(rot_err_list)*180/np.pi}')
-    print('=============================')
+    print('==========================================================')
     # plt.plot(range(nupdate), time_list)
     # plt.show()
 
