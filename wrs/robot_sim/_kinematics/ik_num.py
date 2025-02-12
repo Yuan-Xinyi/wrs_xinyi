@@ -326,7 +326,7 @@ class NumIKSolver(object):
         date: 20231101
         """
         iter_jnt_values = seed_jnt_values
-        record_iteration = True
+        record_iteration = False
         if iter_jnt_values is None:
             iter_jnt_values = self.jlc.get_jnt_values()
         counter = 0

@@ -15,14 +15,14 @@ base = wd.World(cam_pos=[1.7, 1.7, 1.7], lookat_pos=[0, 0, .3])
 mcm.mgm.gen_frame().attach_to(base)
 
 '''define robot'''
-robot = yumi.YumiSglArm(pos=rm.vec(0.1, .3, .5),enable_cc=True)
-# robot = cbt.Cobotta(pos=rm.vec(0.1,.3,.5), enable_cc=True)
+# robot = yumi.YumiSglArm(pos=rm.vec(0.1, .3, .5),enable_cc=True)
+robot = cbt.Cobotta(pos=rm.vec(0.1,.3,.5), enable_cc=True)
 # robot = ur3.UR3(pos=rm.vec(0.1, .3, .5), ik_solver='d' ,enable_cc=True)
 # robot = rs007l.RS007L(pos=rm.vec(0.1, .3, .5), enable_cc=True)
 
 
 
-nupdate = 10000
+nupdate = 10
 
 if __name__ == '__main__':
 # while True:
@@ -33,9 +33,13 @@ if __name__ == '__main__':
 
     for i in tqdm(range(nupdate)):
         jnt_values = robot.rand_conf()
+    #     jnt_values = [-0.93996421, -0.51934212,  2.37155781, -1.25528639,  0.44983731,
+    #    -2.09758569]
+        # print("*" * 150 + "\n")
+        # print('jnt', repr(jnt_values))
         tgt_pos, tgt_rotmat = robot.fk(jnt_values = jnt_values)
         tic = time.time()
-        result = robot.ik(tgt_pos, tgt_rotmat, best_sol_num = 1)
+        result = robot.ik(tgt_pos, tgt_rotmat, best_sol_num = 3)
         toc = time.time()
         time_list.append(toc-tic)
         if result is not None:

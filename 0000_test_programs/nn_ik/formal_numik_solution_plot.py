@@ -5,6 +5,7 @@ import wrs.robot_sim.manipulators.ur3.ur3 as ur3
 import wrs.robot_sim.manipulators.ur3e.ur3e as ur3e
 import wrs.basis.robot_math as rm
 import wrs.robot_sim.robots.yumi.yumi_single_arm as yumi
+import wrs.modeling.geometric_model as mgm  
 
 import time
 import matplotlib.pyplot as plt
@@ -48,7 +49,8 @@ if __name__ == '__main__':
         with open('wrs/robot_sim/_data_files/cobotta_arm_jnt_data.pkl', 'rb') as f_jnt:
             kdt_jnt_data = pickle.load(f_jnt)
 
-        jnt_values = [-1.72052066, -0.25810076,  2.21686054, -0.40935568, -0.89245543,  2.51885436]
+        jnt_values = [-1.64687134, -0.05937932,  0.41633812, -0.51442139,  0.17952632,
+       -1.59769146]
 
         tgt_pos, tgt_rotmat = robot.fk(jnt_values = jnt_values)
         mcm.mgm.gen_dashed_frame(pos=tgt_pos, rotmat=tgt_rotmat).attach_to(base)
@@ -66,14 +68,23 @@ if __name__ == '__main__':
         # 0.32113778]),
         #             ([-2.35329643, -0.29183192,  1.77999731,  2.03880547,  1.00466214,
         # 0.33869052])]
-        # for jnt in jnt_list:
-        #     robot.goto_given_conf(jnt_values=jnt)
-        #     # robot.goto_given_conf(jnt_values=kdt_jnt_data[jnt])
-        #     arm_mesh = robot.gen_meshmodel(alpha=.2, rgb=[1,0,0])
+
+        # for i in range(len(jnt_list) - 1): 
+        #     jnt1 = jnt_list[i]
+        #     jnt2 = jnt_list[i + 1]
+
+        #     s_pos, _ = robot.fk(jnt_values=jnt1)
+        #     e_pos, _ = robot.fk(jnt_values=jnt2)
+        #     if i < 3:
+        #         mgm.gen_arrow(spos=s_pos, epos=e_pos, stick_radius=.0025, rgb=[1,0,0]).attach_to(base)
+
+        #     robot.goto_given_conf(jnt_values=jnt1)
+        #     arm_mesh = robot.gen_meshmodel(alpha=0.2, rgb=[1, 0, 0])
         #     arm_mesh.attach_to(base)
-        # # robot.goto_given_conf(jnt_values=kdt_jnt_data[best_delta_q])
-        # # arm_mesh = robot.gen_meshmodel(alpha=.3)
-        # # arm_mesh.attach_to(base)
+        
+        # robot.goto_given_conf(jnt_values=jnt_list[-1])
+        # final_arm_mesh = robot.gen_meshmodel(alpha=0.2, rgb=[1, 0, 0])
+        # final_arm_mesh.attach_to(base)
         # base.run()
 
         '''fail'''
@@ -99,14 +110,21 @@ if __name__ == '__main__':
     #     ([ 1.07742916,  0.3912977 ,  2.64143867, -2.75474989, -1.85938187,
     #     3.03744846])
     #     ]
-    #     for jnt in jnt_list:
-    #         robot.goto_given_conf(jnt_values=jnt)
-    #         # robot.goto_given_conf(jnt_values=kdt_jnt_data[jnt])
-    #         arm_mesh = robot.gen_meshmodel(alpha=.2, rgb=[0,0,1])
+    #     for i in range(len(jnt_list) - 1): 
+    #         jnt1 = jnt_list[i]
+    #         jnt2 = jnt_list[i + 1]
+
+    #         s_pos, _ = robot.fk(jnt_values=jnt1)
+    #         e_pos, _ = robot.fk(jnt_values=jnt2)
+    #         mgm.gen_arrow(spos=s_pos, epos=e_pos, stick_radius=.0025, rgb=[0,0,1]).attach_to(base)
+
+    #         robot.goto_given_conf(jnt_values=jnt1)
+    #         arm_mesh = robot.gen_meshmodel(alpha=0.2, rgb=[0, 0, 1])
     #         arm_mesh.attach_to(base)
-    #     # robot.goto_given_conf(jnt_values=kdt_jnt_data[best_delta_q])
-    #     # arm_mesh = robot.gen_meshmodel(alpha=.3)
-    #     # arm_mesh.attach_to(base)
+        
+    #     robot.goto_given_conf(jnt_values=jnt_list[-1])
+    #     final_arm_mesh = robot.gen_meshmodel(alpha=0.2, rgb=[0, 0, 1])
+    #     final_arm_mesh.attach_to(base)
     #     base.run()
 
         '''plot all ten seeds'''
@@ -122,16 +140,35 @@ if __name__ == '__main__':
         # base.run()
         
         '''plot 2 seeds'''
-        # robot.goto_given_conf(jnt_values=kdt_jnt_data[1151])
-        # arm_mesh = robot.gen_meshmodel(alpha=0.2, rgb=[0,0,1])
-        # arm_mesh.attach_to(base)
-        # tgt_pos, tgt_rotmat = robot.fk(jnt_values = kdt_jnt_data[1151])
-        # mcm.mgm.gen_dashed_frame(pos=tgt_pos, rotmat=tgt_rotmat).attach_to(base)
-        # robot.goto_given_conf(jnt_values=kdt_jnt_data[6791])
-        # arm_mesh = robot.gen_meshmodel(alpha=0.25, rgb=[1,0,0])
-        # arm_mesh.attach_to(base)
-        # tgt_pos, tgt_rotmat = robot.fk(jnt_values = kdt_jnt_data[6791])
-        # mcm.mgm.gen_dashed_frame(pos=tgt_pos, rotmat=tgt_rotmat).attach_to(base)
-        # base.run()
+        success_idx = 11526
+        fail_idx = 3012
+        result = [-1.64695508, -0.05947959,  0.41655433, -0.51444488,  0.17941488,
+       -1.5975811 ]
+        
+        robot.goto_given_conf(jnt_values=kdt_jnt_data[fail_idx])
+        arm_mesh = robot.gen_meshmodel(alpha=0.2, rgb=[0,0,1])
+        arm_mesh.attach_to(base)
+        tgt_pos, tgt_rotmat = robot.fk(jnt_values = kdt_jnt_data[fail_idx])
+        mcm.mgm.gen_dashed_frame(pos=tgt_pos, rotmat=tgt_rotmat).attach_to(base)
+        robot.goto_given_conf(jnt_values=kdt_jnt_data[success_idx])
+        arm_mesh = robot.gen_meshmodel(alpha=0.25, rgb=[1,0,0])
+        arm_mesh.attach_to(base)
+        tgt_pos, tgt_rotmat = robot.fk(jnt_values = kdt_jnt_data[success_idx])
+        mcm.mgm.gen_dashed_frame(pos=tgt_pos, rotmat=tgt_rotmat).attach_to(base)
 
+        robot.goto_given_conf(jnt_values=result)
+        arm_mesh = robot.gen_meshmodel(alpha=0.25, rgb=[0,1,0])
+        arm_mesh.attach_to(base)
+        base.run()
 
+        '''calculate the pos and rot bewteen seeds'''
+        # succeed_seed = [-1.45444111, -0.34906625,  1.22671717,  0.42386571,  0.3490655 , 1.780236  ]
+        # fail_seed = [-1.45444111, -0.69813213,  1.53090313,  0.42386571,  0.3490655 , 1.780236  ]
+
+        # s_pos, s_rotmat = robot.fk(jnt_values=succeed_seed)
+        # f_pos, f_rotmat = robot.fk(jnt_values=fail_seed)
+        
+        # s_pos_err, s_rot_err, _ = rm.diff_between_poses(s_pos*1000, s_rotmat, tgt_pos*1000, tgt_rotmat)
+        # f_pos_err, f_rot_err, _ = rm.diff_between_poses(f_pos*1000, f_rotmat, tgt_pos*1000, tgt_rotmat)
+        # print(f'succeed seed pos error: {s_pos_err}, rot error: {s_rot_err}')
+        # print(f'fail seed pos error: {f_pos_err}, rot error: {f_rot_err}')
