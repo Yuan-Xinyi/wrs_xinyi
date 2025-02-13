@@ -49,11 +49,12 @@ if __name__ == '__main__':
         with open('wrs/robot_sim/_data_files/cobotta_arm_jnt_data.pkl', 'rb') as f_jnt:
             kdt_jnt_data = pickle.load(f_jnt)
 
-        jnt_values = [-2.40210859, -0.0359831 ,  2.0971162 , -0.89396651, -0.19446883,
-       -2.0861704 ]
+        jnt_values = [ 2.48931629,  1.74442019,  1.25015768,  1.43062172, -1.02924473,
+        1.10771746]
 
         tgt_pos, tgt_rotmat = robot.fk(jnt_values = jnt_values)
         mcm.mgm.gen_dashed_frame(pos=tgt_pos, rotmat=tgt_rotmat).attach_to(base)
+        
         '''success'''
         # jnt_list = [
         #             ([-1.45444111, -0.34906625,  1.22671717,  0.42386571,  0.3490655 ,
@@ -88,44 +89,29 @@ if __name__ == '__main__':
         # base.run()
 
         '''fail'''
-    #     jnt_list = [
-    #         ([-1.45444111, -0.69813213,  1.53090313,  0.42386571,  0.3490655 ,
-    #             1.780236  ]),
-    #         ([ 0.48123896, -0.94904702,  3.19472325, -3.02431877, -1.57175925,
-    #     3.99599829]),
-    #     ([ 0.62123236, -0.25373376,  3.02415906, -2.92238896, -1.29910815,
-    #     3.86131957]),
-    #     ([ 0.07847416, -1.1768159 ,  2.86961554, -3.47265712, -2.6518819 ,
-    #     3.73117999]),
-    #     ([ 0.11593302, -1.06753271,  2.7295879 , -3.35561678, -2.50236743,
-    #     3.60542655]),
-    #     ([ 0.17841884, -0.96607634,  2.60271272, -3.24252109, -2.36030214,
-    #     3.48391143]),
-    #     ([ 0.26420653, -0.46707115,  2.4877546 , -3.13323712, -2.22531489,
-    #     3.36649178]),
-    #     ([ 4.48085217e-01,  2.07045788e-03,  2.38359421e+00, -3.02763639e+00,
-    #    -2.09705303e+00,  3.25302957e+00]),
-    #    ([ 0.70091937, -0.04559144,  2.77232836, -2.92559476, -1.97518148,
-    #     3.14339142]),
-    #     ([ 1.07742916,  0.3912977 ,  2.64143867, -2.75474989, -1.85938187,
-    #     3.03744846])
-    #     ]
-    #     for i in range(len(jnt_list) - 1): 
-    #         jnt1 = jnt_list[i]
-    #         jnt2 = jnt_list[i + 1]
-
-    #         s_pos, _ = robot.fk(jnt_values=jnt1)
-    #         e_pos, _ = robot.fk(jnt_values=jnt2)
-    #         mgm.gen_arrow(spos=s_pos, epos=e_pos, stick_radius=.0025, rgb=[0,0,1]).attach_to(base)
-
-    #         robot.goto_given_conf(jnt_values=jnt1)
-    #         arm_mesh = robot.gen_meshmodel(alpha=0.2, rgb=[0, 0, 1])
-    #         arm_mesh.attach_to(base)
+        jnt_list = [[2.0362175555555555, 1.3962631249999997, 1.8350890857142859, -2.1193285714285715, 1.018108333333333, -1.780236], [1.9953442386687867, 1.5978257717622828, 2.0891666964283977, -2.568655956337472, 1.3546735264971765, -1.3249159564108548], [2.069828807892358, 1.7489069567002367, 1.9440666478235353, -2.3571179027488016, 1.4205525806788677, -1.4334428591509933], [2.134419070302458, 1.6486507044455414, 2.013444831949458, -2.306220072343389, 1.378377672874309, -1.4271696851720643], [2.0740369180342135, 1.7518284100453472, 1.931298795897575, -2.3574008003900064, 1.4159206391835715, -1.433420888535725], [2.1298245982242543, 1.6513629241219991, 2.0127035590110824, -2.309785715082258, 1.3818267894015746, -1.4278098205387049], [2.073674105264744, 1.7519258858700795, 1.930950188147889, -2.357579688910322, 1.4159426798815216, -1.433924900584717], [2.1297151374675236, 1.6514534187555212, 2.0126618109618173, -2.309871583429196, 1.3819114858327428, -1.4278178185141555], [2.0736655416394294, 1.751927850560981, 1.9309401485466235, -2.357583646473237, 1.4159417280442217, -1.4339383680691151], [2.1297120584193103, 1.6514552427358118, 2.0126613551462995, -2.309873967152302, 1.3819138886991285, -1.4278181178047373], [2.073665302419872, 1.7519279143858024, 1.930939919632688, -2.3575837657632692, 1.4159417424422056, -1.4339386982939002], [2.129711986598552, 1.6514553019895175, 2.012661327859258, -2.309874023467051, 1.3819139442934671, -1.4278181230350004], [2.073665296807979, 1.7519279156734489, 1.9309399130590856, -2.357583768359025, 1.4159417418211449, -1.4339387071141698], [2.129711984582468, 1.651455303184943, 2.0126613275596483, -2.309874025027894, 1.3819139458667884, -1.4278181232308051], [2.0736652966513485, 1.7519279157152232, 1.930939912909118, -2.3575837684371175, 1.415941741830503, -1.4339387073304626], [2.129711984535419, 1.6514553032237256, 2.012661327541806, -2.3098740250647842, 1.3819139459032084, -1.4278181232342353], [2.0736652966476723, 1.7519279157160677, 1.930939912904814, -2.3575837684388183, 1.4159417418300981, -1.4339387073362382], [2.1297119845340986, 1.6514553032245094, 2.012661327541609, -2.309874025065806, 1.3819139459042382, -1.4278181232343634], [2.0736652966475697, 1.7519279157160947, 1.9309399129047158, -2.3575837684388694, 1.415941741830104, -1.43393870733638], [2.1297119845340675, 1.6514553032245347, 2.012661327541598, -2.309874025065831, 1.3819139459042626, -1.4278181232343656], [2.0736652966475675, 1.7519279157160954, 1.930939912904713, -2.3575837684388703, 1.415941741830104, -1.4339387073363836], [2.1297119845340666, 1.6514553032245352, 2.0126613275415974, -2.3098740250658314, 1.381913945904263, -1.427818123234366]]
         
-    #     robot.goto_given_conf(jnt_values=jnt_list[-1])
-    #     final_arm_mesh = robot.gen_meshmodel(alpha=0.2, rgb=[0, 0, 1])
-    #     final_arm_mesh.attach_to(base)
-    #     base.run()
+        # for i in range(len(jnt_list) - 1): 
+        #     jnt1 = jnt_list[i]
+        #     jnt2 = jnt_list[i + 1]
+
+        #     s_pos, _ = robot.fk(jnt_values=jnt1)
+        #     e_pos, _ = robot.fk(jnt_values=jnt2)
+        #     # mgm.gen_arrow(spos=s_pos, epos=e_pos, stick_radius=.0025, rgb=[0,0,1]).attach_to(base)
+
+        #     robot.goto_given_conf(jnt_values=jnt1)
+        #     arm_mesh = robot.gen_meshmodel(alpha=0.2, rgb=[0, 0, 1])
+        #     arm_mesh.attach_to(base)
+        
+        robot.goto_given_conf(jnt_values=jnt_list[-1])
+        final_arm_mesh = robot.gen_meshmodel(alpha=0.2, rgb=[0, 0, 1])
+        final_arm_mesh.attach_to(base)
+
+        robot.goto_given_conf(jnt_values=jnt_values)
+        arm_mesh = robot.gen_meshmodel(alpha=0.25, rgb=[0,1,0])
+        arm_mesh.attach_to(base)
+
+        base.run()
 
         '''plot all ten seeds'''
         # jnt_list = [ 1151,  6791, 12431,  2006,  7646,  2842, 13623, 18071,  1387, 7027]
@@ -140,26 +126,26 @@ if __name__ == '__main__':
         # base.run()
         
         '''plot 2 seeds'''
-        success_idx = 12148
-        fail_idx = 17727
-        result = [-2.40210838, -0.03598387,  2.09711674, -0.89396575, -0.19446817,
-       -2.08617136]
+        # success_idx = 39922
+        # fail_idx = 40092
+        # result = [ 2.48931416,  1.74441111,  1.25016662,  1.43061741, -1.02924263,
+        # 1.10771868]
         
-        robot.goto_given_conf(jnt_values=kdt_jnt_data[fail_idx])
-        arm_mesh = robot.gen_meshmodel(alpha=0.2, rgb=[0,0,1])
-        arm_mesh.attach_to(base)
-        tgt_pos, tgt_rotmat = robot.fk(jnt_values = kdt_jnt_data[fail_idx])
-        mcm.mgm.gen_dashed_frame(pos=tgt_pos, rotmat=tgt_rotmat).attach_to(base)
-        robot.goto_given_conf(jnt_values=kdt_jnt_data[success_idx])
-        arm_mesh = robot.gen_meshmodel(alpha=0.25, rgb=[1,0,0])
-        arm_mesh.attach_to(base)
-        tgt_pos, tgt_rotmat = robot.fk(jnt_values = kdt_jnt_data[success_idx])
-        mcm.mgm.gen_dashed_frame(pos=tgt_pos, rotmat=tgt_rotmat).attach_to(base)
+        # robot.goto_given_conf(jnt_values=kdt_jnt_data[fail_idx])
+        # arm_mesh = robot.gen_meshmodel(alpha=0.2, rgb=[0,0,1])
+        # arm_mesh.attach_to(base)
+        # tgt_pos, tgt_rotmat = robot.fk(jnt_values = kdt_jnt_data[fail_idx])
+        # mcm.mgm.gen_dashed_frame(pos=tgt_pos, rotmat=tgt_rotmat).attach_to(base)
+        # robot.goto_given_conf(jnt_values=kdt_jnt_data[success_idx])
+        # arm_mesh = robot.gen_meshmodel(alpha=0.25, rgb=[1,0,0])
+        # arm_mesh.attach_to(base)
+        # tgt_pos, tgt_rotmat = robot.fk(jnt_values = kdt_jnt_data[success_idx])
+        # mcm.mgm.gen_dashed_frame(pos=tgt_pos, rotmat=tgt_rotmat).attach_to(base)
 
-        robot.goto_given_conf(jnt_values=result)
-        arm_mesh = robot.gen_meshmodel(alpha=0.25, rgb=[0,1,0])
-        arm_mesh.attach_to(base)
-        base.run()
+        # robot.goto_given_conf(jnt_values=result)
+        # arm_mesh = robot.gen_meshmodel(alpha=0.25, rgb=[0,1,0])
+        # arm_mesh.attach_to(base)
+        # base.run()
 
         '''calculate the pos and rot bewteen seeds'''
         # succeed_seed = [-1.45444111, -0.34906625,  1.22671717,  0.42386571,  0.3490655 , 1.780236  ]

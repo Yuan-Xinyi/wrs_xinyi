@@ -51,7 +51,7 @@ class DDIKSolver(object):
         # self._k_max = 200  # maximum nearest neighbours explored by the evolver
         self._k_bbs = 50  # number of nearest neighbours examined by the backbone solver
         self._k_max = 50  # maximum nearest neighbours explored by the evolver
-        self._max_n_iter = 7  # max_n_iter of the backbone solver
+        self._max_n_iter = 20  # max_n_iter of the backbone solver
         if backbone_solver == 'n':
             self._backbone_solver = ikn.NumIKSolver(self.jlc)
             print("NumIK is applied.")
@@ -338,7 +338,8 @@ class DDIKSolver(object):
             # nn_indx_array = selected_idx_array
 
             for id, nn_indx in enumerate(nn_indx_array[0:best_sol_num]):
-                seed_jnt_values = self.jnt_data[nn_indx]
+                # seed_jnt_values = self.jnt_data[nn_indx]
+                seed_jnt_values = self.jnt_data[40092]
 
                 if toggle_dbg:
                     rkmg.gen_jlc_stick_by_jnt_values(self.jlc,
