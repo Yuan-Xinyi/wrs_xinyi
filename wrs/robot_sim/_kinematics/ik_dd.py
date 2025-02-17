@@ -47,11 +47,9 @@ class DDIKSolver(object):
         self._fname_jnt = os.path.join(path, f"{identifier_str}_jnt_data.pkl")
         self._fname_jmat_inv = os.path.join(path, f"{identifier_str}_jmat_inv.pkl")
         self._fname_jmat = os.path.join(path, f"{identifier_str}_jmat.pkl")
-        # self._k_bbs = 100  # number of nearest neighbours examined by the backbone solver
-        # self._k_max = 200  # maximum nearest neighbours explored by the evolver
-        self._k_bbs = 50  # number of nearest neighbours examined by the backbone solver
-        self._k_max = 50  # maximum nearest neighbours explored by the evolver
-        self._max_n_iter = 20  # max_n_iter of the backbone solver
+        self._k_bbs = 100  # number of nearest neighbours examined by the backbone solver
+        self._k_max = 200  # maximum nearest neighbours explored by the evolver
+        self._max_n_iter = 7  # max_n_iter of the backbone solver
         if backbone_solver == 'n':
             self._backbone_solver = ikn.NumIKSolver(self.jlc)
             print("NumIK is applied.")
@@ -320,16 +318,16 @@ class DDIKSolver(object):
             nn_indx_array = nn_indx_array.astype(int)
 
             '''resort by how much the next jnt val is close to the limit'''
-            cut_off_num = 5
-            selected_idx_array = nn_indx_array[:cut_off_num]
-            delta_q_selected = seed_candidates_sorted[:cut_off_num,1:-1]
-            jnt_batch = np.array([self.jnt_data[idx] for idx in selected_idx_array])
-            next_jnt_batch = jnt_batch + delta_q_selected
+            # cut_off_num = 5
+            # selected_idx_array = nn_indx_array[:cut_off_num]
+            # delta_q_selected = seed_candidates_sorted[:cut_off_num,1:-1]
+            # jnt_batch = np.array([self.jnt_data[idx] for idx in selected_idx_array])
+            # next_jnt_batch = jnt_batch + delta_q_selected
 
-            lower_diff = next_jnt_batch - self.jlc.jnt_ranges[:, 0]
-            upper_diff = self.jlc.jnt_ranges[:, 1] - next_jnt_batch
-            dist_to_jnt_limit = np.minimum(lower_diff, upper_diff)
-            dist_to_jnt_limit_norm = np.linalg.norm(dist_to_jnt_limit, axis=1)
+            # lower_diff = next_jnt_batch - self.jlc.jnt_ranges[:, 0]
+            # upper_diff = self.jlc.jnt_ranges[:, 1] - next_jnt_batch
+            # dist_to_jnt_limit = np.minimum(lower_diff, upper_diff)
+            # dist_to_jnt_limit_norm = np.linalg.norm(dist_to_jnt_limit, axis=1)
 
             '''resorting'''
             # sorted_indices = np.argsort(dist_to_jnt_limit_norm)
@@ -338,8 +336,7 @@ class DDIKSolver(object):
             # nn_indx_array = selected_idx_array
 
             for id, nn_indx in enumerate(nn_indx_array[0:best_sol_num]):
-                # seed_jnt_values = self.jnt_data[nn_indx]
-                seed_jnt_values = self.jnt_data[40092]
+                seed_jnt_values = self.jnt_data[nn_indx]
 
                 if toggle_dbg:
                     rkmg.gen_jlc_stick_by_jnt_values(self.jlc,

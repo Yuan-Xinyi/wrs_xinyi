@@ -326,7 +326,7 @@ class NumIKSolver(object):
         date: 20231101
         """
         iter_jnt_values = seed_jnt_values
-        record_iteration = True
+        record_iteration = False
         iteration_jnt_values = []
         if iter_jnt_values is None:
             iter_jnt_values = self.jlc.get_jnt_values()
@@ -340,7 +340,8 @@ class NumIKSolver(object):
                                                                           tgt_pos=tgt_pos,
                                                                           tgt_rotmat=tgt_rotmat)
             if f2t_pos_err < 1e-4 and f2t_rot_err < 1e-3 and self.jlc.are_jnts_in_ranges(iter_jnt_values):
-                print("iteration_jnt_values ", iteration_jnt_values)
+                if record_iteration:
+                    print("iteration_jnt_values ", iteration_jnt_values)
                 return iter_jnt_values
             clamped_err_vec = self._clamp_tgt_err(f2t_pos_err, f2t_rot_err, f2t_err_vec)
             # clamped_err_vec = f2t_err_vec * .01
@@ -382,7 +383,8 @@ class NumIKSolver(object):
                 print(counter, max_n_iter)
             if counter > max_n_iter:
                 # base.run()
-                print("iteration_jnt_values ", repr(iteration_jnt_values))
+                if record_iteration:
+                    print("iteration_jnt_values ", repr(iteration_jnt_values))
                 return None
                 # raise Exception("No IK solution")
             counter += 1

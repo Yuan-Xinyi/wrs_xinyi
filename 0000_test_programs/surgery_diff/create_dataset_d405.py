@@ -4,9 +4,9 @@ import time
 import numpy as np
 import math
 import os
-# import cobotta_x_new as cbtx
-import wrs.robot_sim.robots.cobotta.cobotta as cbt
-# from drivers.devices.realsense.realsense_d400s import RealSenseD405
+import cobotta2 as cbtx
+# import wrs.robot_sim.robots.cobotta.cobotta as cbt
+from drivers.devices.realsense.realsense_d400s import RealSenseD405
 import wrs.basis.robot_math as rm
 import matplotlib.pyplot as plt
 
@@ -34,6 +34,7 @@ obs_pose_list = [np.array([ 2.8031e-01,  3.0601e-02,  2.3300e-01,  1.5708e+00, 0
                  np.array([2.7738e-01, 3.1299e-02, 2.3301e-01, 1.5705e+00, 0, 2.2689e+00, 5]),
                  np.array([2.7709e-01, 3.1351e-02, 2.3303e-01, 1.5706e+00, 0, 2.3564e+00, 5]),
                  ]
+
 
 def capture_save(rs_pipe, save_path, pic_id):
     img = rs_pipe.get_color_img()
@@ -80,8 +81,7 @@ def get_3D_spiral_pose_values_list(start_pose, layer, edge_length, z_layer, z_he
     return output_pose_list
 
 
-# def create_dataset_spiral(robot_x, rs_pipe, obs_pose_list, save_path_parent):
-def create_dataset_spiral(robot_x, obs_pose_list, save_path_parent):
+def create_dataset_spiral(robot_x, camera, obs_pose_list, save_path_parent):
     dataset_id = 0
     camera_num = 2
     init_pose = copy.deepcopy(obs_pose_list[0])
@@ -133,9 +133,11 @@ def create_dataset_spiral(robot_x, obs_pose_list, save_path_parent):
 
 
 if __name__ == "__main__":
+    
     '''init the robot and camera'''
-    robot_x = cbt.Cobotta(pos=rm.vec(0.1,.3,.5), enable_cc=True)
-    # rs_pipe = RealSenseD405()
+    robot_x = cbtx.Cobotta(host = '192.168.0.11')
+    print('current pose:', repr(robot_x.get_pose_values()))
+    rs_pipe = RealSenseD405()
 
     '''warm up the camera'''
     img = rs_pipe.get_color_img()
@@ -144,7 +146,14 @@ if __name__ == "__main__":
     img = rs_pipe.get_color_img()
     img = rs_pipe.get_color_img()
     time.sleep(1)
+    
+    '''image display'''
+    cv2.imshow("img", img)
     np.set_printoptions(precision=4,linewidth=np.inf)  # format the print
+
+    '''parameter setting'''
+    parent_path = "/home/lqin/wrs_xinyi/0000_test_programs/surgery_diff/datasets/"
+    dataset_id = 0
 
     '''get and test the manual rotation pose'''
     # for id,obs_pose in enumerate(obs_pose_list):
@@ -164,5 +173,5 @@ if __name__ == "__main__":
     #     input(f"pose{id}")
 
     print(rm.rotmat_to_euler(np.array([[0, 1, 0], [0, 0, 1], [1, 0, 0]]).T))
-    create_dataset_spiral(robot_x, obs_pose_list, save_path_parent="/home/lqin/wrs_xinyi/0000_test_programs/surgery_diff/datasets/")
+    create_dataset_spiral(robot_x, rs_pipe, obs_pose_list, save_path_parent=parent_path)
     

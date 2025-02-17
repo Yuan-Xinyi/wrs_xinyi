@@ -22,9 +22,7 @@ robot = cbt.Cobotta(pos=rm.vec(0.1,.3,.5), enable_cc=True)
 
 
 
-nupdate = 1
-jnt_values = [ 2.48931629,  1.74442019,  1.25015768,  1.43062172, -1.02924473,
-        1.10771746]
+nupdate = 10000
 
 if __name__ == '__main__':
 # while True:
@@ -34,7 +32,7 @@ if __name__ == '__main__':
     rot_err_list = []
 
     for i in tqdm(range(nupdate)):
-        # jnt_values = robot.rand_conf()
+        jnt_values = robot.rand_conf()
         # print("*" * 150 + "\n")
         # print('jnt', repr(jnt_values))
         tgt_pos, tgt_rotmat = robot.fk(jnt_values = jnt_values)
