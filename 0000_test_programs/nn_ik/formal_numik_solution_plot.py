@@ -103,15 +103,15 @@ if __name__ == '__main__':
         #     arm_mesh = robot.gen_meshmodel(alpha=0.2, rgb=[0, 0, 1])
         #     arm_mesh.attach_to(base)
         
-        robot.goto_given_conf(jnt_values=jnt_list[-1])
-        final_arm_mesh = robot.gen_meshmodel(alpha=0.2, rgb=[0, 0, 1])
-        final_arm_mesh.attach_to(base)
+        # robot.goto_given_conf(jnt_values=jnt_list[-1])
+        # final_arm_mesh = robot.gen_meshmodel(alpha=0.2, rgb=[0, 0, 1])
+        # final_arm_mesh.attach_to(base)
 
-        robot.goto_given_conf(jnt_values=jnt_values)
-        arm_mesh = robot.gen_meshmodel(alpha=0.25, rgb=[0,1,0])
-        arm_mesh.attach_to(base)
+        # robot.goto_given_conf(jnt_values=jnt_values)
+        # arm_mesh = robot.gen_meshmodel(alpha=0.25, rgb=[0,1,0])
+        # arm_mesh.attach_to(base)
 
-        base.run()
+        # base.run()
 
         '''plot all ten seeds'''
         # jnt_list = [ 1151,  6791, 12431,  2006,  7646,  2842, 13623, 18071,  1387, 7027]

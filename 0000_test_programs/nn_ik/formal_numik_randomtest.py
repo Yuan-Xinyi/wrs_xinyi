@@ -5,6 +5,8 @@ import wrs.robot_sim.manipulators.ur3.ur3 as ur3
 import wrs.robot_sim.manipulators.ur3e.ur3e as ur3e
 import wrs.basis.robot_math as rm
 import wrs.robot_sim.robots.yumi.yumi_single_arm as yumi
+import wrs.robot_sim.robots.cobotta_pro1300.cobotta_pro1300 as cbtpro1300
+import wrs.robot_sim.robots.cobotta_pro900.cobotta_pro900_spine as cbtpro900
 
 import time
 import matplotlib.pyplot as plt
@@ -16,9 +18,12 @@ mcm.mgm.gen_frame().attach_to(base)
 
 '''define robot'''
 # robot = yumi.YumiSglArm(pos=rm.vec(0.1, .3, .5),enable_cc=True)
-robot = cbt.Cobotta(pos=rm.vec(0.1,.3,.5), enable_cc=True)
+# robot = cbt.Cobotta(pos=rm.vec(0.1,.3,.5), enable_cc=True)
 # robot = ur3.UR3(pos=rm.vec(0.1, .3, .5), ik_solver='d' ,enable_cc=True)
 # robot = rs007l.RS007L(pos=rm.vec(0.1, .3, .5), enable_cc=True)
+# robot = cbtpro1300.CobottaPro1300WithRobotiq140(pos=rm.vec(0.1, .3, .5), enable_cc=True)
+robot = cbtpro900.CobottaPro900Spine(pos=rm.vec(0.1, .3, .5), enable_cc=True)
+
 
 
 
@@ -36,6 +41,7 @@ if __name__ == '__main__':
         # print("*" * 150 + "\n")
         # print('jnt', repr(jnt_values))
         tgt_pos, tgt_rotmat = robot.fk(jnt_values = jnt_values)
+        # print('tgt_pos', tgt_pos)
         tic = time.time()
         result = robot.ik(tgt_pos, tgt_rotmat, best_sol_num = 1)
         toc = time.time()

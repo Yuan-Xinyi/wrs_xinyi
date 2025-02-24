@@ -293,29 +293,35 @@ class DDIKSolver(object):
                 nn_indx_array = [nn_indx_array]
             
             '''xinyi: rank the jnt_seed by the delta_q'''
-            seed_candidates = np.array([[nn_indx] + [0] * (self.jlc.n_dof+1) for nn_indx in nn_indx_array], dtype=float)
-            jmat_pinv_batch = np.array([self.jmat_inv[idx] for idx in nn_indx_array])
-            # jmat_pinv_batch = np.array([np.identity(6) for idx in nn_indx_array])
-            tgt_candidates = np.array([self.query_tree.data[idx] for idx in nn_indx_array])  # target stored in the tree
-            tgt_gth = np.tile(query_point, (len(nn_indx_array), 1))
-            tgt_delta = np.abs(tgt_candidates - tgt_gth)
+            # seed_candidates = np.array([[nn_indx] + [0] * (self.jlc.n_dof+1) for nn_indx in nn_indx_array], dtype=float)
+            # jmat_pinv_batch = np.array([self.jmat_inv[idx] for idx in nn_indx_array])
+            # # jmat_pinv_batch = np.array([np.identity(6) for idx in nn_indx_array])
+            # tgt_candidates = np.array([self.query_tree.data[idx] for idx in nn_indx_array])  # target stored in the tree
+            # tgt_gth = np.tile(query_point, (len(nn_indx_array), 1))
+            # tgt_delta = np.abs(tgt_candidates - tgt_gth)
             
-            # tgt_delta[:, 3:] = 0
-            delta_q_batch = np.einsum('ijk,ik->ij', jmat_pinv_batch, tgt_delta)
-            delta_q_l2norm = np.linalg.norm(delta_q_batch[:,:], axis=1)
+            # # tgt_delta[:, 3:] = 0
+            # delta_q_batch = np.einsum('ijk,ik->ij', jmat_pinv_batch, tgt_delta)
+            # delta_q_l2norm = np.linalg.norm(delta_q_batch[:,:], axis=1)
 
-            # delta_q_l2norm = np.mean(np.square(delta_q_batch), axis=1)/np.var(tgt_delta, axis=1)
-            seed_candidates[:, -1] = delta_q_l2norm
-            seed_candidates[:, 1:-1] = delta_q_batch
+            # # delta_q_l2norm = np.mean(np.square(delta_q_batch), axis=1)/np.var(tgt_delta, axis=1)
+            # seed_candidates[:, -1] = delta_q_l2norm
+            # seed_candidates[:, 1:-1] = delta_q_batch
 
-            # print("\n" + "*" * 150)
-            # print(f'top ddik index is: {repr(nn_indx_array[0:10])}')
+            # '''delta q square'''
+            # # delta_q_square = np.square(delta_q_batch)
+            # # delta_q_square_max = np.max(delta_q_square, axis=1)
+            # # seed_candidates[:, -1] = delta_q_square_max
+            # # seed_candidates[:, 1:-1] = delta_q_square
+
+            # # print("\n" + "*" * 150)
+            # # print(f'top ddik index is: {repr(nn_indx_array[0:10])}')
             
-            '''xinyi: sort the seed_candidates by the delta_q'''
-            sorted_indices = np.argsort(seed_candidates[:, -1])
-            seed_candidates_sorted = seed_candidates[sorted_indices]
-            nn_indx_array = seed_candidates_sorted[:, 0]
-            nn_indx_array = nn_indx_array.astype(int)
+            # '''xinyi: sort the seed_candidates by the delta_q'''
+            # sorted_indices = np.argsort(seed_candidates[:, -1])
+            # seed_candidates_sorted = seed_candidates[sorted_indices]
+            # nn_indx_array = seed_candidates_sorted[:, 0]
+            # nn_indx_array = nn_indx_array.astype(int)
 
             '''resort by how much the next jnt val is close to the limit'''
             # cut_off_num = 5

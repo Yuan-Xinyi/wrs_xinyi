@@ -36,7 +36,7 @@ train_batch_size = 64
 test_batch_size = 1
 solver = 'ddpm'
 diffusion_steps = 20
-predict_noise = False # [True, False]
+predict_noise = True # [True, False]
 obs_steps = 1
 action_steps = 1
 action_loss_weight = 10.0
@@ -61,23 +61,38 @@ temperature = 0.5
 use_ema = False
 
 
-if __name__ == '__main__':
-    # --------------- Data Loading -----------------
-    '''prepare the save path'''
-    TimeCode = ((datetime.now()).strftime("%m%d_%H%M")).replace(" ", "")
-    rootpath = f'{TimeCode}_{backbone}_h{horizon}_steps{diffusion_steps}_{mode}'
-    current_file_dir = os.path.dirname(__file__)
-    save_path = os.path.join(current_file_dir, 'results', rootpath)
-    if not os.path.exists(save_path):
-        os.makedirs(save_path)
+from wrs import wd, rm, mcm
+import wrs.robot_sim.robots.cobotta.cobotta as cbt
+import wrs.robot_sim.manipulators.rs007l.rs007l as rs007l
+import wrs.robot_sim.manipulators.ur3.ur3 as ur3
+import wrs.robot_sim.robots.yumi.yumi_single_arm as yumi
 
+
+base = wd.World(cam_pos=[1, 1.7, 1.7], lookat_pos=[0, 0, .3])
+mcm.mgm.gen_frame().attach_to(base)
+
+'''define robot'''
+robot = yumi.YumiSglArm(pos=rm.vec(0.1, .3, .5),enable_cc=True)
+# robot = cbt.Cobotta(pos=rm.vec(0,.0,.0), enable_cc=True)
+# robot = ur3.UR3(pos=rm.vec(0.1, .3, .5), ik_solver='d' ,enable_cc=True)
+# robot = rs007l.RS007L(pos=rm.vec(0.1, .3, .5), enable_cc=True)
+
+if __name__ == '__main__':
 
     '''load the dataset from npy file'''
-    dataset = np.load(f'0000_test_programs/nn_ik/datasets/formal/dataset_1M_loc_rotquat.npz', allow_pickle=True)
-    jnt, tgt_pos, tgt_rot = dataset['jnt_values'], dataset['tgt_pos'], dataset['tgt_rotmat']
-    traj = np.concatenate((jnt, tgt_pos, tgt_rot), axis=1)
-    action_dim = jnt.shape[1]
-    obs_dim = tgt_pos.shape[1] + tgt_rot.shape[1]
+    if robot.name == 'cobotta':
+        dataset = np.load(f'0000_test_programs/nn_ik/datasets/formal/dataset_1M_loc_rotquat.npz', allow_pickle=True)
+        jnt, tgt_pos, tgt_rot = dataset['jnt_values'], dataset['tgt_pos'], dataset['tgt_rotmat']
+        traj = np.concatenate((jnt, tgt_pos, tgt_rot), axis=1)
+        action_dim = jnt.shape[1]
+        obs_dim = tgt_pos.shape[1] + tgt_rot.shape[1]
+    else:
+        dataset = np.load(f'0000_test_programs/nn_ik/datasets/formal/{robot.name}_ik_dataset_rotquat.npz')
+        jnt_values, pos_rot = dataset['jnt'], dataset['pos_rotv']
+        traj = np.concatenate((jnt_values, pos_rot), axis=1)
+        action_dim, obs_dim = jnt_values.shape[1], pos_rot.shape[1]
+
+    
     traj = torch.tensor(traj, dtype=torch.float32).to(device)
     traj_loader = DataLoader(traj, batch_size=train_batch_size, shuffle=True, drop_last=True)
 
@@ -116,6 +131,15 @@ if __name__ == '__main__':
     diffusion_lr_scheduler = CosineAnnealingLR(agent.optimizer, T_max=diffusion_gradient_steps)
 
     if mode == 'train':
+        # --------------- Data Loading -----------------
+        '''prepare the save path'''
+        TimeCode = ((datetime.now()).strftime("%m%d_%H%M")).replace(" ", "")
+        rootpath = f'{TimeCode}_{robot.name}_h{horizon}_steps{diffusion_steps}_{mode}'
+        current_file_dir = os.path.dirname(__file__)
+        save_path = os.path.join(current_file_dir, 'results', rootpath)
+        if not os.path.exists(save_path):
+            os.makedirs(save_path)
+
         wandb.init(project="ik_diffusion", name=rootpath)
         # ---------------------- Training ----------------------
         agent.train()
@@ -152,20 +176,14 @@ if __name__ == '__main__':
         wandb.finish()
     
     elif mode == 'inference':
-        from wrs import wd, rm, mcm
-        import wrs.robot_sim.robots.cobotta.cobotta as cbt
-        
-        base = wd.World(cam_pos=[1, 1.7, 1.7], lookat_pos=[0, 0, .3])
-        mcm.mgm.gen_frame().attach_to(base)
-
-        '''define robot'''
-        # robot = yumi.YumiSglArm(pos=rm.vec(0.1, .3, .5),enable_cc=True)
-        robot = cbt.Cobotta(pos=rm.vec(0,.0,.0), enable_cc=True)
-        # robot = ur3.UR3(pos=rm.vec(0.1, .3, .5), ik_solver='d' ,enable_cc=True)
-        # robot = rs007l.RS007L(pos=rm.vec(0.1, .3, .5), enable_cc=True)
 
         '''load the model'''
-        model_path = '0000_test_programs/nn_ik/results/0217_1334_unet1d_h4_steps20_traindiffusion_ckpt_latest.pt'
+        # model_path = '0000_test_programs/nn_ik/results/saved_model/cobotta_diffusion_ik.pt'
+        # model_path = '0000_test_programs/nn_ik/results/0217_1929_unet1d_h4_steps20_train/diffusion_ckpt_latest.pt'
+        # model_path = '0000_test_programs/nn_ik/results/0217_2059_ur3_h4_steps20_train/diffusion_ckpt_latest.pt'
+        # model_path = '0000_test_programs/nn_ik/results/0217_2100_khi_rs007l_h4_steps20_train/diffusion_ckpt_latest.pt'
+        model_path = '0000_test_programs/nn_ik/results/0217_2056_unet1d_h4_steps20_train/diffusion_ckpt_1000000.pt'
+
         agent.load(model_path)
         agent.eval()
         prior = torch.zeros((1, horizon, obs_dim + action_dim)).to(device)
@@ -175,25 +193,28 @@ if __name__ == '__main__':
         time_list = []
         pos_err_list = []
         rot_err_list = []
-        plot = False
-        nupdate = 1 if plot else 1000
+        plot = True
+        nupdate = 1 if plot else 10000
 
         with torch.no_grad():
             for i in tqdm(range(nupdate)):
                 
                 '''provide the prior condition information'''
-                jnt_values = robot.rand_conf()
+                # jnt_values = robot.rand_conf()
+                jnt_values = np.array([-1.5171676 ,  0.15338672, -0.22230526, -0.87785777,  2.27689594,
+        2.3711065 , -1.91344599])
+                print('jnt', repr(jnt_values))
                 tgt_pos, tgt_rotmat = robot.fk(jnt_values = jnt_values)
                 tgt_rotq = rm.rotmat_to_quaternion(tgt_rotmat)
                 tgt = torch.tensor(np.concatenate((tgt_pos.flatten(), tgt_rotq.flatten())), dtype=torch.float32).to(device)
                 tic = time.time()
                 prior[0, :, action_dim:] = tgt
-
+                
                 trajectory, log = agent.sample(prior, solver=solver, n_samples = 1,
                                                sample_steps=sampling_steps,
                                                use_ema=use_ema, w_cg=w_cg, temperature=temperature)
-            
-                result = trajectory.mean(dim=1).squeeze(0)
+                result = trajectory[:, 0, :action_dim]
+                
                 toc = time.time()
                 time_list.append(toc-tic)
 
@@ -201,24 +222,31 @@ if __name__ == '__main__':
                     success_num += 1
 
                     # calculate the pos error and rot error
-                    pred_pos, pred_rotmat = robot.fk(jnt_values=result)
+                    pred_pos, pred_rotmat = robot.fk(jnt_values=result[0])
                     pos_err, rot_err, _ = rm.diff_between_poses(tgt_pos*1000, tgt_rotmat, pred_pos*1000, pred_rotmat)
                     pos_err_list.append(pos_err)
                     rot_err_list.append(rot_err)
-
-                if plot:
-                    mcm.mgm.gen_dashed_frame(pos=tgt_pos, rotmat=tgt_rotmat).attach_to(base)
-                    robot.goto_given_conf(jnt_values=result)
-                    arm_mesh = robot.gen_meshmodel(alpha=0.25, rgb=[0,0,1])
-                    arm_mesh.attach_to(base)
-                    base.run()
                 
         print('==========================================================')
+        print('current robot: ', robot.name)
         print(f'Average time: {np.mean(time_list) * 1000:.2f} ms')
         print(f'success rate: {success_num / nupdate * 100:.2f}%')
         print(f'Average position error: {np.mean(pos_err_list)}')
         print(f'Average rotation error: {np.mean(rot_err_list)*180/np.pi}')
         print('==========================================================')
+
+        if plot:
+            for i in range(result.shape[0]):
+                mcm.mgm.gen_dashed_frame(pos=tgt_pos, rotmat=tgt_rotmat).attach_to(base)
+                robot.goto_given_conf(jnt_values=result[i])
+                arm_mesh = robot.gen_meshmodel(alpha=0.1, rgb=[0,0,1])
+                arm_mesh.attach_to(base)
+
+            robot.goto_given_conf(jnt_values=jnt_values)
+            arm_mesh = robot.gen_meshmodel(alpha=0.25, rgb=[1,0,0])
+            arm_mesh.attach_to(base)
+
+            base.run()
 
     else:
         raise ValueError(f"Not implemented mode: {mode}")
