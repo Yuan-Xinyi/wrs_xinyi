@@ -4,20 +4,23 @@ import wrs.robot_sim.robots.cobotta.cobotta as cbt
 import wrs.robot_sim.manipulators.rs007l.rs007l as rs007l
 import wrs.robot_sim.manipulators.ur3.ur3 as ur3
 import wrs.robot_sim.manipulators.ur3e.ur3e as ur3e
+import wrs.robot_sim.robots.cobotta_pro1300.cobotta_pro1300 as cbtpro1300
 import wrs.basis.robot_math as rm
 import wrs.robot_sim.robots.yumi.yumi_single_arm as yumi
 import matplotlib.pyplot as plt
 from tqdm import tqdm
 import numpy as np
 
+
 base = wd.World(cam_pos=[1.7, 1.7, 1.7], lookat_pos=[0, 0, .3])
 mcm.mgm.gen_frame().attach_to(base)
 
 '''define robot'''
 # robot = yumi.YumiSglArm(pos=rm.vec(0.1, .3, .5),enable_cc=True)
-robot = cbt.Cobotta(pos=rm.vec(0.1,.3,.5), enable_cc=True)
+# robot = cbt.Cobotta(pos=rm.vec(0.1,.3,.5), enable_cc=True)
 # robot = ur3.UR3(pos=rm.vec(0.1, .3, .5), ik_solver='d' ,enable_cc=True)
 # robot = rs007l.RS007L(pos=rm.vec(0.1, .3, .5), enable_cc=True)
+robot = cbtpro1300.CobottaPro1300WithRobotiq140(pos=rm.vec(0.1, .3, .5), enable_cc=True)
 
 file_name = f'0000_test_programs/nn_ik/datasets/formal/{robot.name}_ik_dataset_rotquat.npz'
 nupdate = 1000000
