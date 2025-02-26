@@ -105,11 +105,11 @@ base = wd.World(cam_pos=[1, 1.7, 1.7], lookat_pos=[0, 0, .3])
 mcm.mgm.gen_frame().attach_to(base)
 
 '''define robot'''
-# robot = yumi.YumiSglArm(pos=rm.vec(0.1, .3, .5),enable_cc=True)
+robot = yumi.YumiSglArm(pos=rm.vec(0.1, .3, .5),enable_cc=True)
 # robot = cbt.Cobotta(pos=rm.vec(0,.0,.0), enable_cc=True)
 # robot = ur3.UR3(pos=rm.vec(0.1, .3, .5), ik_solver='d' ,enable_cc=True)
 # robot = rs007l.RS007L(pos=rm.vec(0.1, .3, .5), enable_cc=True)
-robot = cbtpro1300.CobottaPro1300WithRobotiq140(pos=rm.vec(0.1, .3, .5), enable_cc=True)
+# robot = cbtpro1300.CobottaPro1300WithRobotiq140(pos=rm.vec(0.1, .3, .5), enable_cc=True)
 
 if __name__ == '__main__':
 
@@ -219,9 +219,9 @@ if __name__ == '__main__':
         '''rs007l'''
         # model_path = '0000_test_programs/nn_ik/results/0217_2100_khi_rs007l_h4_steps20_train/diffusion_ckpt_latest.pt'
         '''yumi'''
-        # model_path = '0000_test_programs/nn_ik/results/0217_2056_unet1d_h4_steps20_train/diffusion_ckpt_1000000.pt'
+        model_path = '0000_test_programs/nn_ik/results/0217_2056_unet1d_h4_steps20_train/diffusion_ckpt_1000000.pt'
         '''cobotta pro 1300'''
-        model_path = '0000_test_programs/nn_ik/results/0224_1614_cobotta_pro_1300_h4_steps20_train/diffusion_ckpt_latest.pt'
+        # model_path = '0000_test_programs/nn_ik/results/0224_1614_cobotta_pro_1300_h4_steps20_train/diffusion_ckpt_latest.pt'
 
 
         agent.load(model_path)

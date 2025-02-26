@@ -38,7 +38,7 @@ robot = ur3.UR3(pos=rm.vec(.0, .0, .0),enable_cc=True)
 '''define the initail paras'''
 nupdate = 100
 trail_num = 100
-mode = 'train' # ['train' random_ik_test]
+mode = 'random_ik_test' # ['train' random_ik_test]
 device = torch.device('cuda' if torch.cuda.is_available() else 'cpu')
 
 # train paras
@@ -185,6 +185,7 @@ if __name__ == '__main__':
         wandb.finish()
 
     elif mode == 'random_ik_test':
+        num_mixtures = 120
         if num_mixtures == 5:
             if robot.name == 'cobotta':
                 model.load_state_dict(torch.load('0000_test_programs/nn_ik/results/formal_0119_1911_cobotta_MDN_rotv/model200'))

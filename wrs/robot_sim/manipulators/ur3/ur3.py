@@ -71,7 +71,7 @@ class UR3(mi.ManipulatorInterface):
         self.jlc.jnts[5].lnk.loc_pos = np.array([.0, .0, -.082])
         self.jlc.jnts[5].lnk.loc_rotmat = rm.rotmat_from_euler(np.pi / 2, .0, .0)
         self.jlc.jnts[5].lnk.cmodel.rgba = np.array([.5, .5, .5, 1.0])
-        self.jlc.finalize(ik_solver=ik_solver, identifier_str=name)
+        self.jlc.finalize(ik_solver='d', identifier_str=name)
         # tcp
         self.loc_tcp_pos = np.array([0, 0, 0])
         self.loc_tcp_rotmat = np.eye(3)

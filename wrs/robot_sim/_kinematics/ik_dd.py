@@ -46,10 +46,13 @@ class DDIKSolver(object):
         self._max_n_iter = 7  # max_n_iter of the backbone solver
         if backbone_solver == 'n':
             self._backbone_solver = ikn.NumIKSolver(self.jlc)
+            print("Using NumIKSolver as the backbone solver.")
         elif backbone_solver == 'o':
             self._backbone_solver = iko.OptIKSolver(self.jlc)
+            print("Using OptIKSolver as the backbone solver.")
         elif backbone_solver == 't':
             self._backbone_solver = ikt.TracIKSolver(self.jlc)
+            print("Using TracIKSolver as the backbone solver.")
         if rebuild:
             print("Rebuilding the database. It starts a new evolution and is costly.")
             y_or_n = bu.get_yesno()
@@ -113,7 +116,7 @@ class DDIKSolver(object):
     def _build_data(self):
         # gen sampled qs
         sampled_jnts = []
-        n_intervals = np.linspace(8, 4, self.jlc.n_dof, endpoint=False)
+        n_intervals = np.linspace(10, 4, self.jlc.n_dof, endpoint=False) # 6,8,10
         print(f"Buidling Data for DDIK using the following joint granularity: {n_intervals.astype(int)}...")
         for i in range(self.jlc.n_dof):
             sampled_jnts.append(
@@ -170,6 +173,7 @@ class DDIKSolver(object):
                                          max_n_iter=max_n_iter,
                                          toggle_dbg=toggle_dbg)
         else:
+            '''sort'''
             # relative to base
             rel_pos, rel_rotmat = rm.rel_pose(self.jlc.pos, self.jlc.rotmat, tgt_pos, tgt_rotmat)
             rel_rotvec = self._rotmat_to_vec(rel_rotmat)
@@ -185,7 +189,7 @@ class DDIKSolver(object):
             square_sums = np.sum((adjust_array) ** 2, axis=1)
             sorted_indices = np.argsort(square_sums)
             # sorted_indices = range(self._k_max)
-            seed_jnt_array_cad = seed_jnt_array[sorted_indices[:20]]
+            seed_jnt_array_cad = seed_jnt_array[sorted_indices[:100]]  # 20
             for id, seed_jnt_values in enumerate(seed_jnt_array_cad):
                 if id > best_sol_num:
                     return None
@@ -207,6 +211,32 @@ class DDIKSolver(object):
                 else:
                     return result
             return None
+        # else:
+        #     '''no sort'''
+        #     # relative to base
+        #     rel_pos, rel_rotmat = rm.rel_pose(self.jlc.pos, self.jlc.rotmat, tgt_pos, tgt_rotmat)
+        #     rel_rotvec = self._rotmat_to_vec(rel_rotmat)
+        #     query_point = np.concatenate((rel_pos, rel_rotvec))
+        #     dist_value_array, nn_indx_array = self.query_tree.query(query_point, k=self._k_max, workers=-1)
+        #     if type(nn_indx_array) is int:
+        #         nn_indx_array = [nn_indx_array]
+        #     for id, nn_indx in enumerate(nn_indx_array):
+        #         seed_jnt_values = self.jnt_data[nn_indx]
+        #         if toggle_dbg:
+        #             rkmg.gen_jlc_stick_by_jnt_values(self.jlc,
+        #                                              jnt_values=seed_jnt_values,
+        #                                              stick_rgba=rm.bc.red).attach_to(base)
+        #         result = self._backbone_solver(tgt_pos=tgt_pos,
+        #                                        tgt_rotmat=tgt_rotmat,
+        #                                        seed_jnt_values=seed_jnt_values,
+        #                                        max_n_iter=max_n_iter,
+        #                                        toggle_dbg=toggle_dbg)
+        #         if result is None:
+        #             return None
+        #         else:
+        #             return result
+        #     # failed to find a solution, use optimization methods to solve and update the database?
+        # return None
 
 
 if __name__ == '__main__':

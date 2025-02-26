@@ -1,0 +1,11 @@
+{first solution}
+{"robot": "YumiSglArm", "success_rate": "90.81%", "time_statistics": {"mean": "10.23 ms", "std": "0.00 ms", "min": "10.23 ms", "max": "10.23 ms", "coefficient_of_variation": "0.00", "percentile_25": "10.23 ms", "percentile_75": "10.23 ms", "interquartile_range": "0.00 ms"}}
+{"robot": "Cobotta", "success_rate": "94.22%", "time_statistics": {"mean": "9.25 ms", "std": "0.00 ms", "min": "9.25 ms", "max": "9.25 ms", "coefficient_of_variation": "0.00", "percentile_25": "9.25 ms", "percentile_75": "9.25 ms", "interquartile_range": "0.00 ms"}}
+{"robot": "UR3", "success_rate": "80.70%", "time_statistics": {"mean": "9.78 ms", "std": "0.00 ms", "min": "9.78 ms", "max": "9.78 ms", "coefficient_of_variation": "0.00", "percentile_25": "9.78 ms", "percentile_75": "9.78 ms", "interquartile_range": "0.00 ms"}}
+{"robot": "CobottaPro1300WithRobotiq140", "success_rate": "90.06%", "time_statistics": {"mean": "16.34 ms", "std": "0.00 ms", "min": "16.34 ms", "max": "16.34 ms", "coefficient_of_variation": "0.00", "percentile_25": "16.34 ms", "percentile_75": "16.34 ms", "interquartile_range": "0.00 ms"}}
+
+{best solution}
+{"robot": "YumiSglArm", "success_rate": "97.59%", "time_statistics": {"mean": "17.16 ms", "std": "0.00 ms", "min": "17.16 ms", "max": "17.16 ms", "coefficient_of_variation": "0.00", "percentile_25": "17.16 ms", "percentile_75": "17.16 ms", "interquartile_range": "0.00 ms"}}
+{"robot": "Cobotta", "success_rate": "95.95%", "time_statistics": {"mean": "15.65 ms", "std": "0.00 ms", "min": "15.65 ms", "max": "15.65 ms", "coefficient_of_variation": "0.00", "percentile_25": "15.65 ms", "percentile_75": "15.65 ms", "interquartile_range": "0.00 ms"}}
+{"robot": "UR3", "success_rate": "94.62%", "time_statistics": {"mean": "16.32 ms", "std": "0.00 ms", "min": "16.32 ms", "max": "16.32 ms", "coefficient_of_variation": "0.00", "percentile_25": "16.32 ms", "percentile_75": "16.32 ms", "interquartile_range": "0.00 ms"}}
+{"robot": "CobottaPro1300WithRobotiq140", "success_rate": "96.50%", "time_statistics": {"mean": "24.44 ms", "std": "0.00 ms", "min": "24.44 ms", "max": "24.44 ms", "coefficient_of_variation": "0.00", "percentile_25": "24.44 ms", "percentile_75": "24.44 ms", "interquartile_range": "0.00 ms"}}

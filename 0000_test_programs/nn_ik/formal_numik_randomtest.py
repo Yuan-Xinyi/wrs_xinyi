@@ -30,7 +30,8 @@ mcm.mgm.gen_frame().attach_to(base)
 
 nupdate = 10000
 best_sol_num_list = [1] # [1,3,5,10,20]
-robot_list = ['yumi', 'cbt','ur3', 'cbtpro1300']
+# robot_list = ['yumi', 'cbt','ur3', 'cbtpro1300']
+robot_list = ['ur3', 'cbtpro1300']
 json_file = "metrics_robot_result.jsonl"
 
 if __name__ == '__main__':
@@ -42,7 +43,7 @@ if __name__ == '__main__':
         elif robot == 'cbt':
             robot = cbt.Cobotta(pos=rm.vec(0.1,.3,.5), enable_cc=True)
         elif robot == 'ur3':
-            robot = ur3.UR3(pos=rm.vec(0.1, .3, .5), ik_solver='d' ,enable_cc=True)
+            robot = ur3.UR3(pos=rm.vec(0.1, .3, .5), enable_cc=True)
         elif robot == 'cbtpro1300':
             robot = cbtpro1300.CobottaPro1300WithRobotiq140(pos=rm.vec(0.1, .3, .5), enable_cc=True)
         else:
