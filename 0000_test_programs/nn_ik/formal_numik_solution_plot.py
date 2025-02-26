@@ -48,7 +48,7 @@ if __name__ == '__main__':
     elif mode == 'plot':
         with open('wrs/robot_sim/_data_files/cobotta_arm_jnt_data.pkl', 'rb') as f_jnt:
             kdt_jnt_data = pickle.load(f_jnt)
-
+        kdt_jnt_data = kdt_jnt_data[0]
         jnt_values = [ 2.48931629,  1.74442019,  1.25015768,  1.43062172, -1.02924473,
         1.10771746]
 
@@ -120,32 +120,32 @@ if __name__ == '__main__':
         #     robot.goto_given_conf(jnt_values=kdt_jnt_data[jnt])
         #     arm_mesh = robot.gen_meshmodel(alpha=.5)
         #     arm_mesh.attach_to(base)
-        # robot.goto_given_conf(jnt_values=kdt_jnt_data[best_delta_q])
-        # arm_mesh = robot.gen_meshmodel(alpha=.3)
+        # # robot.goto_given_conf(jnt_values=kdt_jnt_data[best_delta_q])
+        # # arm_mesh = robot.gen_meshmodel(alpha=.3)
         # arm_mesh.attach_to(base)
         # base.run()
         
         '''plot 2 seeds'''
-        # success_idx = 39922
-        # fail_idx = 40092
-        # result = [ 2.48931416,  1.74441111,  1.25016662,  1.43061741, -1.02924263,
-        # 1.10771868]
+        success_idx = 39922
+        fail_idx = 40092
+        result = [ 2.48931416,  1.74441111,  1.25016662,  1.43061741, -1.02924263,
+        1.10771868]
         
-        # robot.goto_given_conf(jnt_values=kdt_jnt_data[fail_idx])
-        # arm_mesh = robot.gen_meshmodel(alpha=0.2, rgb=[0,0,1])
-        # arm_mesh.attach_to(base)
-        # tgt_pos, tgt_rotmat = robot.fk(jnt_values = kdt_jnt_data[fail_idx])
-        # mcm.mgm.gen_dashed_frame(pos=tgt_pos, rotmat=tgt_rotmat).attach_to(base)
-        # robot.goto_given_conf(jnt_values=kdt_jnt_data[success_idx])
-        # arm_mesh = robot.gen_meshmodel(alpha=0.25, rgb=[1,0,0])
-        # arm_mesh.attach_to(base)
-        # tgt_pos, tgt_rotmat = robot.fk(jnt_values = kdt_jnt_data[success_idx])
-        # mcm.mgm.gen_dashed_frame(pos=tgt_pos, rotmat=tgt_rotmat).attach_to(base)
+        robot.goto_given_conf(jnt_values=kdt_jnt_data[fail_idx])
+        arm_mesh = robot.gen_meshmodel(alpha=0.2, rgb=[0,0,1])
+        arm_mesh.attach_to(base)
+        tgt_pos, tgt_rotmat = robot.fk(jnt_values = kdt_jnt_data[fail_idx])
+        mcm.mgm.gen_dashed_frame(pos=tgt_pos, rotmat=tgt_rotmat).attach_to(base)
+        robot.goto_given_conf(jnt_values=kdt_jnt_data[success_idx])
+        arm_mesh = robot.gen_meshmodel(alpha=0.25, rgb=[1,0,0])
+        arm_mesh.attach_to(base)
+        tgt_pos, tgt_rotmat = robot.fk(jnt_values = kdt_jnt_data[success_idx])
+        mcm.mgm.gen_dashed_frame(pos=tgt_pos, rotmat=tgt_rotmat).attach_to(base)
 
-        # robot.goto_given_conf(jnt_values=result)
-        # arm_mesh = robot.gen_meshmodel(alpha=0.25, rgb=[0,1,0])
-        # arm_mesh.attach_to(base)
-        # base.run()
+        robot.goto_given_conf(jnt_values=result)
+        arm_mesh = robot.gen_meshmodel(alpha=0.25, rgb=[0,1,0])
+        arm_mesh.attach_to(base)
+        base.run()
 
         '''calculate the pos and rot bewteen seeds'''
         # succeed_seed = [-1.45444111, -0.34906625,  1.22671717,  0.42386571,  0.3490655 , 1.780236  ]

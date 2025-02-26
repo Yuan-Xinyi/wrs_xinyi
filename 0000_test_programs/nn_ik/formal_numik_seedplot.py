@@ -21,7 +21,7 @@ nupdate = 10000
 best_sol_num_list = range(1,101)
 
 # robot_list = ['sglarm_yumi', 'cbt','ur3', 'cbtpro1300']
-robot_list = ['sglarm_yumi', 'cobotta']
+robot_list = ['sglarm_yumi', 'cobotta','ur3']
 success_array = np.zeros((len(robot_list), len(best_sol_num_list)))
 time_array = np.zeros((len(robot_list), len(best_sol_num_list), nupdate))
 
@@ -36,6 +36,7 @@ for id, robot in enumerate(robot_list):
 plt.figure(figsize=(12, 6))
 for i in range(success_array.shape[0]):
     plt.plot(best_sol_num_list, success_array[i], label=robot_list[i], linewidth=2.5)
+    plt.legend()
 plt.show()
 
 
@@ -44,5 +45,6 @@ for i in range(time_array.shape[0]):
     mean_time = np.mean(time_array[i], axis=1)
     std_time = np.std(time_array[i], axis=1)
     plt.plot(best_sol_num_list, mean_time, label=robot_list[i], linewidth=2.5)
-    plt.fill_between(best_sol_num_list, mean_time - std_time, mean_time + std_time, alpha=0.3)
+    plt.fill_between(best_sol_num_list, mean_time + std_time, alpha=0.1)
+    plt.legend()
 plt.show()

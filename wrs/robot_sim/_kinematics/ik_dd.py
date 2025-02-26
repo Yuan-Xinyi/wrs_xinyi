@@ -189,7 +189,7 @@ class DDIKSolver(object):
             square_sums = np.sum((adjust_array) ** 2, axis=1)
             sorted_indices = np.argsort(square_sums)
             # sorted_indices = range(self._k_max)
-            seed_jnt_array_cad = seed_jnt_array[sorted_indices[:100]]  # 20
+            seed_jnt_array_cad = seed_jnt_array[sorted_indices[:20]]  # 20
             for id, seed_jnt_values in enumerate(seed_jnt_array_cad):
                 if id > best_sol_num:
                     return None
@@ -203,12 +203,16 @@ class DDIKSolver(object):
                                                max_n_iter=max_n_iter,
                                                toggle_dbg=toggle_dbg)
                 if result is None:
+                    print(f'failure {id}: {repr(seed_jnt_values)}')
                     nid = id+1
                     distances = np.linalg.norm(nid*seed_jnt_array_cad[nid:] - np.sum(seed_jnt_array_cad[:nid], axis=0), axis=1)
                     sorted_cad_indices = np.argsort(-distances)
                     seed_jnt_array_cad[nid:] = seed_jnt_array_cad[nid:][sorted_cad_indices]
                     continue
                 else:
+                    print('-'*50)
+                    print(f'success seed jnt value id {id}: {repr(seed_jnt_values)}')
+                    print('-'*50)
                     return result
             return None
         # else:
