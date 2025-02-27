@@ -25,8 +25,8 @@ success_array = np.zeros((len(robot_list), len(best_sol_num_list)))
 time_array = np.zeros((len(robot_list), len(best_sol_num_list), nupdate))
 
 for id, robot in enumerate(robot_list):
-    time_dir = f'{robot}_time_ikseed.npy'
-    success_dir = f'{robot}_success_ikseed.npy'
+    time_dir = f'0226_save/{robot}_time_ikseed.npy'
+    success_dir = f'0226_save/{robot}_success_ikseed.npy'
     time_array[id] = np.load(time_dir).squeeze()
     success_array[id] = np.load(success_dir).squeeze()
 
@@ -41,7 +41,7 @@ colors = ["#FF9F57", "#6BAFAD", "#6498B7", "#E75A4E"]
 #     plt.grid(True)
 #     # plt.xlim(0, 100)
 #     # plt.ylim(70, 100) 
-#     plt.savefig('success_seed0_100.png', dpi = 1200)
+#     plt.savefig('0226_save/success_seed0_100.png', dpi = 1200)
 
 # plt.show()
 
@@ -54,8 +54,8 @@ for i in range(time_array.shape[0]):
     std_time = np.std(time_array[i], axis=1)
     # print(std_time[99])
     plt.plot(best_sol_num_list, mean_time, label=robot_list[i],color = colors[i], linewidth=2.5)
-    plt.fill_between(best_sol_num_list, mean_time + std_time,color = colors[i], alpha=0.2)
+    # plt.fill_between(best_sol_num_list, mean_time + std_time, mean_time - std_time, color = colors[i], alpha=0.2)
     plt.grid(True)
-    # plt.savefig('mean_time_seed0_100.png', dpi = 1200)
-    plt.legend()
+    plt.savefig('0226_save/mean_time_seed0_100.png', dpi = 1200)
+    # plt.legend()
 plt.show()

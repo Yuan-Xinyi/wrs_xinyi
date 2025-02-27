@@ -14,6 +14,7 @@ from sklearn.model_selection import train_test_split
 from torch.utils.data import DataLoader, TensorDataset
 import time
 import torch.nn.functional as F
+import json
 
 from wrs import wd, rm, mcm
 import wrs.robot_sim.robots.cobotta.cobotta as cbt
@@ -22,6 +23,39 @@ import wrs.robot_sim.manipulators.ur3.ur3 as ur3
 import wrs.robot_sim.manipulators.ur3e.ur3e as ur3e
 import wrs.basis.robot_math as rm
 import wrs.robot_sim.robots.yumi.yumi_single_arm as yumi
+import wrs.robot_sim.robots.cobotta_pro1300.cobotta_pro1300 as cbtpro1300
+
+def reset_log():
+    log = {
+        'avg_time': [],
+        'pos_err_mean': [],
+        'pos_err_min': [],
+        'pos_err_max': [],
+        'pos_err_q1': [],
+        'pos_err_q3': [],
+        'rot_err_mean': [],
+        'rot_err_min': [],
+        'rot_err_max': [],
+        'rot_err_q1': [],
+        'rot_err_q3': []
+    }
+
+    return log
+
+def update_log(log, time_list, pos_err_list, rot_err_list):
+    log['avg_time'].append(np.mean(time_list) * 1000)
+    
+    log['pos_err_mean'].append(np.mean(pos_err_list))
+    log['pos_err_min'].append(np.min(pos_err_list))
+    log['pos_err_max'].append(np.max(pos_err_list))
+    log['pos_err_q1'].append(np.percentile(pos_err_list, 25))
+    log['pos_err_q3'].append(np.percentile(pos_err_list, 75))
+    
+    log['rot_err_mean'].append(np.mean(rot_err_list) * 180 / np.pi)
+    log['rot_err_min'].append(np.min(rot_err_list) * 180 / np.pi)
+    log['rot_err_max'].append(np.max(rot_err_list) * 180 / np.pi)
+    log['rot_err_q1'].append(np.percentile(rot_err_list, 25) * 180 / np.pi)
+    log['rot_err_q3'].append(np.percentile(rot_err_list, 75) * 180 / np.pi)
 
 '''define the world'''
 base = wd.World(cam_pos=[1.7, 1.7, 1.7], lookat_pos=[0, 0, .3])
@@ -31,14 +65,14 @@ mcm.mgm.gen_frame().attach_to(base)
 output_as_seed = False
 # robot = yumi.YumiSglArm(pos=rm.vec(0.1, .3, .5),enable_cc=True)
 # robot = cbt.Cobotta(pos=rm.vec(0.1,.3,.5), enable_cc=True)
-# robot = ur3.UR3(pos=rm.vec(0.1, .3, .5),enable_cc=True)
-robot = ur3.UR3(pos=rm.vec(.0, .0, .0),enable_cc=True)
-# robot = rs007l.RS007L(pos=rm.vec(0.1, .3, .5), enable_cc=True)
+robot = ur3.UR3(pos=rm.vec(0.1, .3, .5),enable_cc=True)
+# robot = cbtpro1300.CobottaPro1300WithRobotiq140(pos=rm.vec(0.1, .3, .5), enable_cc=True)
+
 
 '''define the initail paras'''
 nupdate = 100
 trail_num = 100
-mode = 'random_ik_test' # ['train' random_ik_test]
+mode = 'as_seed' # ['train' random_ik_test, as_seed]
 device = torch.device('cuda' if torch.cuda.is_available() else 'cpu')
 
 # train paras
@@ -117,7 +151,7 @@ if __name__ == '__main__':
 
     input_dim = pos_rot.shape[1]    # e.g., 3D position + 3D rotation vector
     output_dim = jnt_values.shape[1]   # e.g., a 6-DOF robot arm
-    num_mixtures = 1000 # number of mixture components
+    num_mixtures = 120 # number of mixture components
 
     # dataset pre-processing
     gth_jnt_values = torch.tensor(jnt_values, dtype=torch.float32).to(device)
@@ -185,7 +219,88 @@ if __name__ == '__main__':
         wandb.finish()
 
     elif mode == 'random_ik_test':
+
+        model.eval()
+        output_as_seed = False        
+        nupdate = 2000
         num_mixtures = 120
+        robot_list = ['sglarm_yumi','ur3']
+
+        for robot_ in robot_list:
+            if robot == 'yumi':
+                robot = yumi.YumiSglArm(pos=rm.vec(0.1, .3, .5),enable_cc=True)
+                model.load_state_dict(torch.load('0000_test_programs/nn_ik/results/formal_0119_1911_sglarm_yumi_MDN_rotv/model200'))
+            elif robot == 'cbt':
+                robot = cbt.Cobotta(pos=rm.vec(0.0,.0,.0), enable_cc=True)
+                predict_noise = False # [True, False]
+                sampling_steps = 5
+                model_path = '0000_test_programs/nn_ik/results/saved_model/cobotta_diffusion_ik.pt'
+            elif robot == 'ur3':
+                robot = ur3.UR3(pos=rm.vec(0.1, .3, .5), enable_cc=True)
+                model.load_state_dict(torch.load('0000_test_programs/nn_ik/results/formal_0119_1912_ur3_MDN_rotv/model400'))
+            elif robot == 'cbtpro1300':
+                robot = cbtpro1300.CobottaPro1300WithRobotiq140(pos=rm.vec(0.1, .3, .5), enable_cc=True)
+                predict_noise = True # [True, False]
+                sampling_steps = 10
+                model_path = '0000_test_programs/nn_ik/results/0224_1614_cobotta_pro_1300_h4_steps20_train/diffusion_ckpt_latest.pt'
+            else:
+                print("Invalid robot name")
+
+            log = reset_log()
+            infer_batch = 1
+        
+            with torch.no_grad():
+                for i in tqdm(range(nupdate)):
+                    pos_err_list = []
+                    rot_err_list = []
+                    time_list = []
+                    
+                    '''provide the prior condition information'''
+                    jnt_values = robot.rand_conf()
+                    tgt_pos, tgt_rotmat = robot.fk(jnt_values = jnt_values)
+                    rotv = rm.rotmat_to_wvec(tgt_rotmat)
+                    pos_rot = torch.tensor(np.concatenate((tgt_pos.flatten(), rotv.flatten()), axis=0), dtype=torch.float32).to(device).unsqueeze(0)
+                    
+                    for _ in range(infer_batch):
+                        tic = time.time()
+                        pi, mu, sigma  = model(pos_rot)
+                        pi, mu, sigma = pi.squeeze(0), mu.squeeze(0), sigma.squeeze(0)
+                        max_pi_idx = torch.argmax(pi).item()
+                        result = mu[max_pi_idx].cpu().numpy()
+                        toc = time.time()
+                        time_list.append(toc-tic)
+
+                        pred_pos, pred_rotmat = robot.fk(jnt_values=result)
+                        pos_err, rot_err, _ = rm.diff_between_poses(tgt_pos*1000, tgt_rotmat, pred_pos*1000, pred_rotmat)
+                        # print(f'pos err: {pos_err:.2f} mm, rot err: {rot_err:.2f} degree')
+                        pos_err_list.append(pos_err), rot_err_list.append(rot_err)
+
+                        # robot.goto_given_conf(jnt_values=result)
+                        # arm_mesh = robot.gen_meshmodel(alpha=0.1, rgb=[0,0,1])
+                        # arm_mesh.attach_to(base)
+                    
+                    update_log(log, time_list, pos_err_list, rot_err_list)
+            
+            print('==========================================================')
+            print('current robot: ', robot.name)
+            print(f'Average time: {np.mean(log["avg_time"]):.2f} ms')
+            print('-'*50)
+            print(f'pos err mean: {np.mean(log["pos_err_mean"]):.2f} mm')
+            print(f'pos err min: {np.mean(log["pos_err_min"]):.2f} mm')
+            print(f'pos err max: {np.mean(log["pos_err_max"]):.2f} mm')
+            print(f'pos err q1: {np.mean(log["pos_err_q1"]):.2f} mm')
+            print(f'pos err q3: {np.mean(log["pos_err_q3"]):.2f} mm')
+            print('-'*50)
+            print(f'rot err mean: {np.mean(log["rot_err_mean"]):.2f} degree')
+            print(f'rot err min: {np.mean(log["rot_err_min"]):.2f} degree')
+            print(f'rot err max: {np.mean(log["rot_err_max"]):.2f} degree')
+            print(f'rot err q1: {np.mean(log["rot_err_q1"]):.2f} degree')
+            print(f'rot err q3: {np.mean(log["rot_err_q3"]):.2f} degree')
+            print('==========================================================')
+
+    elif mode == 'as_seed':
+        num_mixtures = 120
+        robot_list = ['sglarm_yumi','ur3']
         if num_mixtures == 5:
             if robot.name == 'cobotta':
                 model.load_state_dict(torch.load('0000_test_programs/nn_ik/results/formal_0119_1911_cobotta_MDN_rotv/model200'))
@@ -201,7 +316,7 @@ if __name__ == '__main__':
             if robot.name == 'cobotta':
                 model.load_state_dict(torch.load('0000_test_programs/nn_ik/results/formal_0119_2106_cobotta_MDN_rotv_120/model2500'))
             elif robot.name == 'sglarm_yumi':
-                model.load_state_dict(torch.load('0000_test_programs/nn_ik/results/formal_0119_2106_sglarm_yumi_MDN_rotv_120/model2000'))
+                model.load_state_dict(torch.load('0000_test_programs/nn_ik/results/saved_model/formal_0119_2106_sglarm_yumi_MDN_rotv_120_model2000'))
             elif robot.name == 'ur3':
                 model.load_state_dict(torch.load('0000_test_programs/nn_ik/results/saved_model/formal_0119_2107_ur3_MDN_rotv_120_model3500'))
             elif robot.name == 'khi_rs007l':
@@ -212,17 +327,20 @@ if __name__ == '__main__':
             raise ValueError('Invalid num_mixtures!')
         
         model.eval()
-        success_num = 0
-        time_list = []
-        pos_err_list = []
-        rot_err_list = []
-        
-        plot = True
-        nupdate = 1 if plot else 10000
+        output_as_seed = True        
+        nupdate = 10000
+        json_file = 'MDN_result.json'
+        np.random.seed(100)
 
         with torch.no_grad():
+            success_num = 0
+            time_list = []
+            pos_err_list = []
+            rot_err_list = []
             for _ in tqdm(range(nupdate)):
                 jnt_values = robot.rand_conf()
+                # print(repr(jnt_values))
+                # jnt_values = [-2.13804772, -1.04085843,  0.11936408, -0.40867239,  2.7227841 , 2.11849168, -1.40243529]
                 tgt_pos, tgt_rotmat = robot.fk(jnt_values = jnt_values)  # fk --> pos(3), rotmat(3x3)
                 # rot format conversion
                 rotv = rm.rotmat_to_wvec(tgt_rotmat)
@@ -237,7 +355,7 @@ if __name__ == '__main__':
 
                     result = robot.ik(tgt_pos, tgt_rotmat, seed_jnt_values=seed_jnt_mdn, best_sol_num = 1)
                     toc = time.time()
-                    time_list.append(toc-tic)
+                    time_list.append((toc-tic)*1000)
                     if result is not None:
                         success_num += 1
                 else:
@@ -248,27 +366,23 @@ if __name__ == '__main__':
                     seed_jnt_mdn = mu[max_pi_idx].cpu().numpy()
 
                     toc = time.time()
-                    time_list.append(toc-tic)
+                    time_list.append((toc-tic)*1000)
                     success_num += 1
                     result = seed_jnt_mdn
                 
                 if result is not None:
                     pred_pos, pred_rotmat = robot.fk(jnt_values=result)
                     pos_err, rot_err, _ = rm.diff_between_poses(tgt_pos*1000, tgt_rotmat, pred_pos*1000, pred_rotmat)
-                    pos_err_list.append(pos_err)
-                    rot_err_list.append(rot_err)
-                        
-        print('=============================')
-        print(f'current robot: {robot.name}')
-        print(f'Average time: {np.mean(time_list) * 1000:.2f} ms')
-        print(f'success rate: {success_num / nupdate * 100:.2f}%')
-        print(f'Average position error: {np.mean(pos_err_list)}')
-        print(f'Average rotation error: {np.mean(rot_err_list)*180/np.pi}')
-        print('=============================')
+                    # print(f'pos err: {pos_err:.2f} mm, rot err: {rot_err:.2f} degree')
+                    pos_err_list.append(pos_err), rot_err_list.append(rot_err)
 
-        if plot:
-            mcm.mgm.gen_dashed_frame(pos=tgt_pos, rotmat=tgt_rotmat).attach_to(base)
-            robot.goto_given_conf(jnt_values=result)
-            arm_mesh = robot.gen_meshmodel(alpha=0.25, rgb=[0,0,1])
-            arm_mesh.attach_to(base)
-            base.run()
+        print('==========================================================')
+        print('current robot: ', robot.name)
+        print(f'success rate: {success_num / nupdate * 100:.2f}%')
+        print(f'Average time: {np.mean(time_list):.2f} ms')
+        print('-'*50)
+        print(f'pos err mean: {np.mean(pos_err_list):.2f} mm')
+        print(f'rot err mean: {np.mean(rot_err_list):.2f} degree')
+        print('==========================================================')
+
+                    

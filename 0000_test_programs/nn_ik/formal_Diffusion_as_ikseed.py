@@ -32,7 +32,7 @@ seed = 0
 
 # diffuser parameters
 backbone = 'unet1d' # ['transformer', 'unet']
-mode = 'inference'  # ['train', 'inference', 'loop_inference']
+mode = 'as_seed'  # ['train', 'inference', 'loop_inference']
 train_batch_size = 64
 test_batch_size = 1
 solver = 'ddpm'
