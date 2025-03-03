@@ -40,8 +40,8 @@ if __name__ == '__main__':
 
     for i in tqdm(range(nupdate)):
         # jnt_values = robot.rand_conf()
-        jnt_values = [ 2.50413245,  1.73323309,  1.59021775,  2.2408374 ,  1.17974473,
-       -1.82249448]
+        jnt_values = [-0.89298267, -0.99745798,  2.20644947, -1.90284232, -0.62446831,
+       -0.94061137]
         print("*" * 150 + "\n")
         print('jnt', repr(jnt_values))
         tgt_pos, tgt_rotmat = robot.fk(jnt_values = jnt_values)

@@ -337,6 +337,8 @@ class NumIKSolver(object):
         author: weiwei
         date: 20231101
         """
+        record_iteration = False
+        iteration_jnt_values = []
         iter_jnt_values = seed_jnt_values
         if iter_jnt_values is None:
             iter_jnt_values = self.jlc.get_jnt_values()
@@ -350,6 +352,8 @@ class NumIKSolver(object):
                                                                           tgt_pos=tgt_pos,
                                                                           tgt_rotmat=tgt_rotmat)
             if f2t_pos_err < 1e-4 and f2t_rot_err < 1e-3 and self.jlc.are_jnts_in_ranges(iter_jnt_values):
+                if record_iteration:
+                    print("iteration_jnt_values ", iteration_jnt_values)
                 return iter_jnt_values
             clamped_err_vec = self._clamp_tgt_err(f2t_pos_err, f2t_rot_err, f2t_err_vec)
             # clamped_err_vec = f2t_err_vec * .01
@@ -365,6 +369,10 @@ class NumIKSolver(object):
             if toggle_dbg:
                 print("previous iter joint values ", np.degrees(iter_jnt_values))
             # print(max(abs(clamped_err_vec)), max(abs(np.degrees(delta_jnt_values))))
+            
+            if record_iteration:
+                iteration_jnt_values.append(iter_jnt_values.tolist())
+            
             iter_jnt_values = iter_jnt_values + delta_jnt_values
             # iter_jnt_values = np.mod(iter_jnt_values, 4 * np.pi) - 2 * np.pi
             # iter_jnt_values = np.where(iter_jnt_values > 2 * np.pi, iter_jnt_values - 2 * np.pi, iter_jnt_values)
@@ -387,6 +395,8 @@ class NumIKSolver(object):
                 print(counter, max_n_iter)
             if counter > max_n_iter:
                 # base.run()
+                if record_iteration:
+                    print("iteration_jnt_values ", repr(iteration_jnt_values))
                 return None
                 # raise Exception("No IK solution")
             counter += 1

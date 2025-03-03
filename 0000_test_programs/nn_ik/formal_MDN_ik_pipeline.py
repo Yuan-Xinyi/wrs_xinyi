@@ -65,8 +65,8 @@ mcm.mgm.gen_frame().attach_to(base)
 output_as_seed = False
 # robot = yumi.YumiSglArm(pos=rm.vec(0.1, .3, .5),enable_cc=True)
 # robot = cbt.Cobotta(pos=rm.vec(0.1,.3,.5), enable_cc=True)  # rotv
-robot = ur3.UR3(pos=rm.vec(0.1, .3, .5),enable_cc=True)
-# robot = cbtpro1300.CobottaPro1300WithRobotiq140(pos=rm.vec(0.1, .3, .5), enable_cc=True)
+# robot = ur3.UR3(pos=rm.vec(0.1, .3, .5),enable_cc=True)
+robot = cbtpro1300.CobottaPro1300WithRobotiq140(pos=rm.vec(0.1, .3, .5), enable_cc=True)
 
 
 '''define the initail paras'''
@@ -146,8 +146,8 @@ if __name__ == '__main__':
     # exit()
     
     # dataset loading
-    dataset = np.load(f'0000_test_programs/nn_ik/datasets/formal/{robot.name}_ik_dataset.npz')
-    # dataset = np.load(f'0000_test_programs/nn_ik/datasets/formal/{robot.name}_ik_dataset_rotquat.npz')
+    # dataset = np.load(f'0000_test_programs/nn_ik/datasets/formal/{robot.name}_ik_dataset.npz')
+    dataset = np.load(f'0000_test_programs/nn_ik/datasets/formal/{robot.name}_ik_dataset_rotquat.npz')
     jnt_values, pos_rot = dataset['jnt'], dataset['pos_rotv']
 
     input_dim = pos_rot.shape[1]    # e.g., 3D position + 3D rotation vector
@@ -315,7 +315,7 @@ if __name__ == '__main__':
                 raise ValueError('Invalid robot name!')
         elif num_mixtures == 120:
             if robot.name == 'cobotta':
-                model_path = '0000_test_programs/nn_ik/results/0227_1028_cobotta_MDN_rotquat_120/model1000'
+                model_path = '0000_test_programs/nn_ik/results/0227_1028_cobotta_MDN_rotquat_120/model1000'  
                 model.load_state_dict(torch.load(model_path))
             elif robot.name == 'sglarm_yumi':
                 model_path = '0000_test_programs/nn_ik/results/saved_model/formal_0119_2106_sglarm_yumi_MDN_rotv_120_model2000'
@@ -324,6 +324,8 @@ if __name__ == '__main__':
                 model_path = '0000_test_programs/nn_ik/results/saved_model/formal_0119_2107_ur3_MDN_rotv_120_model3500'
                 model.load_state_dict(torch.load(model_path))
             elif robot.name == 'cobotta_pro_1300':
+                # dataset: rotquat
+                # according to the dataset, the rotmat is in the form of quaternion
                 model_path = '0000_test_programs/nn_ik/results/0227_1030_cobotta_pro_1300_MDN_rotquat_120/model1000'
                 model.load_state_dict(torch.load(model_path))
             else:
@@ -332,7 +334,7 @@ if __name__ == '__main__':
             raise ValueError('Invalid num_mixtures!')
         
         model.eval()
-        output_as_seed = True        
+        output_as_seed = False        
         json_file = 'MDN_result.json'
         plot = False
         nupdate = 1 if plot else 2000
@@ -349,8 +351,8 @@ if __name__ == '__main__':
                 # jnt_values = [-2.13804772, -1.04085843,  0.11936408, -0.40867239,  2.7227841 , 2.11849168, -1.40243529]
                 tgt_pos, tgt_rotmat = robot.fk(jnt_values = jnt_values)  # fk --> pos(3), rotmat(3x3)
                 # rot format conversion
-                rotv = rm.rotmat_to_wvec(tgt_rotmat)
-                # rotv = rm.rotmat_to_quaternion(tgt_rotmat)
+                # rotv = rm.rotmat_to_wvec(tgt_rotmat)
+                rotv = rm.rotmat_to_quaternion(tgt_rotmat)
             
                 pos_rot = torch.tensor(np.concatenate((tgt_pos.flatten(), rotv.flatten()), axis=0), dtype=torch.float32).to(device).unsqueeze(0)
                 if output_as_seed:
