@@ -19,6 +19,8 @@ import wrs.robot_sim._kinematics.jlchain as rkjlc
 import wrs.robot_sim._kinematics.model_generator as rkmg
 import wrs.modeling.geometric_model as mgm
 import wrs.basis.utils as bu
+from sklearn.linear_model import RANSACRegressor
+from scipy.spatial.distance import cdist
 
 
 # for debugging purpose
@@ -190,6 +192,25 @@ class DDIKSolver(object):
             sorted_indices = np.argsort(square_sums)
             # sorted_indices = range(self._k_max)
             seed_jnt_array_cad = seed_jnt_array[sorted_indices[:20]]  # 20
+            
+            '''find the most concentrated seed jnt values'''
+            ransac_means = []
+            X = np.ones((len(seed_jnt_array_cad), 1))
+            for i in range(6):
+                model = RANSACRegressor().fit(X, seed_jnt_array_cad[:, i]) 
+                ransac_means.append(model.estimator_.intercept_) 
+
+            ransac_means = np.array(ransac_means).reshape(1, 6)
+            distances = np.linalg.norm(seed_jnt_array_cad - ransac_means, axis=1)
+            closest_index = np.argmin(distances)
+            seed_jnt_array_cad = seed_jnt_array_cad[closest_index].reshape(1, 6)
+
+            '''find the median solution'''
+            # distances = cdist(seed_jnt_array_cad, seed_jnt_array_cad, metric='euclidean')
+            # median_idx = np.argmin(np.sum(distances, axis=1)) 
+            # median_center = seed_jnt_array_cad[median_idx]
+            # seed_jnt_array_cad = median_center.reshape(1, 6)
+
             for id, seed_jnt_values in enumerate(seed_jnt_array_cad):
                 if id > best_sol_num:
                     return None
@@ -203,7 +224,8 @@ class DDIKSolver(object):
                                                max_n_iter=max_n_iter,
                                                toggle_dbg=toggle_dbg)
                 if result is None:
-                    # print(f'failure {id}: {repr(seed_jnt_values)}')
+                    print(f'failure {id} center: {repr(seed_jnt_values)}')
+                    print(f'all seed: {repr(seed_jnt_array[sorted_indices[:20]])}')
                     nid = id+1
                     distances = np.linalg.norm(nid*seed_jnt_array_cad[nid:] - np.sum(seed_jnt_array_cad[:nid], axis=0), axis=1)
                     sorted_cad_indices = np.argsort(-distances)
