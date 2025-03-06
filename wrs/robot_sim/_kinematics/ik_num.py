@@ -361,7 +361,7 @@ class NumIKSolver(object):
             # weighted clamping
             k_phi = .1
             tmp_mm_jnt_values = self.max_jnt_values + self.min_jnt_values
-            phi_q = ((2 * iter_jnt_values - tmp_mm_jnt_values) / self.jnt_range_values) * k_phi
+            phi_q = ((2 * np.array(iter_jnt_values) - tmp_mm_jnt_values) / self.jnt_range_values) * k_phi
             clamping = -(np.identity(wln.shape[0]) - wln) @ phi_q
             # pinv with weighted clamping
             delta_jnt_values = clamping + wln_sqrt @ np.linalg.pinv(j_mat @ wln_sqrt, rcond=1e-4) @ (
