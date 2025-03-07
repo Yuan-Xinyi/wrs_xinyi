@@ -143,42 +143,41 @@ class RRTConnect(rrt.RRT):
 if __name__ == '__main__':
     import numpy as np
     import matplotlib.pyplot as plt
-    import wrs.robot_sim.robots.xybot.xybot as robot
+    import wrs.visualization.panda.world as wd
+    import wrs.modeling.geometric_model as mgm
+    # import wrs.robot_sim.robots.xybot.xybot as robot
+    import wrs.robot_sim.manipulators.xarm_lite6.xarm_lite6 as robot
+    import wrs.basis.robot_math as rm
 
     # ====Search Path with RRT====
-    obstacle_list = [
-        ((.5, .5), .3),
-        ((.3, .6), .3),
-        ((.3, .8), .3),
-        ((.3, 1.0), .3),
-        ((.7, .5), .3),
-        ((.9, .5), .3),
-        ((.10, .5), .3),
-        ((.10, .0), .3),
-        ((.10, -.2), .3),
-        ((.10, -.4), .3),
-        ((.15, .5), .3),
-        ((.15, .7), .3),
-        ((.15, .9), .3),
-        ((.15, 1.1), .3),
-        ((.0, 1.2), .3),
-        ((-1, 1.0), .3),
-        ((-2, .8), .3)
-    ]  # [[x,y],size]
-    # Set Initial parameters
-    robot = robot.XYBot()
+    base = wd.World(cam_pos=[2, 0, 1], lookat_pos=[0, 0, 0])
+    mgm.gen_frame().attach_to(base)
+    robot = robot.XArmLite6(enable_cc=True)
     rrtc = RRTConnect(robot)
-    path = rrtc.plan(start_conf=np.array([-.2, 0]),
-                     goal_conf=np.array([.5, 1.0]),
-                     obstacle_list=obstacle_list,
+    # start_conf = robot.rand_conf()
+    # goal_conf = robot.rand_conf()
+    start_conf = [-0.69984654, -2.61460858,  2.00115672,  1.78559269,  1.53977208,
+       -2.59826454]
+    goal_conf = [ 2.9438924 , -0.40144992,  3.91926001, -2.14635809,  1.00116669,
+       -0.35189169]
+    print(repr(start_conf))
+    print(repr(goal_conf))
+
+    robot.goto_given_conf(jnt_values=start_conf)
+    robot.gen_meshmodel(rgb=rm.const.steel_blue, alpha=.3).attach_to(base)
+    robot.goto_given_conf(jnt_values=goal_conf)
+    robot.gen_meshmodel(rgb=[0,1,0], alpha=.3).attach_to(base)
+    # base.run()
+
+
+    path = rrtc.plan(start_conf=start_conf,
+                     goal_conf=goal_conf,
                      ext_dist=.1,
                      max_time=300,
                      animation=True)
     # Draw final path
     print(path)
-    rrtc.draw_wspace([rrtc.roadmap_start, rrtc.roadmap_goal],
-                     rrtc.start_conf, rrtc.goal_conf, obstacle_list)
-    plt.plot([conf[0] for conf in path], [conf[1] for conf in path], linewidth=4, linestyle='-', color='y')
-    # plt.savefig(str(rrtc.img_counter)+'.jpg')
-    plt.pause(0.001)
-    plt.show()
+    
+    for _ in path.jv_list:
+        robot.goto_given_conf(jnt_values=_)
+        robot.gen_meshmodel(rgb=[1,0,0], alpha=.3).attach_to(base)

@@ -1,1 +1,1 @@
-from .xarm_lite6_x import XArmLite6X
+from wrs.robot_con.xarm_lite6.xarm_lite6_x import XArmLite6X

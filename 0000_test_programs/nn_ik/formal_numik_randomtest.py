@@ -28,7 +28,7 @@ mcm.mgm.gen_frame().attach_to(base)
 
 
 
-nupdate = 1
+nupdate = 10000
 best_sol_num_list = [1] # [1,3,5,10,20]
 # robot_list = ['yumi', 'cbt','ur3', 'cbtpro1300']
 robot_list = ['cbt']
@@ -59,8 +59,8 @@ if __name__ == '__main__':
                 jnt_values = robot.rand_conf()
     #             jnt_values = [-2.44265098,  1.02174031,  1.78042216, -2.11248243,  0.02840153,
     #    -1.29120677]
-                print("*" * 150 + "\n")
-                print('gth jnt', repr(jnt_values))
+                # print("*" * 150 + "\n")
+                # print('gth jnt', repr(jnt_values))
                 tgt_pos, tgt_rotmat = robot.fk(jnt_values = jnt_values)
                 # print('tgt_pos', tgt_pos)
                 tic = time.time()

@@ -7,7 +7,7 @@ Reference: XArm Developer Manual (http://download.ufactory.cc/xarm/en/xArm%20Dev
 import time
 from typing import Optional
 import numpy as np
-from xarm_lite6_dxl_x import XArmLite6DXLCon
+from wrs.robot_con.xarm_lite6.xarm_lite6_dxl_x import XArmLite6DXLCon
 import wrs.basis.robot_math as rm
 import wrs.drivers.xarm.wrapper.xarm_api as arm
 
@@ -384,3 +384,8 @@ class XArmLite6X(object):
     def __del__(self):
         self._arm_x.disconnect()
         self._gripper_x.disable_dxl_torque()
+
+
+if __name__ == '__main__':
+    robot_x = XArmLite6X(ip='192.168.1.190')
+    print('current pose:', repr(robot_x.get_jnt_values()))

@@ -320,5 +320,5 @@ if __name__ == '__main__':
     mgm.gen_frame(pos=tgt_pos, rotmat=tgt_rotmat, alpha=.3).attach_to(base)
     jnt_values = robot.ik(tgt_pos, tgt_rotmat, option="single")
     robot.goto_given_conf(jnt_values=jnt_values)
-    robot.gen_meshmodel(rgb=rm.const.cyan, alpha=.3).attach_to(base)
+    robot.gen_meshmodel(rgb=rm.const.steel_blue, alpha=.3).attach_to(base)
     base.run()
