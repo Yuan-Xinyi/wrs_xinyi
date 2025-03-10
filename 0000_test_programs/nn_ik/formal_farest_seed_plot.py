@@ -68,8 +68,8 @@ if __name__ == '__main__':
 
         #     s_pos, _ = robot.fk(jnt_values=jnt1)
         #     e_pos, _ = robot.fk(jnt_values=jnt2)
-        #     if i < 3:
-        #         mgm.gen_arrow(spos=s_pos, epos=e_pos, stick_radius=.0025, rgb=[1,0,0]).attach_to(base)
+            
+        #     mgm.gen_arrow(spos=s_pos, epos=e_pos, stick_radius=.0025, rgb=[0,0,0]).attach_to(base)
 
         #     robot.goto_given_conf(jnt_values=jnt1)
         #     arm_mesh = robot.gen_meshmodel(alpha=0.2, rgb=[1, 0, 0])

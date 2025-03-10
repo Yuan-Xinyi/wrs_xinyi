@@ -60,27 +60,27 @@ if __name__ == '__main__':
         mcm.mgm.gen_dashed_frame(pos=tgt_pos, rotmat=tgt_rotmat).attach_to(base)
         
         '''success'''
-        # jnt_list = [[-1.454441111111111, -0.6981321250000001, 2.139275042857143, -1.2715971428571429, -0.9890201666666668, -1.780236], [-1.222086878338565, -1.1701142783611538, 2.3715757181934993, -1.6173777053544494, -0.7726805891835274, -1.2222532140856952], [-1.0953275735222732, -1.061311049002143, 2.226727322784939, -1.8333548544984961, -0.8008473701797493, -0.9492613272231316], [-0.7095031148464365, -0.960300276393524, 2.197945917736475, -1.9869817797883254, -0.45547655665452214, -0.9274960480892287], [-0.8667322945912056, -0.9972303099377424, 2.207611258977268, -1.909814869591795, -0.6004945817751378, -0.9421056601976645]]
+        jnt_list = [[-1.454441111111111, -0.6981321250000001, 2.139275042857143, -1.2715971428571429, -0.9890201666666668, -1.780236], [-1.222086878338565, -1.1701142783611538, 2.3715757181934993, -1.6173777053544494, -0.7726805891835274, -1.2222532140856952], [-1.0953275735222732, -1.061311049002143, 2.226727322784939, -1.8333548544984961, -0.8008473701797493, -0.9492613272231316], [-0.7095031148464365, -0.960300276393524, 2.197945917736475, -1.9869817797883254, -0.45547655665452214, -0.9274960480892287], [-0.8667322945912056, -0.9972303099377424, 2.207611258977268, -1.909814869591795, -0.6004945817751378, -0.9421056601976645]]
 
-        # for i in range(len(jnt_list) - 1): 
-        #     jnt1 = jnt_list[i]
-        #     jnt2 = jnt_list[i + 1]
+        for i in range(len(jnt_list) - 1): 
+            jnt1 = jnt_list[i]
+            jnt2 = jnt_list[i + 1]
 
-        #     s_pos, _ = robot.fk(jnt_values=jnt1)
-        #     e_pos, _ = robot.fk(jnt_values=jnt2)
+            s_pos, _ = robot.fk(jnt_values=jnt1)
+            e_pos, _ = robot.fk(jnt_values=jnt2)
             
-        #     mgm.gen_arrow(spos=s_pos, epos=e_pos, stick_radius=.0025, rgb=[0,0,1]).attach_to(base)
+            mgm.gen_arrow(spos=s_pos, epos=e_pos, stick_radius=.0025, rgb=[0,0,0]).attach_to(base)
 
-        #     robot.goto_given_conf(jnt_values=jnt1)
-        #     arm_mesh = robot.gen_meshmodel(alpha=0.2, rgb=[0, 0, 1])
-        #     arm_mesh.attach_to(base)
+            robot.goto_given_conf(jnt_values=jnt1)
+            arm_mesh = robot.gen_meshmodel(alpha=0.2, rgb=[0, 0, 1])
+            arm_mesh.attach_to(base)
         
-        # robot.goto_given_conf(jnt_values=jnt_list[-1])
-        # final_arm_mesh = robot.gen_meshmodel(alpha=0.2, rgb=[0, 0, 1])
-        # final_arm_mesh.attach_to(base)
-        # tgt_pos, tgt_rotmat = robot.fk(jnt_values=jnt_list[-1])
-        # mcm.mgm.gen_dashed_frame(pos=tgt_pos, rotmat=tgt_rotmat).attach_to(base)
-        # base.run()
+        robot.goto_given_conf(jnt_values=jnt_list[-1])
+        final_arm_mesh = robot.gen_meshmodel(alpha=0.2, rgb=[0, 0, 1])
+        final_arm_mesh.attach_to(base)
+        tgt_pos, tgt_rotmat = robot.fk(jnt_values=jnt_list[-1])
+        mcm.mgm.gen_dashed_frame(pos=tgt_pos, rotmat=tgt_rotmat).attach_to(base)
+        base.run()
 
         '''fail'''
         # jnt_list = [[0.8726646666666666, -0.34906625000000013, 1.8350890857142859, 1.2715971428571429, -0.9890201666666668, 1.7802360000000004], [0.518242863568018, -0.922163909458882, 1.7326400995218987, 1.8967977572096923, -0.6228689512603456, 1.0036273723201714], [1.966289513324845, -0.47937499468709, 1.3328619191120696, 0.583911892734549, -1.8911306675590702, 1.4512574569182826], [1.7966230414040718, -0.8877408319841692, 1.6987837272703554, 0.8780489822393712, -1.779518672235449, 1.3103975682673572], [1.748323247999939, -0.8911059424270954, 1.5503179737644897, 1.0307246849224851, -1.6734674566687602, 0.9604947820764266], [1.4727137883218058, -0.8707656475924307, 1.4553041144341485, 1.3456235045959766, -1.572699969351991, 0.7624230551920557], [2.4036170093151554, -0.787239460308739, 1.5314819096891605, 0.5636798620990665, -2.1282702519971908, 0.7674476201817555], [2.237074172280133, -0.9376666549905723, 1.5988762486705492, 0.6715004086563674, -2.0048433885952117, 0.5593356486387248], [2.0597181925442207, -0.9253768576962774, 1.5296261151338426, 0.8305575166987407, -1.887565950274984, 0.6028152870948592]]
@@ -92,7 +92,7 @@ if __name__ == '__main__':
         #     s_pos, _ = robot.fk(jnt_values=jnt1)
         #     e_pos, _ = robot.fk(jnt_values=jnt2)
             
-        #     mgm.gen_arrow(spos=s_pos, epos=e_pos, stick_radius=.0025, rgb=[1,0,0]).attach_to(base)
+        #     mgm.gen_arrow(spos=s_pos, epos=e_pos, stick_radius=.0025, rgb=[0,0,0]).attach_to(base)
 
         #     robot.goto_given_conf(jnt_values=jnt1)
         #     arm_mesh = robot.gen_meshmodel(alpha=0.15, rgb=[1, 0, 0])
@@ -112,17 +112,17 @@ if __name__ == '__main__':
         # base.run()
 
         '''plot tcp nearest ten seeds'''
-        jnt_list = np.array([14502,  7100,  8862,  7704,  2064,  3222, 15013,  3342, 12740, 13344])
-        for jnt in jnt_list:
-            # robot.goto_given_conf(jnt_values=jnt)
-            robot.goto_given_conf(jnt_values=kdt_jnt_data[jnt])
-            arm_mesh = robot.gen_meshmodel(alpha=.2)
-            arm_mesh.attach_to(base)
+        # jnt_list = np.array([14502,  7100,  8862,  7704,  2064,  3222, 15013,  3342, 12740, 13344])
+        # for jnt in jnt_list:
+        #     # robot.goto_given_conf(jnt_values=jnt)
+        #     robot.goto_given_conf(jnt_values=kdt_jnt_data[jnt])
+        #     arm_mesh = robot.gen_meshmodel(alpha=.2)
+        #     arm_mesh.attach_to(base)
         
-        robot.goto_given_conf(jnt_values=jnt_values)
-        arm_mesh = robot.gen_meshmodel(alpha=0.9, rgb=[0.133, 0.545, 0.133])
-        arm_mesh.attach_to(base)
-        base.run()
+        # robot.goto_given_conf(jnt_values=jnt_values)
+        # arm_mesh = robot.gen_meshmodel(alpha=0.9, rgb=[0.133, 0.545, 0.133])
+        # arm_mesh.attach_to(base)
+        # base.run()
 
         '''plot the most linear 10 seeds'''
         # jnt_list = np.array([ 9923,  3512,  9032,  4232,  9152,  1295,  9207,  6935, 15563,
