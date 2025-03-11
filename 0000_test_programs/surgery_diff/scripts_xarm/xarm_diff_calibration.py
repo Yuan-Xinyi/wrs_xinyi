@@ -15,12 +15,12 @@ current_file_dir = os.path.dirname(__file__)
 parent_dir = os.path.dirname(os.path.dirname(__file__))
 
 '''load the config file'''
-with open("0000_test_programs/surgery_diff/scripts/gendata_config.yaml", "r") as file:
+config_file = os.path.join(current_file_dir, 'gendata_config.yaml')
+with open(config_file, "r") as file:
     config = yaml.safe_load(file)
 
 '''init the robot'''
 robot_x = xarm_x.XArmLite6X(ip = '192.168.1.190')
-robot_x.move_j([-0.670654,  0.708091,  1.460846,  0.00882 ,  0.772503, -0.468056])
 
 print('current joint:', repr(robot_x.get_jnt_values()))
 print('current pose:', repr(robot_x.get_pose()))
@@ -55,17 +55,12 @@ for id, camera in enumerate(rgb_camera):
 
     time.sleep(1)
 
-'''init the data storage'''
-dataset_dir = os.path.join(parent_dir, 'datasets')
-dataset_name = os.path.join(dataset_dir, 'surgery.zarr')
-store = zarr.DirectoryStore(dataset_name)
-root = zarr.group(store=store)
-print('dataset created in:', dataset_name)
 
 '''init the robot sim'''
 base = wd.World(cam_pos=[2, 0, 1], lookat_pos=[0, 0, 0])
 mgm.gen_frame().attach_to(base)
 robot_s = xarm_s.XArmLite6(enable_cc=True)
+
 
 '''print the pos and q'''
 print('current joint:', repr(robot_x.get_jnt_values()))
