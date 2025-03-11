@@ -61,7 +61,7 @@ rgb_camera.append(cv2.VideoCapture(cam_idx[1]))
 base = wd.World(cam_pos=[2, 0, 1], lookat_pos=[0, 0, 0])
 mgm.gen_frame().attach_to(base)
 robot_s = xarm_s.XArmLite6(enable_cc=True)
-
+dataset_dir = os.path.join(parent_dir, 'datasets')
 
 '''start data generation'''
 jnt_list = []
