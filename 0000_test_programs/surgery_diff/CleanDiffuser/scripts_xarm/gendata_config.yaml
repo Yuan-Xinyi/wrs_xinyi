@@ -1,0 +1,51 @@
+# system settings
+camera_idx: [2, 5]
+crop_size: 96
+crop_center: [[300,210], [285,215]]
+end_jnt: [-0.643114,  0.884175,  1.506969,  0.026845,  0.658014, -0.46307 ]
+start_jnt: [-0.843937,  0.568185,  1.222027,  0.453867,  0.593299, -0.992486]
+
+# dataset settings
+dataset_name: surgery_diff
+abs_action: false
+mode: train
+obs_keys: ['img', 'state', 'action']
+shape_meta:
+  obs:
+    agent_pos:
+      shape:
+      - 7
+      type: low_dim
+    image:
+      shape:
+      - 3
+      - 96
+      - 192
+      type: rgb
+action_dim: 7
+obs_steps: 2
+action_steps: 8
+rgb_model: resnet18
+resize_shape: null
+crop_shape:
+  - 84
+  - 84
+random_crop: true
+use_group_norm: true
+use_seq: true
+
+# training settings
+device: cuda:0
+seed: 0
+gradient_steps: 1000000
+batch_size: 64
+horizon: 16
+nn: chi_unet
+diffusion: ddpm
+sample_steps: 5
+# optimizer
+lr: 0.0001
+
+# log
+log_freq: 10
+save_freq: 5000
