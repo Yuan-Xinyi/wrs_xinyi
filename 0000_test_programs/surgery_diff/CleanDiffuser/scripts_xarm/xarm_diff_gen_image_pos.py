@@ -14,7 +14,6 @@ import os
 
 current_file_dir = os.path.dirname(__file__)
 parent_dir = os.path.dirname(os.path.dirname(__file__))
-trails = 20
 
 
 '''load the config file'''
@@ -35,6 +34,7 @@ rgb_camera.append(cv2.VideoCapture(cam_idx[1]))
 
 
 '''init the data storage'''
+trails = 20
 dataset_dir = os.path.join(parent_dir, 'datasets')
 dataset_name = os.path.join(dataset_dir, 'surgery.zarr')
 store = zarr.DirectoryStore(dataset_name)
@@ -43,17 +43,18 @@ print('dataset created in:', dataset_name)
 
 meta_group = root.create_group("meta")
 data_group = root.create_group("data")
-episode_ends = meta_group.create_dataset("episode_ends", data=0, dtype=np.int32)
-state = data_group.create_dataset("state", shape=(0, 7), chunks=(1, 7), dtype=np.float32, append=True)
-action = data_group.create_dataset("action", shape=(0, 7), chunks=(1, 7), dtype=np.float32, append=True)
-img = data_group.create_dataset("img", shape=(0, 96, 192, 3), chunks=(1, 96, 192, 3), dtype=np.uint8, append=True)
+episode_ends_ds = meta_group.create_dataset("episode_ends", shape=(0,), chunks=(1,), dtype=np.float32, append=True)
+state_ds = data_group.create_dataset("state", shape=(0, 7), chunks=(1, 7), dtype=np.float32, append=True)
+action_ds = data_group.create_dataset("action", shape=(0, 7), chunks=(1, 7), dtype=np.float32, append=True)
+img_ds = data_group.create_dataset("img", shape=(0, 96, 192, 3), chunks=(1, 96, 192, 3), dtype=np.uint8, append=True)
 
 '''start data generation'''
 jnt_list = np.load(os.path.join(dataset_dir, 'jnt_array.npy'))
+counter = 0
 
 for _ in range(trails):
     for id, jnt in enumerate(jnt_list):
-        robot_x.move_j(jnt)
+        counter += 1
         img = np.zeros((2, 96, 96, 3), dtype=np.uint8)
 
         for id, camera in enumerate(rgb_camera):
@@ -80,7 +81,17 @@ for _ in range(trails):
         rot_quat = rm.quaternion_from_rotmat(rot_mat)
         agent_pos = np.concatenate((pos, rot_quat))
 
-        agent_pos_ds.append(np.expand_dims(agent_pos, axis=0))  # (1, 7)
-        image_ds.append(np.expand_dims(concatenated_image, axis=0))  # (1, 96, 192, 3)
+        state_ds.append(np.expand_dims(agent_pos, axis=0))  # (1, 7)
+        img_ds.append(np.expand_dims(concatenated_image, axis=0))  # (1, 96, 192, 3)
+
+        '''move the robot and record the action'''
+        robot_x.move_j(jnt)
+        pos, rot_mat = robot_s.fk(jnt)
+        rot_quat = rm.quaternion_from_rotmat(rot_mat)
+        agent_pos = np.concatenate((pos, rot_quat))
+        action_ds.append(np.expand_dims(agent_pos, axis=0))
+
+    counter_array = np.array([counter], dtype=np.int32)
+    episode_ends_ds.append(counter_array)
 
 

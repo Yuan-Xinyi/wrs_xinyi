@@ -27,9 +27,10 @@ obs_steps: 2
 action_steps: 8
 rgb_model: resnet18
 resize_shape: null
-crop_shape:
-  - 84
-  - 84
+# crop_shape:
+#   - 84
+#   - 84
+crop_shape: null
 random_crop: true
 use_group_norm: true
 use_seq: true

@@ -33,7 +33,7 @@ class DrillHoleImageDataset(BaseDataset):
         self.normalizer = self.get_normalizer()
 
     def get_normalizer(self):
-        agent_pos_normalizer = MinMaxNormalizer(self.replay_buffer['state'][...,:2])
+        agent_pos_normalizer = MinMaxNormalizer(self.replay_buffer['state'][:])
         image_normalizer = ImageNormalizer()
         action_normalizer = MinMaxNormalizer(self.replay_buffer['action'][:])
         
@@ -57,7 +57,7 @@ class DrillHoleImageDataset(BaseDataset):
         image = self.normalizer['obs']['image'].normalize(image)
         
         # agent_pos
-        agent_pos = sample['state'][:,:2].astype(np.float32)  # (T, 2)
+        agent_pos = sample['state'].astype(np.float32)  # (T, 2)
         agent_pos = self.normalizer['obs']['agent_pos'].normalize(agent_pos)
         
         # action

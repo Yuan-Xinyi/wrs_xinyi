@@ -63,9 +63,9 @@ set_seed(config['seed'])
 assert config["nn"] == "chi_unet"
 assert config['diffusion'] == "ddpm"
 
-from CleanDiffuser.cleandiffuser.nn_condition import MultiImageObsCondition
-from CleanDiffuser.cleandiffuser.nn_diffusion import ChiUNet1d
-from CleanDiffuser.cleandiffuser.diffusion.ddpm import DDPM
+from cleandiffuser.nn_condition import MultiImageObsCondition
+from cleandiffuser.nn_diffusion import ChiUNet1d
+from cleandiffuser.diffusion.ddpm import DDPM
 
 nn_condition = MultiImageObsCondition(
     shape_meta=config['shape_meta'], emb_dim=256, rgb_model_name=config['rgb_model'], resize_shape=config['resize_shape'],
@@ -89,7 +89,7 @@ agent = DDPM(
 
 lr_scheduler = CosineAnnealingLR(agent.optimizer, T_max=config['gradient_steps'])
 
-if config['model'] == "train":
+if config['mode'] == "train":
     # --------------- Data Loading -----------------
     '''prepare the save path'''
     TimeCode = ((datetime.now()).strftime("%m%d_%H%M")).replace(" ", "")
@@ -113,9 +113,9 @@ if config['model'] == "train":
         nobs = batch['obs']
         condition = {}
         for k in nobs.keys():
-            condition[k] = nobs[k][:, :config['obs_steps'], :].to(config['device'])
+            condition[k] = nobs[k][:, :config['obs_steps'], :].to(torch.float32).to(config['device'])
 
-        naction = batch['action'].to(config['device'])
+        naction = batch['action'].to(torch.float32).to(config['device'])
 
         # update diffusion
         diffusion_loss = agent.update(naction, condition)['loss']
