@@ -376,7 +376,7 @@ class XArmLite6X(object):
             interpolated_path = interpolated_path[start_frame_id:]
             for jnt_values in interpolated_path:
                 self._arm_x.set_servo_angle_j(jnt_values, is_radian=True)
-                time.sleep(.05)
+                time.sleep(.1)
             return
         else:
             raise NotImplementedError

@@ -143,18 +143,105 @@ if config['mode'] == "train":
             break
     wandb.finish()
 
-# elif args.mode == "inference":
-#     # ----------------- Inference ----------------------
-#     if args.model_path:
-#         agent.load(args.model_path)
-#     else:
-#         raise ValueError("Empty model for inference")
-#     agent.model.eval()
-#     agent.model_ema.eval()
+elif config['mode'] == "inference":
+    # ----------------- Inference ----------------------
+    model_path = '0000_test_programs/surgery_diff/CleanDiffuser/scripts_xarm/results/0312_1418_h16/diffusion_ckpt_latest.pt'
+    agent.load(model_path)
+    agent.model.eval()
+    agent.model_ema.eval()
 
-#     metrics = {'step': 0}
-#     metrics.update(inference(args, envs, dataset, agent, logger))
-#     logger.log(metrics, category='inference')
+    '''capture the image'''
+    import wrs.robot_con.xarm_lite6.xarm_lite6_x as xarm_x
+    import wrs.robot_sim.manipulators.xarm_lite6.xarm_lite6 as xarm_s
+    import wrs.visualization.panda.world as wd
+    from wrs import wd, rm, mcm
+    import wrs.modeling.geometric_model as mgm
+    import cv2
+
+    # init
+    robot_x = xarm_x.XArmLite6X(ip = '192.168.1.190')
+    base = wd.World(cam_pos=[2, 0, 1], lookat_pos=[0, 0, 0])
+    mgm.gen_frame().attach_to(base)
+    robot_s = xarm_s.XArmLite6(enable_cc=True)
+    rgb_camera = []
+    cam_idx = config['camera_idx']
+    rgb_camera.append(cv2.VideoCapture(cam_idx[0]))
+    rgb_camera.append(cv2.VideoCapture(cam_idx[1]))
+
+    # move to the starting point
+    robot_x.move_j(config['start_jnt'])
+
+    img = np.zeros((2, 96, 96, 3), dtype=np.uint8)
+
+    for id, camera in enumerate(rgb_camera):
+        ret, frame = camera.read()
+
+        '''crop the image'''
+        crop_size = config['crop_size']
+        h, w, _ = frame.shape
+        crop_center = config['crop_center']
+        center_x, center_y = crop_center[id][0], crop_center[id][1]
+        x1 = max(center_x - crop_size // 2, 0)
+        x2 = min(center_x + crop_size // 2, w)
+        y1 = max(center_y - crop_size // 2, 0)
+        y2 = min(center_y + crop_size // 2, h)
+
+        if id == 0:
+            img[id] = frame[y1:y2, x1:x2]
+        else:
+            cropped = frame[y1:y2, x1:x2]
+            img[id] = np.rot90(cropped, 2)
+            
+    concatenated_image = np.hstack(img)
+    pos, rot_mat = robot_s.fk(robot_x.get_jnt_values())
+    rot_quat = rm.quaternion_from_rotmat(rot_mat)
+    agent_pos = np.concatenate((pos, rot_quat))
+
+    # inference
+    solver = 'ddim'
+
+    for _ in range(132-8):
+        obs_dict = {}
+        obs_dict['image'], obs_dict['agent_pos'] = np.moveaxis(concatenated_image, -1, 0) / 255, agent_pos
+        for k in obs_dict.keys():
+            obs_seq = obs_dict[k].astype(np.float32)
+            nobs = dataset.normalizer['obs'][k].normalize(obs_seq)
+            obs_dict[k] = nobs = torch.tensor(np.expand_dims(np.expand_dims(nobs, axis=0), axis=0), 
+                                            device=config['device'], dtype=torch.float32)
+
+        with torch.no_grad():
+            condition = obs_dict
+            prior = torch.zeros((1, config['horizon'], config['action_dim']), device=config['device'])
+            naction, _ = agent.sample(prior=prior, n_samples=1, sample_steps=config['sample_steps'],
+                                    solver=solver, condition_cfg=condition, w_cfg=1.0, use_ema=True)
+        # unnormalize prediction
+        naction = naction.detach().to('cpu').numpy()  # (num_envs, horizon, action_dim)
+        action_pred = dataset.normalizer['action'].unnormalize(naction)  
+
+        # get action
+        start = config['obs_steps'] - 1
+        end = start + config['action_steps']
+        action = action_pred[:, start:end, :]  # (1,16,7)
+        path = []
+
+        for idx in range(action.shape[1]):
+            tgt_pos = action[0, idx, :3]
+            tgt_rotmat = rm.rotmat_from_quaternion(action[0, idx, 3:])
+            jnt_values = robot_s.ik(tgt_pos, tgt_rotmat)
+            path.append(jnt_values)
+            
+            # plot
+            # print(jnt_values.shape)
+            robot_s.goto_given_conf(jnt_values=jnt_values)
+            arm_mesh = robot_s.gen_meshmodel(rgb=rm.const.steel_blue, alpha=0.02)
+            arm_mesh.attach_to(base)
+
+
+        for jnt_values in path:
+            robot_x.move_j(jnt_values, speed=0.1)
+
+
+
     
 else:
     raise ValueError("Illegal mode")

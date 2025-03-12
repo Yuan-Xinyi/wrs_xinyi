@@ -8,7 +8,7 @@ start_jnt: [-0.843937,  0.568185,  1.222027,  0.453867,  0.593299, -0.992486]
 # dataset settings
 dataset_name: surgery_diff
 abs_action: false
-mode: train
+mode: inference  # train or inference
 obs_keys: ['img', 'state', 'action']
 shape_meta:
   obs:
@@ -23,8 +23,8 @@ shape_meta:
       - 192
       type: rgb
 action_dim: 7
-obs_steps: 2
-action_steps: 8
+obs_steps: 1
+action_steps: 16
 rgb_model: resnet18
 resize_shape: null
 # crop_shape:
@@ -43,10 +43,10 @@ batch_size: 64
 horizon: 16
 nn: chi_unet
 diffusion: ddpm
-sample_steps: 5
+sample_steps: 20
 # optimizer
 lr: 0.0001
 
 # log
 log_freq: 10
-save_freq: 5000
+save_freq: 1000
