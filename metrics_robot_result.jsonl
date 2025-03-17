@@ -39,3 +39,15 @@ kdl_rr
 {"robot": "Cobotta", "best_solution_number": 1, "success_rate": "82.62%", "time_statistics": {"mean": "2.18 ms", "std": "1.56 ms", "min": "0.88 ms", "max": "8.02 ms", "coefficient_of_variation": "0.72", "percentile_25": "1.19 ms", "percentile_75": "2.37 ms", "interquartile_range": "1.17 ms"}}
 kdl
 {"robot": "Cobotta", "best_solution_number": 1, "success_rate": "86.98%", "time_statistics": {"mean": "1.61 ms", "std": "0.71 ms", "min": "0.87 ms", "max": "6.02 ms", "coefficient_of_variation": "0.44", "percentile_25": "1.19 ms", "percentile_75": "1.71 ms", "interquartile_range": "0.52 ms"}}
+
+
+update the ik num
+kdl
+{"robot": "Cobotta", "best_solution_number": 1, "success_rate": "87.71%", "time_statistics": {"mean": "1.69 ms", "std": "0.74 ms", "min": "0.91 ms", "max": "5.75 ms", "coefficient_of_variation": "0.44", "percentile_25": "1.24 ms", "percentile_75": "1.76 ms", "interquartile_range": "0.52 ms"}}
+kdl_rr
+{"robot": "Cobotta", "best_solution_number": 1, "success_rate": "80.20%", "time_statistics": {"mean": "1.43 ms", "std": "0.40 ms", "min": "0.86 ms", "max": "4.67 ms", "coefficient_of_variation": "0.28", "percentile_25": "1.18 ms", "percentile_75": "1.48 ms", "interquartile_range": "0.30 ms"}}
+{"robot": "Cobotta", "best_solution_number": 1, "success_rate": "88.92%", "time_statistics": {"mean": "1.51 ms", "std": "0.67 ms", "min": "0.70 ms", "max": "5.93 ms", "coefficient_of_variation": "0.44", "percentile_25": "1.17 ms", "percentile_75": "1.47 ms", "interquartile_range": "0.29 ms"}}
+{"robot": "Cobotta", "best_solution_number": 1, "success_rate": "81.73%", "time_statistics": {"mean": "1.48 ms", "std": "0.66 ms", "min": "0.84 ms", "max": "4.87 ms", "coefficient_of_variation": "0.45", "percentile_25": "1.14 ms", "percentile_75": "1.60 ms", "interquartile_range": "0.46 ms"}}
+{"robot": "Cobotta", "best_solution_number": 1, "success_rate": "88.49%", "time_statistics": {"mean": "1.57 ms", "std": "0.70 ms", "min": "0.91 ms", "max": "5.89 ms", "coefficient_of_variation": "0.44", "percentile_25": "1.21 ms", "percentile_75": "1.54 ms", "interquartile_range": "0.32 ms"}}
+{"robot": "Cobotta", "best_solution_number": 1, "success_rate": "79.13%", "time_statistics": {"mean": "1.78 ms", "std": "0.97 ms", "min": "0.87 ms", "max": "7.08 ms", "coefficient_of_variation": "0.54", "percentile_25": "1.18 ms", "percentile_75": "2.52 ms", "interquartile_range": "1.33 ms"}}
+{"robot": "Cobotta", "best_solution_number": 1, "success_rate": "88.42%", "time_statistics": {"mean": "1.56 ms", "std": "0.68 ms", "min": "0.91 ms", "max": "5.54 ms", "coefficient_of_variation": "0.43", "percentile_25": "1.23 ms", "percentile_75": "1.54 ms", "interquartile_range": "0.31 ms"}}
