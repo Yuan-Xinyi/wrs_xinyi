@@ -27,6 +27,8 @@ robot_x = xarm_x.XArmLite6X(ip = '192.168.1.190')
 base = wd.World(cam_pos=[2, 0, 1], lookat_pos=[0, 0, 0])
 mgm.gen_frame().attach_to(base)
 robot_s = xarm_s.XArmLite6(enable_cc=True)
+# robot_x.move_j(config['start_jnt'])
+# robot_x.move_j(config['end_jnt'])
 
 rrtc = RRT(robot_s)
 start_conf = config['start_jnt']

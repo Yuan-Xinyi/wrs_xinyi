@@ -24,7 +24,7 @@ shape_meta:
       type: rgb
 action_dim: 7
 obs_steps: 1
-action_steps: 16
+action_steps: 128
 rgb_model: resnet18
 resize_shape: null
 # crop_shape:
@@ -40,7 +40,7 @@ device: cuda:0
 seed: 0
 gradient_steps: 1000000
 batch_size: 64
-horizon: 16
+horizon: 128
 nn: chi_unet
 diffusion: ddpm
 sample_steps: 20

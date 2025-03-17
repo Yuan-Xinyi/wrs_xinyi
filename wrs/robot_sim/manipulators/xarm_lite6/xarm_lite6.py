@@ -104,8 +104,8 @@ class XArmLite6(mi.ManipulatorInterface):
         collision_primitive_c1 = CollisionBox(Point3(0.100, 0, 0.1065),
                                               x=.059 + ex_radius, y=.042 + ex_radius, z=0.0315 + ex_radius)
         pdcnd.addSolid(collision_primitive_c1)
-        collision_primitive_c2 = CollisionBox(Point3(.2, 0, 0.0915),
-                                              x=.041 + ex_radius, y=.042 + ex_radius, z=0.0465 + ex_radius)
+        collision_primitive_c2 = CollisionBox(Point3(.2, 0, 0.0915 + 0.005),
+                                              x=.041 + ex_radius, y=.042 + ex_radius, z=0.0465 + ex_radius - 0.005 )
         pdcnd.addSolid(collision_primitive_c2)
         cdprim = NodePath(name+"_cdprim")
         cdprim.attachNewNode(pdcnd)
@@ -114,8 +114,10 @@ class XArmLite6(mi.ManipulatorInterface):
     @staticmethod
     def _link4_cdprim(name="auto", ex_radius=None):
         pdcnd = CollisionNode(name+"_cnode")
+        # collision_primitive_c0 = CollisionBox(Point3(0, 0, -0.124009),
+        #                                       x=.041 + ex_radius, y=.042 + ex_radius, z=0.0682075 + ex_radius)
         collision_primitive_c0 = CollisionBox(Point3(0, 0, -0.124009),
-                                              x=.041 + ex_radius, y=.042 + ex_radius, z=0.0682075 + ex_radius)
+                                              x=.041 + ex_radius, y=.042 + ex_radius, z=0.0682075 + ex_radius - 0.01)
         pdcnd.addSolid(collision_primitive_c0)
         collision_primitive_c1 = CollisionBox(Point3(0, -0.063315, -0.0503),
                                               x=.041 + ex_radius, y=.021315 + ex_radius, z=.087825 + ex_radius)
@@ -307,18 +309,25 @@ if __name__ == '__main__':
     base = wd.World(cam_pos=[2, 0, 1], lookat_pos=[0, 0, 0])
     mgm.gen_frame().attach_to(base)
     robot = XArmLite6(enable_cc=True)
-    robot.gen_stickmodel(toggle_jnt_frames=True).attach_to(base)
+    # robot.gen_stickmodel(toggle_jnt_frames=True).attach_to(base)
     # robot.gen_meshmodel(toggle_cdprim=True).attach_to(base)
 
     # tgt_pos = np.array([.3, .3, .3])
     # tgt_rotmat = rm.rotmat_from_euler(0, 0, 0)
+    end_jnt=[-0.643114,  0.884175,  1.506969,  0.026845,  0.658014, -0.46307 ]
+    start_jnt=[-0.843937,  0.568185,  1.222027,  0.453867,  0.593299, -0.992486]
+    # tgt_pos = np.array([0.2995316, -0.04995615, 0.1882039])
+    # tgt_rotmat = np.array([[0.03785788, 0.05806798, 0.99759455],
+    #                        [0.01741114, 0.99812033, -0.05875933],
+    #                        [-0.99913144, 0.01959376, 0.03677569]])
+    
+    robot.goto_given_conf(jnt_values=end_jnt)
 
-    tgt_pos = np.array([0.2995316, -0.04995615, 0.1882039])
-    tgt_rotmat = np.array([[0.03785788, 0.05806798, 0.99759455],
-                           [0.01741114, 0.99812033, -0.05875933],
-                           [-0.99913144, 0.01959376, 0.03677569]])
-    mgm.gen_frame(pos=tgt_pos, rotmat=tgt_rotmat, alpha=.3).attach_to(base)
-    jnt_values = robot.ik(tgt_pos, tgt_rotmat, option="single")
-    robot.goto_given_conf(jnt_values=jnt_values)
-    robot.gen_meshmodel(rgb=rm.const.steel_blue, alpha=.3).attach_to(base)
+    # mgm.gen_frame(pos=tgt_pos, rotmat=tgt_rotmat, alpha=.3).attach_to(base)
+    # jnt_values = robot.ik(tgt_pos, tgt_rotmat, option="single")
+    # robot.goto_given_conf(jnt_values=jnt_values)
+    # robot.gen_meshmodel(rgb=rm.const.steel_blue, alpha=1).attach_to(base)
+    print(robot.is_collided(toggle_contacts=False))
+    robot.gen_meshmodel(alpha=1).attach_to(base)
+    robot.show_cdprim()
     base.run()

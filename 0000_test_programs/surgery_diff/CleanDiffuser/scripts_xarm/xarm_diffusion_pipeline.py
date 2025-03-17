@@ -18,6 +18,7 @@ import torch.optim as optim
 import yaml
 from datetime import datetime
 import random
+from tqdm import tqdm
 
 from torch.optim.lr_scheduler import CosineAnnealingLR
 from cleandiffuser.dataset.dataset_utils import loop_dataloader
@@ -145,19 +146,22 @@ if config['mode'] == "train":
 
 elif config['mode'] == "inference":
     # ----------------- Inference ----------------------
-    model_path = '0000_test_programs/surgery_diff/CleanDiffuser/scripts_xarm/results/0312_1418_h16/diffusion_ckpt_latest.pt'
+    # model_path = '0000_test_programs/surgery_diff/CleanDiffuser/scripts_xarm/results/0312_1418_h16/diffusion_ckpt_latest.pt'
+    # model_path = '0000_test_programs/surgery_diff/CleanDiffuser/scripts_xarm/results/0313_1012_h64/diffusion_ckpt_latest.pt'
+    model_path = '0000_test_programs/surgery_diff/CleanDiffuser/scripts_xarm/results/0313_1142_h128/diffusion_ckpt_latest.pt'
     agent.load(model_path)
     agent.model.eval()
     agent.model_ema.eval()
 
     '''capture the image'''
+    sys.path.append('/home/lqin/wrs_xinyi/wrs')
     import wrs.robot_con.xarm_lite6.xarm_lite6_x as xarm_x
     import wrs.robot_sim.manipulators.xarm_lite6.xarm_lite6 as xarm_s
     import wrs.visualization.panda.world as wd
     from wrs import wd, rm, mcm
     import wrs.modeling.geometric_model as mgm
     import cv2
-
+    
     # init
     robot_x = xarm_x.XArmLite6X(ip = '192.168.1.190')
     base = wd.World(cam_pos=[2, 0, 1], lookat_pos=[0, 0, 0])
@@ -193,15 +197,17 @@ elif config['mode'] == "inference":
             img[id] = np.rot90(cropped, 2)
             
     concatenated_image = np.hstack(img)
-    pos, rot_mat = robot_s.fk(robot_x.get_jnt_values())
-    rot_quat = rm.quaternion_from_rotmat(rot_mat)
-    agent_pos = np.concatenate((pos, rot_quat))
 
     # inference
     solver = 'ddim'
 
-    for _ in range(132-8):
+    for step in range(132-8):
+        print("Step:", step)
         obs_dict = {}
+        pos, rot_mat = robot_s.fk(robot_x.get_jnt_values())
+        rot_quat = rm.quaternion_from_rotmat(rot_mat)
+        agent_pos = np.concatenate((pos, rot_quat))
+        
         obs_dict['image'], obs_dict['agent_pos'] = np.moveaxis(concatenated_image, -1, 0) / 255, agent_pos
         for k in obs_dict.keys():
             obs_seq = obs_dict[k].astype(np.float32)
@@ -237,8 +243,9 @@ elif config['mode'] == "inference":
             arm_mesh.attach_to(base)
 
 
-        for jnt_values in path:
-            robot_x.move_j(jnt_values, speed=0.1)
+        for jnt_values in tqdm(path):
+            # robot_x.move_j(jnt_values, speed=0.1)
+            robot_x.move_j(jnt_values)
 
 
 

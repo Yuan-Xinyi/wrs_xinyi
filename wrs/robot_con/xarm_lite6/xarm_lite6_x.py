@@ -50,7 +50,7 @@ class XArmLite6X(object):
 
         # for grippers
         if has_gripper:
-            self._gripper_x = XArmLite6DXLCon(self._arm_x, baudrate=115200, dxl_id=2)
+            self._gripper_x = XArmLite6DXLCon(self._arm_x, baudrate=115200, dxl_id=1)
             self._gripper_x.enable_dxl_torque()
             self._gripper_limit = [0, 0.04]
             if self._gripper_x.get_dxl_op_mode() != 5:
@@ -381,9 +381,9 @@ class XArmLite6X(object):
         else:
             raise NotImplementedError
 
-    def __del__(self):
-        self._arm_x.disconnect()
-        self._gripper_x.disable_dxl_torque()
+    # def __del__(self):
+    #     self._arm_x.disconnect()
+    #     self._gripper_x.disable_dxl_torque()
 
 
 if __name__ == '__main__':
