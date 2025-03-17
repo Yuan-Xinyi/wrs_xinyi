@@ -35,3 +35,7 @@ q = 0.5
 {"robot": "Cobotta", "best_solution_number": 1, "success_rate": "75.00%", "time_statistics": {"mean": "9.47 ms", "std": "1.81 ms", "min": "6.90 ms", "max": "44.85 ms", "coefficient_of_variation": "0.19", "percentile_25": "8.18 ms", "percentile_75": "10.30 ms", "interquartile_range": "2.11 ms"}}
 q = 0.2
 {"robot": "Cobotta", "best_solution_number": 1, "success_rate": "78.73%", "time_statistics": {"mean": "9.56 ms", "std": "1.32 ms", "min": "7.12 ms", "max": "44.05 ms", "coefficient_of_variation": "0.14", "percentile_25": "8.72 ms", "percentile_75": "10.17 ms", "interquartile_range": "1.45 ms"}}
+kdl_rr
+{"robot": "Cobotta", "best_solution_number": 1, "success_rate": "82.62%", "time_statistics": {"mean": "2.18 ms", "std": "1.56 ms", "min": "0.88 ms", "max": "8.02 ms", "coefficient_of_variation": "0.72", "percentile_25": "1.19 ms", "percentile_75": "2.37 ms", "interquartile_range": "1.17 ms"}}
+kdl
+{"robot": "Cobotta", "best_solution_number": 1, "success_rate": "86.98%", "time_statistics": {"mean": "1.61 ms", "std": "0.71 ms", "min": "0.87 ms", "max": "6.02 ms", "coefficient_of_variation": "0.44", "percentile_25": "1.19 ms", "percentile_75": "1.71 ms", "interquartile_range": "0.52 ms"}}

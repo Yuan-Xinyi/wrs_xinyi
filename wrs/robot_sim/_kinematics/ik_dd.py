@@ -214,11 +214,11 @@ class DDIKSolver(object):
             # seed_jnt_array_cad = median_center.reshape(1, 6)
 
             '''mean shift clustering'''
-            auto_bdw = estimate_bandwidth(seed_jnt_array_cad, quantile=0.2)
-            mean_shift = MeanShift(bandwidth=auto_bdw)
-            mean_shift.fit(seed_jnt_array_cad)
-            center = mean_shift.cluster_centers_
-            seed_jnt_array_cad = center[0].reshape(1,6)
+            # auto_bdw = estimate_bandwidth(seed_jnt_array_cad, quantile=0.2)
+            # mean_shift = MeanShift(bandwidth=auto_bdw)
+            # mean_shift.fit(seed_jnt_array_cad)
+            # center = mean_shift.cluster_centers_
+            # seed_jnt_array_cad = center[0].reshape(1,6)
             
             for id, seed_jnt_values in enumerate(seed_jnt_array_cad):
                 if id > best_sol_num:
