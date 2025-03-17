@@ -39,7 +39,7 @@ class NumIKSolver(object):
                  seed_jnt_values=None,
                  max_n_iter=100,
                  toggle_dbg=False):
-        return self.dls(tgt_pos=tgt_pos,
+        return self.pinv_cw(tgt_pos=tgt_pos,
                          tgt_rotmat=tgt_rotmat,
                          seed_jnt_values=seed_jnt_values,
                          max_n_iter=max_n_iter,
@@ -423,14 +423,14 @@ class NumIKSolver(object):
             flange_pos, flange_rotmat, j_mat = self.jlc.fk(jnt_values=iter_jnt_values,
                                                            toggle_jacobian=True,
                                                            update=False)
-            if f2t_pos_err > last_pos_err and f2t_rot_err > last_rot_err:
-                return None
-            last_pos_err = f2t_pos_err
-            last_rot_err = f2t_rot_err
             f2t_pos_err, f2t_rot_err, f2t_err_vec = rm.diff_between_poses(src_pos=flange_pos,
                                                                           src_rotmat=flange_rotmat,
                                                                           tgt_pos=tgt_pos,
                                                                           tgt_rotmat=tgt_rotmat)
+            if f2t_pos_err > last_pos_err and f2t_rot_err > last_rot_err:
+                return None
+            last_pos_err = f2t_pos_err
+            last_rot_err = f2t_rot_err
             if f2t_pos_err < 1e-4 and f2t_rot_err < 1e-3 and self.jlc.are_jnts_in_ranges(iter_jnt_values):
                 return iter_jnt_values
             clamped_err_vec = self._clamp_tgt_err(f2t_pos_err, f2t_rot_err, f2t_err_vec)
