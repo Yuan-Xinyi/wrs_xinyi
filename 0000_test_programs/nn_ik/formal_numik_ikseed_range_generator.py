@@ -20,19 +20,19 @@ mcm.mgm.gen_frame().attach_to(base)
 np.random.seed(42)
 random_seed_num = 1
 
-json_file = "seed_range_kdt.jsonl"
-# json_file = "seed_range_woreatt.jsonl"
-# json_file = "seed_range_reatt.jsonl"
+json_file = "seed_range_kdt_new.jsonl"
+# json_file = "seed_range_woreatt_new.jsonl"
+# json_file = "seed_range_reatt_new.jsonl"
 
 nupdate = 10000
-best_sol_num_list = range(1,101)
+# best_sol_num_list = range(1,21)
+best_sol_num_list = [20]
 robot_list = ['yumi', 'cbt','ur3', 'cbtpro1300']
 
 if __name__ == '__main__':
 # while True:
 
     for robot in robot_list:
-        time_ikseed = np.zeros((len(best_sol_num_list), nupdate))
         success_ikseed = np.zeros((len(best_sol_num_list), 1))
         if robot == 'yumi':
             robot = yumi.YumiSglArm(pos=rm.vec(0.1, .3, .5),enable_cc=True)
@@ -63,7 +63,6 @@ if __name__ == '__main__':
                     result = robot.ik(tgt_pos, tgt_rotmat, best_sol_num = best_sol_num)
                     toc = time.time()
                     time_list.append(toc-tic)
-                    time_ikseed[best_sol_num-1, i] = toc - tic
                     if result is not None:
                         success_num += 1
                         pred_pos, pred_rotmat = robot.fk(jnt_values=result)

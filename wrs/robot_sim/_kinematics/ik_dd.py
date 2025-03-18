@@ -185,7 +185,7 @@ class DDIKSolver(object):
             dist_value_list, nn_indx_list = self.query_tree.query(query_point, k=self._k_max, workers=-1)
             if type(nn_indx_list) is int:
                 nn_indx_list = [nn_indx_list]
-            seed_jnt_array_cad = self.jnt_data[nn_indx_list[:100]]
+            seed_jnt_array_cad = self.jnt_data[nn_indx_list[:20]]
             
             '''sort'''
             # seed_jnt_array = self.jnt_data[nn_indx_list]
@@ -196,7 +196,7 @@ class DDIKSolver(object):
             # square_sums = np.sum((adjust_array) ** 2, axis=1)
             # sorted_indices = np.argsort(square_sums)
             # # sorted_indices = range(self._k_max)
-            # seed_jnt_array_cad = seed_jnt_array[sorted_indices[:100]]  # 20
+            # seed_jnt_array_cad = seed_jnt_array[sorted_indices[:20]]  # 20
             
             '''find the most concentrated seed jnt values'''
             # ransac_means = []
@@ -236,10 +236,10 @@ class DDIKSolver(object):
                                                max_n_iter=max_n_iter,
                                                toggle_dbg=toggle_dbg)
                 if result is None:
-                    nid = id+1
-                    distances = np.linalg.norm(nid*seed_jnt_array_cad[nid:] - np.sum(seed_jnt_array_cad[:nid], axis=0), axis=1)
-                    sorted_cad_indices = np.argsort(-distances)
-                    seed_jnt_array_cad[nid:] = seed_jnt_array_cad[nid:][sorted_cad_indices]
+                    # nid = id+1
+                    # distances = np.linalg.norm(nid*seed_jnt_array_cad[nid:] - np.sum(seed_jnt_array_cad[:nid], axis=0), axis=1)
+                    # sorted_cad_indices = np.argsort(-distances)
+                    # seed_jnt_array_cad[nid:] = seed_jnt_array_cad[nid:][sorted_cad_indices]
                     continue
                 else:
                     # print('-'*50)
