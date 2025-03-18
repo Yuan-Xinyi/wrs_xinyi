@@ -20,6 +20,9 @@ mcm.mgm.gen_frame().attach_to(base)
 np.random.seed(42)
 random_seed_num = 1
 
+json_file = "seed_range_kdt.jsonl"
+# json_file = "seed_range_woreatt.jsonl"
+# json_file = "seed_range_reatt.jsonl"
 
 nupdate = 10000
 best_sol_num_list = range(1,101)
@@ -42,7 +45,7 @@ if __name__ == '__main__':
         else:
             print("Invalid robot name")
         
-        for best_sol_num in best_sol_num_list:
+        for best_sol_num in tqdm(best_sol_num_list):
             for _ in range(random_seed_num):
                 '''set random seed'''
                 np_seed = random.randint(0, 2**32 - 1)
@@ -53,7 +56,7 @@ if __name__ == '__main__':
                 pos_err_list = []
                 rot_err_list = []
 
-                for i in tqdm(range(nupdate)):
+                for i in range(nupdate):
                     jnt_values = robot.rand_conf()
                     tgt_pos, tgt_rotmat = robot.fk(jnt_values = jnt_values)
                     tic = time.time()
@@ -67,7 +70,23 @@ if __name__ == '__main__':
                         pos_err, rot_err, _ = rm.diff_between_poses(tgt_pos*1000, tgt_rotmat, pred_pos*1000, pred_rotmat)
                         pos_err_list.append(pos_err)
                         rot_err_list.append(rot_err)
-            success_ikseed[best_sol_num-1] = success_num / (nupdate * random_seed_num) * 100
+                
 
-        np.save(f"{robot.name}_time_ikseed.npy", time_ikseed)
-        np.save(f"{robot.name}_success_ikseed.npy", success_ikseed)
+                data_entry = {
+                    "rbt": robot.__class__.__name__,
+                    "besol": best_sol_num,
+                    "success_rate": f"{success_num / nupdate * 100:.2f}%",
+                    "time_statistics": {
+                        "mean": f"{np.mean(time_list) * 1000:.2f} ms",
+                        "std": f"{np.std(time_list) * 1000:.2f} ms",
+                        "min": f"{np.min(time_list) * 1000:.2f} ms",
+                        "max": f"{np.max(time_list) * 1000:.2f} ms",
+                        "coefficient_of_variation": f"{np.std(time_list) / np.mean(time_list):.2f}",
+                        "percentile_25": f"{np.percentile(time_list, 25) * 1000:.2f} ms",
+                        "percentile_75": f"{np.percentile(time_list, 75) * 1000:.2f} ms",
+                        "interquartile_range": f"{(np.percentile(time_list, 75) - np.percentile(time_list, 25)) * 1000:.2f} ms"
+                    }
+                }
+
+                with open(json_file, "a") as f:
+                    f.write(json.dumps(data_entry) + "\n")
