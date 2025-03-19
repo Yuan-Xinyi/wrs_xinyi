@@ -20,47 +20,57 @@ mcm.mgm.gen_frame().attach_to(base)
 
 
 robot_list = ['yumi', 'cbt','ur3', 'cbtpro1300']
-# robot_list = ['ur3']
+# robot_list = ['cbtpro1300']
 
 if __name__ == '__main__':
 # while True:
 
     for robot in robot_list:
         if robot == 'yumi':
-            robot = yumi.YumiSglArm(pos=rm.vec(0.1, .3, .5),enable_cc=True)
+            robot = yumi.YumiSglArm(pos=rm.vec(-0.35,.35,.0),enable_cc=True)
             not_shift_list = [2,4]
             length = 0.05
             rot_axis_pos = 0.04
+            jnt = np.zeros(robot.n_dof)
+            jnt[3] = -np.pi/2
         elif robot == 'cbt':
-            robot = cbt.Cobotta(pos=rm.vec(0.1,.3,.5), enable_cc=True)
+            robot = cbt.Cobotta(pos=rm.vec(0.3, -.3, .0), enable_cc=True)
             not_shift_list = [3]
             length = 0.08
             rot_axis_pos = 0.04
+            jnt = np.zeros(robot.n_dof)
         elif robot == 'ur3':
-            robot = ur3.UR3(pos=rm.vec(0.1, .3, .5), enable_cc=True)
+            robot = ur3.UR3(pos=rm.vec(-0.18, .18, .0), enable_cc=True)
             not_shift_list = [3]
+            jnt = np.zeros(robot.n_dof)
+            jnt[1] = -np.pi/2
         elif robot == 'cbtpro1300':
-            robot = cbtpro1300.CobottaPro1300WithRobotiq140(pos=rm.vec(0.1, .3, .5), enable_cc=True)
+            robot = cbtpro1300.CobottaPro1300WithRobotiq140(pos=rm.vec(0., .0, .0), enable_cc=True)
+            not_shift_list = [100]
+            jnt = np.zeros(robot.n_dof)
         else:
             print("Invalid robot name")
 
         color_list = {
-            "cobotta": np.array([1.0, 0.0, 0.0]),  # 红色
-            "cobotta_pro_1300": np.array([0.0, 1.0, 0.0]),  # 绿色
+            # "cobotta": np.array([1.0, 0.0, 0.0]),  # 红色
+            # "cobotta_pro_1300": np.array([0.0, 1.0, 0.0]),  # 绿色
+            # "sglarm_yumi": np.array([0.0, 0.0, 1.0]),  # 蓝色
+            # "ur3": np.array([1.0, 0.6470588235294118, 0.0])   # 黄色
+            "cobotta": np.array([0.0, 0.0, 1.0]),  # 红色
+            "cobotta_pro_1300": np.array([0.0, 0.0, 1.0]),  # 绿色
             "sglarm_yumi": np.array([0.0, 0.0, 1.0]),  # 蓝色
-            "ur3": np.array([1.0, 1.0, 0.0])   # 黄色
+            "ur3": np.array([0.0, 0.0, 1.0])   # 黄色
         }
-        jnt = np.zeros(robot.n_dof)
-        print(repr(jnt))
         robot.goto_given_conf(jnt)
-        arm_mesh = robot.gen_meshmodel(alpha=.2, rgb=color_list[robot.name])
+        print(jnt)
+        arm_mesh = robot.gen_meshmodel(alpha=.5)
         arm_mesh.attach_to(base)
         tmp_arm_stick = robot.gen_stickmodel(toggle_flange_frame=False, toggle_jnt_frames=False)
         tmp_arm_stick.attach_to(base)
 
         portion = 0.75
-        length = 0.1
-        rot_axis_pos = 0.05
+        length = 0.15
+        rot_axis_pos = 0.1
         radius = 0.03
 
         for i in range(robot.n_dof):
@@ -68,30 +78,30 @@ if __name__ == '__main__':
                 if i not in not_shift_list:
                     mgm.gen_stick(spos = robot.manipulator.jlc.jnts[i].gl_pos_0, 
                                         epos = robot.manipulator.jlc.jnts[i].gl_pos_0 + length*(robot.manipulator.jlc.jnts[i].gl_motion_ax),
-                                        radius=.0025, rgb=color_list[robot.name]).attach_to(base)
+                                        radius=.003, rgb=color_list[robot.name]).attach_to(base)
                     mgm.gen_stick(spos = robot.manipulator.jlc.jnts[i].gl_pos_0, 
                                         epos = robot.manipulator.jlc.jnts[i].gl_pos_0 - length*(robot.manipulator.jlc.jnts[i].gl_motion_ax),
-                                        radius=.0025, rgb=color_list[robot.name]).attach_to(base)
+                                        radius=.003, rgb=color_list[robot.name]).attach_to(base)
                     mgm.gen_circarrow(axis = robot.manipulator.jlc.jnts[i].gl_motion_ax, 
                                     center = robot.manipulator.jlc.jnts[i].gl_pos_0 + rot_axis_pos*(robot.manipulator.jlc.jnts[i].gl_motion_ax), 
                                     portion=portion, major_radius=radius, rgb=color_list[robot.name]).attach_to(base)
                 else:
                     mgm.gen_stick(spos = robot.manipulator.jlc.jnts[i].gl_pos_0, 
                                         epos = robot.manipulator.jlc.jnts[i].gl_pos_0 + length*(robot.manipulator.jlc.jnts[i].gl_motion_ax),
-                                        radius=.0025, rgb=color_list[robot.name]).attach_to(base)
+                                        radius=.003, rgb=color_list[robot.name]).attach_to(base)
                     mgm.gen_stick(spos = robot.manipulator.jlc.jnts[i].gl_pos_0, 
                                         epos = robot.manipulator.jlc.jnts[i].gl_pos_0 - length*(robot.manipulator.jlc.jnts[i].gl_motion_ax),
-                                        radius=.0025, rgb=color_list[robot.name]).attach_to(base)
+                                        radius=.003, rgb=color_list[robot.name]).attach_to(base)
                     mgm.gen_circarrow(axis = robot.manipulator.jlc.jnts[i].gl_motion_ax, 
                                     center = robot.manipulator.jlc.jnts[i].gl_pos_0, 
                                     portion=portion, major_radius=radius, rgb=color_list[robot.name]).attach_to(base)
             else:
                 mgm.gen_stick(spos = robot.jlc.jnts[i].gl_pos_0, 
                                     epos = robot.jlc.jnts[i].gl_pos_0 + length*(robot.jlc.jnts[i].gl_motion_ax),
-                                    radius=.0025, rgb=color_list[robot.name]).attach_to(base)
+                                    radius=.004, rgb=color_list[robot.name]).attach_to(base)
                 mgm.gen_stick(spos = robot.jlc.jnts[i].gl_pos_0, 
                                     epos = robot.jlc.jnts[i].gl_pos_0 - length*(robot.jlc.jnts[i].gl_motion_ax),
-                                    radius=.0025, rgb=color_list[robot.name]).attach_to(base)
+                                    radius=.003, rgb=color_list[robot.name]).attach_to(base)
                 mgm.gen_circarrow(axis = robot.jlc.jnts[i].gl_motion_ax, 
                                 center = robot.jlc.jnts[i].gl_pos_0 + rot_axis_pos*(robot.jlc.jnts[i].gl_motion_ax), 
                                 portion=portion, major_radius=radius, rgb=color_list[robot.name]).attach_to(base)

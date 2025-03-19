@@ -55,7 +55,7 @@ class World(ShowBase, object):
         lens.setNearFar(0.001, 5000.0)
         if lens_type == LensType.ORTHOGRAPHIC:
             lens = OrthographicLens()
-            lens.setFilmSize(640, 480)
+            lens.setFilmSize(3,3)
         # disable the default mouse control
         self.disableMouse()
         self.cam.setPos(cam_pos[0], cam_pos[1], cam_pos[2])

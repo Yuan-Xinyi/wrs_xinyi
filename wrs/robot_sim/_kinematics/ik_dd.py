@@ -224,7 +224,7 @@ class DDIKSolver(object):
             # seed_jnt_array_cad = center[0].reshape(1,6)
             
             for id, seed_jnt_values in enumerate(seed_jnt_array_cad):
-                if id > best_sol_num:
+                if id >= best_sol_num:
                     return None
                 if toggle_dbg:
                     rkmg.gen_jlc_stick_by_jnt_values(self.jlc,
@@ -240,10 +240,11 @@ class DDIKSolver(object):
                     # distances = np.linalg.norm(nid*seed_jnt_array_cad[nid:] - np.sum(seed_jnt_array_cad[:nid], axis=0), axis=1)
                     # sorted_cad_indices = np.argsort(-distances)
                     # seed_jnt_array_cad[nid:] = seed_jnt_array_cad[nid:][sorted_cad_indices]
+                    print(f'failed seed jnt value id {id}: {repr(seed_jnt_values)}')
                     continue
                 else:
                     # print('-'*50)
-                    # print(f'success seed jnt value id {id}: {repr(seed_jnt_values)}')
+                    print(f'success seed jnt value id {id}: {repr(seed_jnt_values)}')
                     # print('-'*50)
                     return result
             return None

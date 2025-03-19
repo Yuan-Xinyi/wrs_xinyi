@@ -28,11 +28,11 @@ mcm.mgm.gen_frame().attach_to(base)
 
 
 
-nupdate = 10000
+nupdate = 1
 # best_sol_num_list = [1] # [1,3,5,10,20]
 best_sol_num_list = [1]
-robot_list = ['cbt', 'cbtpro1300', 'ur3', 'yumi']
-# robot_list = ['yumi']
+# robot_list = ['cbt', 'cbtpro1300', 'ur3', 'yumi']
+robot_list = ['cbt']
 json_file = "metrics_robot_result.jsonl"
 
 if __name__ == '__main__':
@@ -58,10 +58,10 @@ if __name__ == '__main__':
 
             for i in tqdm(range(nupdate)):
                 jnt_values = robot.rand_conf()
-    #             jnt_values = [-2.44265098,  1.02174031,  1.78042216, -2.11248243,  0.02840153,
-    #    -1.29120677]
+                jnt_values =  [ 0.21871924, -1.86396316,  0.81752382,  0.4906148 ,  0.15849782,
+        3.76826096]
                 # print("*" * 150 + "\n")
-                # print('gth jnt', repr(jnt_values))
+                print('gth jnt', repr(jnt_values))
                 tgt_pos, tgt_rotmat = robot.fk(jnt_values = jnt_values)
                 # print('tgt_pos', tgt_pos)
                 tic = time.time()
