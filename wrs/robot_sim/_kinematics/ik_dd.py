@@ -185,18 +185,18 @@ class DDIKSolver(object):
             dist_value_list, nn_indx_list = self.query_tree.query(query_point, k=self._k_max, workers=-1)
             if type(nn_indx_list) is int:
                 nn_indx_list = [nn_indx_list]
-            seed_jnt_array_cad = self.jnt_data[nn_indx_list[:20]]
+            # seed_jnt_array_cad = self.jnt_data[nn_indx_list[:20]]
             
             '''sort'''
-            # seed_jnt_array = self.jnt_data[nn_indx_list]
-            # seed_tcp_array = self.tcp_data[nn_indx_list]
-            # seed_jinv_array = self.jinv_data[nn_indx_list]
-            # seed_posrot_diff_array = query_point - seed_tcp_array
-            # adjust_array = np.einsum('ijk,ik->ij', seed_jinv_array, seed_posrot_diff_array)
-            # square_sums = np.sum((adjust_array) ** 2, axis=1)
-            # sorted_indices = np.argsort(square_sums)
-            # # sorted_indices = range(self._k_max)
-            # seed_jnt_array_cad = seed_jnt_array[sorted_indices[:20]]  # 20
+            seed_jnt_array = self.jnt_data[nn_indx_list]
+            seed_tcp_array = self.tcp_data[nn_indx_list]
+            seed_jinv_array = self.jinv_data[nn_indx_list]
+            seed_posrot_diff_array = query_point - seed_tcp_array
+            adjust_array = np.einsum('ijk,ik->ij', seed_jinv_array, seed_posrot_diff_array)
+            square_sums = np.sum((adjust_array) ** 2, axis=1)
+            sorted_indices = np.argsort(square_sums)
+            # sorted_indices = range(self._k_max)
+            seed_jnt_array_cad = seed_jnt_array[sorted_indices[:20]]  # 20
             
             '''find the most concentrated seed jnt values'''
             # ransac_means = []
@@ -224,7 +224,7 @@ class DDIKSolver(object):
             # seed_jnt_array_cad = center[0].reshape(1,6)
             
             for id, seed_jnt_values in enumerate(seed_jnt_array_cad):
-                if id >= best_sol_num:
+                if id > best_sol_num:
                     return None
                 if toggle_dbg:
                     rkmg.gen_jlc_stick_by_jnt_values(self.jlc,
@@ -236,15 +236,15 @@ class DDIKSolver(object):
                                                max_n_iter=max_n_iter,
                                                toggle_dbg=toggle_dbg)
                 if result is None:
-                    # nid = id+1
-                    # distances = np.linalg.norm(nid*seed_jnt_array_cad[nid:] - np.sum(seed_jnt_array_cad[:nid], axis=0), axis=1)
-                    # sorted_cad_indices = np.argsort(-distances)
-                    # seed_jnt_array_cad[nid:] = seed_jnt_array_cad[nid:][sorted_cad_indices]
-                    print(f'failed seed jnt value id {id}: {repr(seed_jnt_values)}')
+                    nid = id+1
+                    distances = np.linalg.norm(nid*seed_jnt_array_cad[nid:] - np.sum(seed_jnt_array_cad[:nid], axis=0), axis=1)
+                    sorted_cad_indices = np.argsort(-distances)
+                    seed_jnt_array_cad[nid:] = seed_jnt_array_cad[nid:][sorted_cad_indices]
+                    # print(f'failed seed jnt value id {id}: {repr(seed_jnt_values)}')
                     continue
                 else:
                     # print('-'*50)
-                    print(f'success seed jnt value id {id}: {repr(seed_jnt_values)}')
+                    # print(f'success seed jnt value id {id}: {repr(seed_jnt_values)}')
                     # print('-'*50)
                     return result
             return None

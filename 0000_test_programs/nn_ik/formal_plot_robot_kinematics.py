@@ -34,7 +34,8 @@ if __name__ == '__main__':
             jnt = np.zeros(robot.n_dof)
             jnt[3] = -np.pi/2
         elif robot == 'cbt':
-            robot = cbt.Cobotta(pos=rm.vec(0.3, -.3, .0), enable_cc=True)
+            rotmat = rm.rotmat_from_axangle([0, 0, 1], -np.pi/2)
+            robot = cbt.Cobotta(pos=rm.vec(0.3, -.3, .0), rotmat = rotmat, enable_cc=True)
             not_shift_list = [3]
             length = 0.08
             rot_axis_pos = 0.04
@@ -48,6 +49,7 @@ if __name__ == '__main__':
             robot = cbtpro1300.CobottaPro1300WithRobotiq140(pos=rm.vec(0., .0, .0), enable_cc=True)
             not_shift_list = [100]
             jnt = np.zeros(robot.n_dof)
+            jnt[4] = np.pi/2
         else:
             print("Invalid robot name")
 
@@ -63,10 +65,11 @@ if __name__ == '__main__':
         }
         robot.goto_given_conf(jnt)
         print(jnt)
-        arm_mesh = robot.gen_meshmodel(alpha=.5)
+        arm_mesh = robot.gen_meshmodel(alpha=.5,toggle_jnt_frames=False)
         arm_mesh.attach_to(base)
         tmp_arm_stick = robot.gen_stickmodel(toggle_flange_frame=False, toggle_jnt_frames=False)
         tmp_arm_stick.attach_to(base)
+
 
         portion = 0.75
         length = 0.15

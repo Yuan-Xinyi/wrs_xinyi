@@ -32,7 +32,7 @@ nupdate = 1
 # best_sol_num_list = [1] # [1,3,5,10,20]
 best_sol_num_list = [1]
 # robot_list = ['cbt', 'cbtpro1300', 'ur3', 'yumi']
-robot_list = ['cbt']
+robot_list = ['cbtpro1300']
 json_file = "metrics_robot_result.jsonl"
 
 if __name__ == '__main__':
@@ -58,10 +58,8 @@ if __name__ == '__main__':
 
             for i in tqdm(range(nupdate)):
                 jnt_values = robot.rand_conf()
-                jnt_values =  [ 0.21871924, -1.86396316,  0.81752382,  0.4906148 ,  0.15849782,
-        3.76826096]
                 # print("*" * 150 + "\n")
-                print('gth jnt', repr(jnt_values))
+                # print('gth jnt', repr(jnt_values))
                 tgt_pos, tgt_rotmat = robot.fk(jnt_values = jnt_values)
                 # print('tgt_pos', tgt_pos)
                 tic = time.time()
@@ -76,6 +74,16 @@ if __name__ == '__main__':
                     pos_err, rot_err, _ = rm.diff_between_poses(tgt_pos*1000, tgt_rotmat, pred_pos*1000, pred_rotmat)
                     pos_err_list.append(pos_err)
                     rot_err_list.append(rot_err)
+
+                    robot.goto_given_conf(jnt_values=result)
+                    arm_mesh = robot.gen_meshmodel(alpha=.3, rgb=[0, 0, 1])
+                    arm_mesh.attach_to(base)
+            
+                    robot.goto_given_conf(jnt_values=jnt_values)
+                    arm_mesh = robot.gen_meshmodel(alpha=.3, rgb=[0, 1, 0])
+                    arm_mesh.attach_to(base)       
+                    base.run()
+
                     
             # print('==========================================================')
             # print(f'current robot: {robot.__class__.__name__}')

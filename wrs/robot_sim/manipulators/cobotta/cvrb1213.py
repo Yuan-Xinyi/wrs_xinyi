@@ -2,7 +2,7 @@ import os
 import wrs.basis.robot_math as rm
 import wrs.modeling.collision_model as mcm
 import wrs.robot_sim.manipulators.manipulator_interface as mi
-import wrs.robot_sim.manipulators.cobotta.ikgeo as ikgeo
+import wrs.robot_sim.manipulators.cobotta.ikgeo_cvrb1213 as ikgeo
 
 
 class CVRB1213(mi.ManipulatorInterface):
@@ -140,7 +140,8 @@ class CVRB1213(mi.ManipulatorInterface):
         self.jlc._ik_solver._k_max = 200
         rel_rotmat = tgt_rotmat @ self.loc_tcp_rotmat.T
         rel_pos = tgt_pos - tgt_rotmat @ self.loc_tcp_pos
-        result = self.jlc.ik(tgt_pos=rel_pos, tgt_rotmat=rel_rotmat, seed_jnt_values=seed_jnt_values, best_sol_num = best_sol_num)
+        # result = self.jlc.ik(tgt_pos=rel_pos, tgt_rotmat=rel_rotmat, seed_jnt_values=seed_jnt_values, best_sol_num = best_sol_num)
+        result = ikgeo.ik(jlc=self.jlc, tgt_pos=rel_pos, tgt_rotmat=rel_rotmat, seed_jnt_values=None)
 
         return result
 
