@@ -30,7 +30,7 @@ class World(ShowBase, object):
                  fov=40,
                  w=1920,
                  h=1080,
-                 lens_type=LensType.ORTHOGRAPHIC,
+                 lens_type=LensType.PERSPECTIVE,
                  auto_rotate=False):
         """
         :param cam_pos:
