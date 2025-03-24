@@ -101,6 +101,7 @@ class Nova2(mi.ManipulatorInterface):
     def ik(self,
            tgt_pos: np.ndarray,
            tgt_rotmat: np.ndarray,
+           best_sol_num,
            seed_jnt_values=None,
            option="single",
            toggle_dbg=False):

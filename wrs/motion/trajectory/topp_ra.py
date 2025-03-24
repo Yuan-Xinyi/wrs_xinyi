@@ -104,11 +104,13 @@ if __name__ == '__main__':
     import matplotlib.pyplot as plt
     from wrs import wd, rm, mgm, mip, toppra
     import wrs.robot_sim.robots.nova2_wg.nova2wg3 as dnw
+    import wrs.robot_sim.manipulators.xarm_lite6.xarm_lite6 as xarm_s
     from wrs.motion.trajectory.quintic import QuinticSpline
 
     base = wd.World(cam_pos=rm.np.array([3, -1, 1]), lookat_pos=rm.np.array([0, 0, 0.5]))
     mgm.gen_frame().attach_to(base)
     robot = dnw.Nova2WG3()
+    # robot = xarm_s.XArmLite6(enable_cc=True)
     interplated_planner = mip.InterplatedMotion(robot)
     mot_data = interplated_planner.gen_circular_motion(circle_center_pos=rm.np.array([.6, 0, .4]),
                                                        circle_normal_ax=rm.np.array([1, 0, 0]),

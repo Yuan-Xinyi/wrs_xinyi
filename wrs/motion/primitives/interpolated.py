@@ -336,7 +336,7 @@ class InterplatedMotion(object):
         mesh_list = []
         seed_jnt_values = None
         for pos, rotmat in pose_list:
-            jnt_values = self.robot.ik(pos, rotmat, seed_jnt_values=seed_jnt_values)
+            jnt_values = self.robot.ik(pos, rotmat, best_sol_num = 5, seed_jnt_values=seed_jnt_values)
             if jnt_values is None:
                 print("IK not solvable in gen_circular_motion!")
                 return None

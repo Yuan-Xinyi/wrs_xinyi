@@ -250,13 +250,13 @@ class RRT(object):
         self.start_conf = start_conf
         self.goal_conf = goal_conf
         # check start_conf and end_conf
-        if toggle_dbg:
-            print("RRT: Checking start robot configuration...")
+        # if toggle_dbg:
+        #     print("RRT: Checking start robot configuration...")
         if self._is_collided(start_conf, obstacle_list, other_robot_list, toggle_dbg=toggle_dbg):
             print("The start robot configuration is in collision!")
             return None
-        if toggle_dbg:
-            print("RRT: Checking goal robot configuration...")
+        # if toggle_dbg:
+        #     print("RRT: Checking goal robot configuration...")
         if self._is_collided(goal_conf, obstacle_list, other_robot_list, toggle_dbg=toggle_dbg):
             print("The goal robot configuration is in collision!")
             return None
