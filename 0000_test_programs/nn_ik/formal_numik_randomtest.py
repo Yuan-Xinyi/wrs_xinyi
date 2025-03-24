@@ -26,8 +26,6 @@ mcm.mgm.gen_frame().attach_to(base)
 # robot = cbtpro900.CobottaPro900Spine(pos=rm.vec(0.1, .3, .5), enable_cc=True)
 
 
-
-
 nupdate = 10000
 # best_sol_num_list = [1] # [1,3,5,10,20]
 best_sol_num_list = [1]
