@@ -35,3 +35,5 @@ save_freq: 5000
 inference_solver: ddpm
 inference_samples: 100
 normalize: False
+visualization: False
+episode_num: 100

@@ -203,44 +203,63 @@ elif config['mode'] == "inference":
     # inference
     solver = config['inference_solver']
     inference_steps = config['inference_samples']
+    visualization = config['visualization']
     
-    start_conf, goal_conf = mp_helper.gen_collision_free_start_goal(robot_s)
-    print(f"Start Conf: {start_conf}, Goal Conf: {goal_conf}")
-    robot_s.goto_given_conf(jnt_values=goal_conf)
-    robot_s.gen_meshmodel(rgb=[0,1,0], alpha=1).attach_to(base)
-    robot_s.goto_given_conf(jnt_values=start_conf)
-    robot_s.gen_meshmodel(rgb=[0,0,1], alpha=1).attach_to(base)
-
-    assert config['normalize'] == False
-    update_counter = 0
-    condition = torch.zeros((1, config['obs_dim']*config['obs_steps']), device=config['device'])
-
-    for _ in range(inference_steps):
-        start_conf = robot_s.get_jnt_values()
-        condition[:, :config['obs_dim']] = torch.tensor(start_conf).to(config['device'])
-        condition[:, config['obs_dim']:] = torch.tensor(goal_conf).to(config['device'])
+    success_num = 0
+    for _ in tqdm(range(config['episode_num'])):
+        start_conf, goal_conf = mp_helper.gen_collision_free_start_goal(robot_s)
+        tgt_pos, tgt_rotmat = robot_s.fk(jnt_values=goal_conf)
+        # print(f"Start Conf: {start_conf}, Goal Conf: {goal_conf}")
         
-        with torch.no_grad():
-            prior = torch.zeros((1, config['horizon']-1, config['action_dim']), device=config['device'])
-            action, _ = agent.sample(prior=prior, n_samples=1, sample_steps=config['sample_steps'],
-                                    solver=solver, condition_cfg=condition, w_cfg=1.0, use_ema=True)
+        if visualization:
+            robot_s.goto_given_conf(jnt_values=goal_conf)
+            robot_s.gen_meshmodel(rgb=[0,1,0], alpha=1).attach_to(base)
+            robot_s.goto_given_conf(jnt_values=start_conf)
+            robot_s.gen_meshmodel(rgb=[0,0,1], alpha=1).attach_to(base)
 
-        # sample actions and unnorm
-        jnt_cfgs_pred = action[0, :,:6].detach().to('cpu').numpy()
+        assert config['normalize'] == False
+        update_counter = 0
+        condition = torch.zeros((1, config['obs_dim']*config['obs_steps']), device=config['device'])
 
-        for idx in range(jnt_cfgs_pred.shape[0]):
-            robot_s.goto_given_conf(jnt_values=jnt_cfgs_pred[idx])
-            robot_s.gen_meshmodel(alpha=0.2).attach_to(base)
-            update_counter += 1
-            print(f"Step: {update_counter}, distance: {np.linalg.norm(robot_s.get_jnt_values() - goal_conf)}")
-        
-            if np.linalg.norm(robot_s.get_jnt_values() - goal_conf) < 7e-2 or update_counter > 1000:
+        for _ in range(inference_steps):
+            start_conf = robot_s.get_jnt_values()
+            condition[:, :config['obs_dim']] = torch.tensor(start_conf).to(config['device'])
+            condition[:, config['obs_dim']:] = torch.tensor(goal_conf).to(config['device'])
+            
+            with torch.no_grad():
+                prior = torch.zeros((1, config['horizon']-1, config['action_dim']), device=config['device'])
+                action, _ = agent.sample(prior=prior, n_samples=1, sample_steps=config['sample_steps'],
+                                        solver=solver, condition_cfg=condition, w_cfg=1.0, use_ema=True)
+
+            # sample actions and unnorm
+            jnt_cfgs_pred = action[0, :,:6].detach().to('cpu').numpy()
+
+            for idx in range(jnt_cfgs_pred.shape[0]):
+                robot_s.goto_given_conf(jnt_values=jnt_cfgs_pred[idx])
+                pred_pos, pred_rotmat = robot_s.fk(jnt_values=jnt_cfgs_pred[idx])
+                pos_err, rot_err, _ = rm.diff_between_poses(tgt_pos*1000, tgt_rotmat, pred_pos*1000, pred_rotmat)
+                rot_err = np.rad2deg(rot_err)
+                # print(f"Step: {update_counter}, pos_err: {pos_err} mms, rot_err: {rot_err} degrees")
+
+                if visualization:
+                    robot_s.gen_meshmodel(alpha=0.2).attach_to(base)
+                update_counter += 1
+                # print(f"Step: {update_counter}, distance: {np.linalg.norm(robot_s.get_jnt_values() - goal_conf)}")
+
+                if robot_s.cc.is_collided():
+                    break
+
+                if (pos_err < 5 and rot_err < 3) or update_counter > 200:
+                    break
+            
+            if pos_err < 5 and rot_err < 3 and not robot_s.cc.is_collided():
+                success_num += 1
                 break
         
-        if np.linalg.norm(robot_s.get_jnt_values() - goal_conf) < 7e-2 or update_counter > 1000:
-            break
-            
-    base.run()
+        if visualization:
+            base.run()    
+
+    print(f"Success rate: {success_num/config['episode_num']*100}%")
 
 else:
     raise ValueError("Illegal mode")
