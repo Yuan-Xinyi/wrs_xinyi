@@ -52,20 +52,27 @@ class MotionPlanningDataset(BaseDataset):
     def _sample_to_data(self, sample):
         # image
         obs_jnt_cfg = sample['interp_confs'][:-1]
-        obs_jnt_spd = sample['interp_spds'][:-1]
-        nobs_jnt_cfg = self.normalizer['obs']['interp_confs'].normalize(obs_jnt_cfg)
-        nobs_jnt_spd = self.normalizer['obs']['interp_spds'].normalize(obs_jnt_spd)
-        nobs = np.concatenate([nobs_jnt_cfg, nobs_jnt_spd], axis=-1)
+        nobs = self.normalizer['obs']['interp_confs'].normalize(obs_jnt_cfg)
 
         action_jnt_cfg = sample['interp_confs'][1:]
         action_jnt_spd = sample['interp_spds'][1:]
         naction_jnt_cfg = self.normalizer['obs']['interp_confs'].normalize(action_jnt_cfg)
         naction_jnt_spd = self.normalizer['obs']['interp_spds'].normalize(action_jnt_spd)
         naction = np.concatenate([naction_jnt_cfg, naction_jnt_spd], axis=-1)
+        action = np.concatenate([action_jnt_cfg, action_jnt_spd], axis=-1)
         
+        '''if normalize'''
+        # data = {
+        #     'obs': nobs, 
+        #     'action': naction, 
+        #     'trajectory': np.concatenate([naction, nobs], axis=-1)
+        # }
+
+        '''if not normalize'''
         data = {
-            'obs': nobs, 
-            'action': naction, 
+            'obs': obs_jnt_cfg, 
+            'action': action, 
+            'trajectory': np.concatenate([action, obs_jnt_cfg], axis=-1)
         }
         return data
     

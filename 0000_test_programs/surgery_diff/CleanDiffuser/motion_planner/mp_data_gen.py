@@ -144,61 +144,62 @@ def gen_collision_free_start_goal(robot):
     return start_conf, goal_conf
 
 
-'''init the parameters'''
-plot = False
-current_file_dir = os.path.dirname(__file__)
-parent_dir = os.path.dirname(os.path.dirname(__file__))
+if __name__ == '__main__':
+    '''init the parameters'''
+    plot = False
+    current_file_dir = os.path.dirname(__file__)
+    parent_dir = os.path.dirname(os.path.dirname(__file__))
 
-base = wd.World(cam_pos=[2, 0, 1], lookat_pos=[0, 0, 0])
-mgm.gen_frame().attach_to(base)
-robot = xarm_s.XArmLite6(enable_cc=True)
-rrt = rrt.RRT(robot)
-
-
-'''visualization'''
-# visualize_start_goal_waypoints(robot, rrt, start_conf, goal_conf)
-# visualize_anime(robot, rrt, start_conf, goal_conf)
+    base = wd.World(cam_pos=[2, 0, 1], lookat_pos=[0, 0, 0])
+    mgm.gen_frame().attach_to(base)
+    robot = xarm_s.XArmLite6(enable_cc=True)
+    rrt = rrt.RRT(robot)
 
 
-'''initialize the dataset'''
-config_file = os.path.join(current_file_dir, 'config.yaml')
-with open(config_file, "r") as file:
-    config = yaml.safe_load(file)
+    '''visualization'''
+    # visualize_start_goal_waypoints(robot, rrt, start_conf, goal_conf)
+    # visualize_anime(robot, rrt, start_conf, goal_conf)
 
-dataset_dir = os.path.join(parent_dir, 'datasets')
-dataset_name = os.path.join(dataset_dir, 'xarm_toppra_mp.zarr')
-store = zarr.DirectoryStore(dataset_name)
-root = zarr.group(store=store)
-print('dataset created in:', dataset_name)
 
-meta_group = root.create_group("meta")
-data_group = root.create_group("data")
-episode_ends_ds = meta_group.create_dataset("episode_ends", shape=(0,), chunks=(1,), dtype=np.float32, append=True)
-start_conf_ds = data_group.create_dataset("start_confs", shape=(0, 1), chunks=(1, 1), dtype=np.float32, append=True)
-goal_conf_ds = data_group.create_dataset("goal_confs", shape=(0, 1), chunks=(1, 1), dtype=np.float32, append=True)
-jnt_t = data_group.create_dataset("interp_time", shape=(0, 1), chunks=(1, 1), dtype=np.float32, append=True)
-jnt_cfg = data_group.create_dataset("interp_confs", shape=(0, 6), chunks=(1, 6), dtype=np.float32, append=True)
-jnt_v = data_group.create_dataset("interp_spds", shape=(0, 6), chunks=(1, 6), dtype=np.float32, append=True)
-jnt_a = data_group.create_dataset("interp_accs", shape=(0, 6), chunks=(1, 6), dtype=np.float32, append=True)
+    '''initialize the dataset'''
+    config_file = os.path.join(current_file_dir, 'config.yaml')
+    with open(config_file, "r") as file:
+        config = yaml.safe_load(file)
 
-episode_ends_counter = 0
-for _ in tqdm(range(config['traj_num'])):
-    start_conf, goal_conf = gen_collision_free_start_goal(robot)
-    print('-'*100)
-    print('start_conf:', start_conf)
-    print('goal_conf:', goal_conf)
-    for _ in range(10):
-        tic  = time.time()
-        interp_time, interp_confs, interp_spds, interp_accs = gen_toppra_traj(rrt, start_conf, goal_conf)
-        if interp_time is None:
-            break
-        episode_ends_counter += len(interp_time)
-        episode_ends_ds.append(np.array([episode_ends_counter], dtype=np.int32))
-        start_conf_ds.append(start_conf.reshape(-1, 1))
-        goal_conf_ds.append(goal_conf.reshape(-1, 1))
-        jnt_t.append(interp_time.reshape(-1, 1))
-        jnt_cfg.append(interp_confs)
-        jnt_v.append(interp_spds)
-        jnt_a.append(interp_accs)
-        toc = time.time()
-        print(f'current traj gen time cost: {toc - tic}')
+    dataset_dir = os.path.join(parent_dir, 'datasets')
+    dataset_name = os.path.join(dataset_dir, 'xarm_toppra_mp.zarr')
+    store = zarr.DirectoryStore(dataset_name)
+    root = zarr.group(store=store)
+    print('dataset created in:', dataset_name)
+
+    meta_group = root.create_group("meta")
+    data_group = root.create_group("data")
+    episode_ends_ds = meta_group.create_dataset("episode_ends", shape=(0,), chunks=(1,), dtype=np.float32, append=True)
+    start_conf_ds = data_group.create_dataset("start_confs", shape=(0, 1), chunks=(1, 1), dtype=np.float32, append=True)
+    goal_conf_ds = data_group.create_dataset("goal_confs", shape=(0, 1), chunks=(1, 1), dtype=np.float32, append=True)
+    jnt_t = data_group.create_dataset("interp_time", shape=(0, 1), chunks=(1, 1), dtype=np.float32, append=True)
+    jnt_cfg = data_group.create_dataset("interp_confs", shape=(0, 6), chunks=(1, 6), dtype=np.float32, append=True)
+    jnt_v = data_group.create_dataset("interp_spds", shape=(0, 6), chunks=(1, 6), dtype=np.float32, append=True)
+    jnt_a = data_group.create_dataset("interp_accs", shape=(0, 6), chunks=(1, 6), dtype=np.float32, append=True)
+
+    episode_ends_counter = 0
+    for _ in tqdm(range(config['traj_num'])):
+        start_conf, goal_conf = gen_collision_free_start_goal(robot)
+        print('-'*100)
+        print('start_conf:', start_conf)
+        print('goal_conf:', goal_conf)
+        for _ in range(10):
+            tic  = time.time()
+            interp_time, interp_confs, interp_spds, interp_accs = gen_toppra_traj(rrt, start_conf, goal_conf)
+            if interp_time is None:
+                break
+            episode_ends_counter += len(interp_time)
+            episode_ends_ds.append(np.array([episode_ends_counter], dtype=np.int32))
+            start_conf_ds.append(start_conf.reshape(-1, 1))
+            goal_conf_ds.append(goal_conf.reshape(-1, 1))
+            jnt_t.append(interp_time.reshape(-1, 1))
+            jnt_cfg.append(interp_confs)
+            jnt_v.append(interp_spds)
+            jnt_a.append(interp_accs)
+            toc = time.time()
+            print(f'current traj gen time cost: {toc - tic}')

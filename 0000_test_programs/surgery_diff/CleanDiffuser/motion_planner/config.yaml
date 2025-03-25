@@ -1,10 +1,10 @@
 traj_num: 1000
 abs_action: false
-mode: train  # train or inference
+mode: inference  # train or inference
 obs_keys: ['interp_confs', 'interp_spds']
 action_dim: 12
-obs_dim: 12
-obs_steps: 1
+obs_dim: 6
+obs_steps: 2
 action_steps: 32
 use_group_norm: true
 use_seq: true
@@ -12,7 +12,7 @@ use_seq: true
 # training settings
 device: cuda:0
 seed: 0
-gradient_steps: 1000000
+gradient_steps: 10000000
 batch_size: 64
 horizon: 33
 nn: chi_unet
@@ -20,7 +20,18 @@ diffusion: ddpm
 sample_steps: 20
 # optimizer
 lr: 0.0001
+dim_mult: [1, 4, 2]
+model_dim: 32
 
-# log
+predict_noise: True
+ema_rate: 0.9999
+diffusion_steps: 25
+action_loss_weight: 1.0
+val_freq: 20000
+
+# log and inference
 log_freq: 100
-save_freq: 2000
+save_freq: 5000
+inference_solver: ddpm
+inference_samples: 100
+normalize: False

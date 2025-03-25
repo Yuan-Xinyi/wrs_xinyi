@@ -96,7 +96,8 @@ def inference(args, envs, dataset, agent, logger):
                     condition = nobs
                 # run sampling (num_envs, horizon, action_dim)
                 prior = torch.zeros((args.num_envs, args.horizon, args.action_dim), device=args.device)
-                naction, _ = agent.sample(prior=prior, n_samples=args.num_envs, sample_steps=args.sample_steps, solver=solver, condition_cfg=condition, w_cfg=1.0, use_ema=True)
+                naction, _ = agent.sample(prior=prior, n_samples=args.num_envs, 
+                                          sample_steps=args.sample_steps, solver=solver, condition_cfg=condition, w_cfg=1.0, use_ema=True)
                 
             # unnormalize prediction
             naction = naction.detach().to('cpu').numpy()  # (num_envs, horizon, action_dim)
