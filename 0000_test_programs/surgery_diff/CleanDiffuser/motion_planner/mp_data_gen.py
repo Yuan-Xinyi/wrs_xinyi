@@ -15,6 +15,7 @@ import yaml
 import numpy as np
 import zarr
 import os
+from tqdm import tqdm
 
 def visualize_start_goal_waypoints(robot, rrt, start_conf, goal_conf):
     robot.goto_given_conf(jnt_values=start_conf)
@@ -110,20 +111,23 @@ def gen_toppra_traj(rrt, start_conf, goal_conf):
     motion_data = rrt.plan(start_conf=start_conf,
                     goal_conf=goal_conf,
                     ext_dist=.1,
-                    max_time=30,
+                    max_time=45,
                     animation=True)
 
     '''interpolate the path'''
-    jv_array = rm.np.asarray(motion_data.jv_list)
-    interp_x = rm.np.linspace(0, len(jv_array) - 1, 100)
-    cs = QuinticSpline(range(len(motion_data.jv_list)), motion_data.jv_list)
-    interp_confs = cs(interp_x)
+    if motion_data is None:
+        return None, None, None, None
+    else:
+        jv_array = rm.np.asarray(motion_data.jv_list)
+        interp_x = rm.np.linspace(0, len(jv_array) - 1, 100)
+        cs = QuinticSpline(range(len(motion_data.jv_list)), motion_data.jv_list)
+        interp_confs = cs(interp_x)
 
-    '''generate the time-optimal trajectory'''
-    interp_time, interp_confs, interp_spds, interp_accs = toppra.generate_time_optimal_trajectory(interp_confs,
-                                                                                            ctrl_freq=.05)
+        '''generate the time-optimal trajectory'''
+        interp_time, interp_confs, interp_spds, interp_accs = toppra.generate_time_optimal_trajectory(interp_confs,
+                                                                                                ctrl_freq=.05)
 
-    return interp_time, interp_confs, interp_spds, interp_accs
+        return interp_time, interp_confs, interp_spds, interp_accs
 
 
 def gen_collision_free_start_goal(robot):
@@ -170,23 +174,31 @@ print('dataset created in:', dataset_name)
 meta_group = root.create_group("meta")
 data_group = root.create_group("data")
 episode_ends_ds = meta_group.create_dataset("episode_ends", shape=(0,), chunks=(1,), dtype=np.float32, append=True)
+start_conf_ds = data_group.create_dataset("start_confs", shape=(0, 1), chunks=(1, 1), dtype=np.float32, append=True)
+goal_conf_ds = data_group.create_dataset("goal_confs", shape=(0, 1), chunks=(1, 1), dtype=np.float32, append=True)
 jnt_t = data_group.create_dataset("interp_time", shape=(0, 1), chunks=(1, 1), dtype=np.float32, append=True)
 jnt_cfg = data_group.create_dataset("interp_confs", shape=(0, 6), chunks=(1, 6), dtype=np.float32, append=True)
 jnt_v = data_group.create_dataset("interp_spds", shape=(0, 6), chunks=(1, 6), dtype=np.float32, append=True)
 jnt_a = data_group.create_dataset("interp_accs", shape=(0, 6), chunks=(1, 6), dtype=np.float32, append=True)
 
 episode_ends_counter = 0
-for _ in range(config['traj_num']):
-    tic  = time.time()
+for _ in tqdm(range(config['traj_num'])):
     start_conf, goal_conf = gen_collision_free_start_goal(robot)
-    interp_time, interp_confs, interp_spds, interp_accs = gen_toppra_traj(rrt, start_conf, goal_conf)
-    
-    episode_ends_counter += len(interp_time)
-    episode_ends_ds.append(episode_ends_counter)
-    
-    jnt_t.append(interp_time.reshape(-1, 1))
-    jnt_cfg.append(interp_confs)
-    jnt_v.append(interp_spds)
-    jnt_a.append(interp_accs)
-    toc = time.time()
-    print(f'current traj gen time cost: {toc - tic}')
+    print('-'*100)
+    print('start_conf:', start_conf)
+    print('goal_conf:', goal_conf)
+    for _ in range(10):
+        tic  = time.time()
+        interp_time, interp_confs, interp_spds, interp_accs = gen_toppra_traj(rrt, start_conf, goal_conf)
+        if interp_time is None:
+            break
+        episode_ends_counter += len(interp_time)
+        episode_ends_ds.append(np.array([episode_ends_counter], dtype=np.int32))
+        start_conf_ds.append(start_conf.reshape(-1, 1))
+        goal_conf_ds.append(goal_conf.reshape(-1, 1))
+        jnt_t.append(interp_time.reshape(-1, 1))
+        jnt_cfg.append(interp_confs)
+        jnt_v.append(interp_spds)
+        jnt_a.append(interp_accs)
+        toc = time.time()
+        print(f'current traj gen time cost: {toc - tic}')
