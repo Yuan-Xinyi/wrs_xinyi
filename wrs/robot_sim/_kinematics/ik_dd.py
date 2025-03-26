@@ -197,6 +197,7 @@ class DDIKSolver(object):
             sorted_indices = np.argsort(square_sums)
             # sorted_indices = range(self._k_max)
             seed_jnt_array_cad = seed_jnt_array[sorted_indices[:20]]  # 20
+            # seed_jnt_array_cad = seed_jnt_array[sorted_indices]
             
             '''find the most concentrated seed jnt values'''
             # ransac_means = []

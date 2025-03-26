@@ -29,8 +29,8 @@ mcm.mgm.gen_frame().attach_to(base)
 nupdate = 10000
 # best_sol_num_list = [1] # [1,3,5,10,20]
 best_sol_num_list = [1]
-# robot_list = ['cbt', 'cbtpro1300', 'ur3', 'yumi']
-robot_list = ['cbt', 'cbtpro1300']
+# robot_list = ['cbt','cbtpro1300', 'ur3', 'yumi']
+robot_list = ['cbtpro1300']
 json_file = "metrics_robot_result.jsonl"
 
 if __name__ == '__main__':
@@ -56,6 +56,8 @@ if __name__ == '__main__':
 
             for i in tqdm(range(nupdate)):
                 jnt_values = robot.rand_conf()
+    #             jnt_values = [-0.89298267, -0.99745798,  2.20644947, -1.90284232, -0.62446831,
+    #    -0.94061137]
                 # print("*" * 150 + "\n")
                 # print('gth jnt', repr(jnt_values))
                 tgt_pos, tgt_rotmat = robot.fk(jnt_values = jnt_values)
