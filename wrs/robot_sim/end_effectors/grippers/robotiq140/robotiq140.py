@@ -212,16 +212,16 @@ class Robotiq140(gpi.GripperInterface):
                        toggle_tcp_frame=False,
                        toggle_jnt_frames=False):
         m_col = mmc.ModelCollection(name=self.name+"_stickmodel")
-        # self.coupling.gen_stickmodel(toggle_root_frame=False, toggle_flange_frame=False).attach_to(m_col)
-        # self.palm.gen_stickmodel(toggle_root_frame=toggle_jnt_frames, toggle_flange_frame=False).attach_to(m_col)
-        # self.lft_outer_jlc.gen_stickmodel(toggle_jnt_frames=toggle_jnt_frames,
-        #                                   toggle_flange_frame=False).attach_to(m_col)
-        # self.lft_inner_jlc.gen_stickmodel(toggle_jnt_frames=toggle_jnt_frames,
-        #                                   toggle_flange_frame=False).attach_to(m_col)
-        # self.rgt_outer_jlc.gen_stickmodel(toggle_jnt_frames=toggle_jnt_frames,
-        #                                   toggle_flange_frame=False).attach_to(m_col)
-        # self.rgt_inner_jlc.gen_stickmodel(toggle_jnt_frames=toggle_jnt_frames,
-        #                                   toggle_flange_frame=False).attach_to(m_col)
+        self.coupling.gen_stickmodel(toggle_root_frame=False, toggle_flange_frame=False).attach_to(m_col)
+        self.palm.gen_stickmodel(toggle_root_frame=toggle_jnt_frames, toggle_flange_frame=False).attach_to(m_col)
+        self.lft_outer_jlc.gen_stickmodel(toggle_jnt_frames=toggle_jnt_frames,
+                                          toggle_flange_frame=False).attach_to(m_col)
+        self.lft_inner_jlc.gen_stickmodel(toggle_jnt_frames=toggle_jnt_frames,
+                                          toggle_flange_frame=False).attach_to(m_col)
+        self.rgt_outer_jlc.gen_stickmodel(toggle_jnt_frames=toggle_jnt_frames,
+                                          toggle_flange_frame=False).attach_to(m_col)
+        self.rgt_inner_jlc.gen_stickmodel(toggle_jnt_frames=toggle_jnt_frames,
+                                          toggle_flange_frame=False).attach_to(m_col)
         if toggle_tcp_frame:
             self._toggle_tcp_frame(m_col)
         return m_col

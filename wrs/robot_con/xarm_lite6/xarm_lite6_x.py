@@ -7,7 +7,7 @@ Reference: XArm Developer Manual (http://download.ufactory.cc/xarm/en/xArm%20Dev
 import time
 from typing import Optional
 import numpy as np
-from wrs.robot_con.xarm_lite6.xarm_lite6_dxl_x import XArmLite6DXLCon
+from xarm_lite6_dxl_x import XArmLite6DXLCon
 import wrs.basis.robot_math as rm
 import wrs.drivers.xarm.wrapper.xarm_api as arm
 
@@ -50,7 +50,7 @@ class XArmLite6X(object):
 
         # for grippers
         if has_gripper:
-            self._gripper_x = XArmLite6DXLCon(self._arm_x, baudrate=115200, dxl_id=1)
+            self._gripper_x = XArmLite6DXLCon(self._arm_x, baudrate=115200, dxl_id=2)
             self._gripper_x.enable_dxl_torque()
             self._gripper_limit = [0, 0.04]
             if self._gripper_x.get_dxl_op_mode() != 5:
@@ -376,16 +376,11 @@ class XArmLite6X(object):
             interpolated_path = interpolated_path[start_frame_id:]
             for jnt_values in interpolated_path:
                 self._arm_x.set_servo_angle_j(jnt_values, is_radian=True)
-                time.sleep(.1)
+                time.sleep(.05)
             return
         else:
             raise NotImplementedError
 
-    # def __del__(self):
-    #     self._arm_x.disconnect()
-    #     self._gripper_x.disable_dxl_torque()
-
-
-if __name__ == '__main__':
-    robot_x = XArmLite6X(ip='192.168.1.190')
-    print('current pose:', repr(robot_x.get_jnt_values()))
+    def __del__(self):
+        self._arm_x.disconnect()
+        self._gripper_x.disable_dxl_torque()

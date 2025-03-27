@@ -18,6 +18,8 @@ from numpy import sin, cos, tan
 from numpy import arctan2 as atan2, arcsin as asin, arccos as acos
 from numpy import floor, ceil, round, isnan, isinf
 
+np.set_printoptions(suppress=True) # avoid scientific notation
+
 # epsilon for testing whether a number is close to zero
 _EPS = np.finfo(np.float32).eps
 # axis sequences for Euler angles
@@ -392,8 +394,8 @@ def interplate_pos_rotmat(start_pos,
     """
     len, vec = unit_vector(start_pos - goal_pos, toggle_length=True)
     n_steps = math.ceil(len / granularity)
-    if n_steps == 0:
-        n_steps = 1
+    if n_steps < 2:
+        n_steps = 2
     pos_list = np.linspace(start_pos, goal_pos, n_steps)
     rotmat_list = rotmat_slerp(start_rotmat, goal_rotmat, n_steps)
     return zip(pos_list, rotmat_list)
@@ -415,6 +417,8 @@ def interplate_pos_rotmat_around_circle(circle_center_pos,
     vec = orthogonal_vector(circle_normal_ax)
     angular_step_length = granularity / radius
     n_angular_steps = math.ceil(np.pi * 2 / angular_step_length)
+    if n_angular_steps < 2:
+        n_angular_steps = 2
     rotmat_list = rotmat_slerp(start_rotmat, end_rotmat, n_angular_steps)
     pos_list = []
     for angle in np.linspace(0, np.pi * 2, n_angular_steps).tolist():
@@ -432,8 +436,9 @@ def interpolate_vectors(start_vector, end_vector, granularity):
     """
     max_diff = np.max(np.abs(end_vector - start_vector))
     num_intervals = np.ceil(max_diff / granularity).astype(int)
-    num_points = num_intervals + 1
-    interpolated_vectors = np.linspace(start_vector, end_vector, num_points)
+    if num_intervals < 2:
+        num_intervals = 2
+    interpolated_vectors = np.linspace(start_vector, end_vector, num_intervals)
     return interpolated_vectors
 
 
@@ -894,7 +899,7 @@ def diff_between_poses(src_pos,
     delta = np.zeros(6)
     delta[0:3] = (tgt_pos - src_pos)
     delta[3:6] = delta_w_between_rotmat(src_rotmat, tgt_rotmat)
-    pos_err = np.linalg.norm(delta[:3])  # l2 norm
+    pos_err = np.linalg.norm(delta[:3])
     rot_err = np.linalg.norm(delta[3:6])
     return pos_err, rot_err, delta
 
@@ -1662,5 +1667,5 @@ def affine_matrix_from_points(v0, v1, shear=True, scale=True, use_svd=True):
 #     start_rotmat = np.eye(3)
 #     goal_pos = np.array([2, 0, 0])
 #     goal_rotmat = np.eye(3)
-#     pos_list, rotmat_list = interplate_pos_rotmat(start_pos, start_rotmat, goal_pos, goal_rotmat, granularity=3)
+#     pos_list, rotmat_list = interplate_pos_rotmat(start_pos, start_rotmat, goal_pos, goal_rotmat, linear_granularity=3)
 #     print(pos_list, rotmat_list)

@@ -3,10 +3,12 @@ import wrs.basis.robot_math as rm
 import wrs.modeling.geometric_model as mgm
 import wrs.robot_sim._kinematics.jl as rkjl
 import wrs.robot_sim._kinematics.model_generator as rkmg
-import wrs.robot_sim._kinematics.ik_dd as ikdd
+import wrs.robot_sim._kinematics.ik_dd as ikd
+import wrs.robot_sim._kinematics.ik_sel as iks
 import wrs.robot_sim._kinematics.ik_num as ikn
 import wrs.robot_sim._kinematics.ik_opt as iko
 import wrs.robot_sim._kinematics.constant as const
+from tqdm import tqdm
 
 
 # TODO delay finalize
@@ -259,7 +261,9 @@ class JLChain(object):
         self.go_home()
         self._is_finalized = True
         if ik_solver == 'd':
-            self._ik_solver = ikdd.DDIKSolver(self, identifier_str=identifier_str)
+            self._ik_solver = ikd.DDIKSolver(self, identifier_str=identifier_str)
+        if ik_solver == 's':
+            self._ik_solver = iks.SELIKSolver(self, identifier_str=identifier_str)
         elif ik_solver == 'n':
             self._ik_solver = ikn.NumIKSolver(self)
         elif ik_solver == 'o':
@@ -326,7 +330,7 @@ class JLChain(object):
         tmp_loc_rotmat = self._loc_flange_rotmat @ rotmat_in_flange
         return (tmp_loc_pos, tmp_loc_rotmat)
 
-    def are_jnts_in_ranges(self, jnt_values):
+    def are_jnts_in_ranges(self, jnt_values, toggle_info=False):
         """
         check if the given jnt_values are in range
         :param jnt_values:
@@ -338,7 +342,8 @@ class JLChain(object):
             raise ValueError(f"The given joint values do not match n_dof: {len(jnt_values)} vs. {self.n_dof}")
         jnt_values = np.asarray(jnt_values)
         if np.any(jnt_values < self.jnt_ranges[:, 0]) or np.any(jnt_values > self.jnt_ranges[:, 1]):
-            print("Joints are out of ranges!")
+            if toggle_info:
+                print("Joints are out of ranges!")
             return False
         else:
             return True
@@ -395,8 +400,8 @@ class JLChain(object):
     def ik(self,
            tgt_pos,
            tgt_rotmat,
-           best_sol_num,
            seed_jnt_values=None,
+           option="single",
            toggle_dbg=False):
         """
         :param tgt_pos: 1x3 nparray
@@ -408,9 +413,12 @@ class JLChain(object):
             raise Exception("IK solver undefined. Use JLChain.finalize to define it.")
         jnt_values = self._ik_solver(tgt_pos=tgt_pos,
                                      tgt_rotmat=tgt_rotmat,
-                                     best_sol_num=best_sol_num,
                                      seed_jnt_values=seed_jnt_values,
                                      toggle_dbg=toggle_dbg)
+        if jnt_values is None:
+            return None
+        if option[0] == 'm':
+            return [jnt_values]
         return jnt_values
 
     def gen_stickmodel(self,
@@ -451,7 +459,9 @@ class JLChain(object):
                                  toggle_cdmesh=toggle_cdmesh,
                                  name=name)
 
-    def test_ik_success_rate(self, n_times=100):
+    def test_ik_success_rate(self, n_times=1000):
+        import time
+        from matplotlib import pyplot as plt
         success = 0
         time_list = []
         tgt_list = []
@@ -475,6 +485,8 @@ class JLChain(object):
         print('max', np.max(time_list))
         print('min', np.min(time_list))
         print('std', np.std(time_list))
+        plt.plot(range(n_times), time_list)
+        plt.show()
         return success / n_times
 
 

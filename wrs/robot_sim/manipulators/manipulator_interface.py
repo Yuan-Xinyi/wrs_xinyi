@@ -111,7 +111,7 @@ class ManipulatorInterface(object):
     def jnt_ranges(self):
         return self.jlc.jnt_ranges
 
-    def _is_jnt_in_range(self, jnt_id, jnt_value):
+    def _is_jnt_in_range(self, jnt_id, jnt_value, toggle_warning=False):
         """
 
         :param jnt_id:
@@ -121,7 +121,8 @@ class ManipulatorInterface(object):
         date: 20230801
         """
         if jnt_value < self.jlc.jnts[jnt_id].motion_range[0] or jnt_value > self.jlc.jnts[jnt_id].motion_range[1]:
-            print(f"Error: Joint {jnt_id} is out of range!")
+            if toggle_warning:
+                print(f"Error: Joint {jnt_id} is out of range!")
             return False
         else:
             return True
@@ -179,7 +180,7 @@ class ManipulatorInterface(object):
            tgt_pos: np.ndarray,
            tgt_rotmat: np.ndarray,
            seed_jnt_values=None,
-           option="empty",
+           option="single",
            toggle_dbg=False):
         """
         by default the function calls the numerical implementation of jlc
@@ -190,14 +191,13 @@ class ManipulatorInterface(object):
         :param toggle_dbg:
         :return:
         """
-        # relative to base
-        rel_pos, rel_rotmat = rm.rel_pose(self.jlc.pos, self.jlc.rotmat, tgt_pos, tgt_rotmat)
         # target
-        tgt_rotmat = rel_rotmat @ self.loc_tcp_rotmat.T
-        tgt_pos = rel_pos - rel_rotmat @ self.loc_tcp_pos
-        return self.jlc.ik(tgt_pos=tgt_pos,
-                           tgt_rotmat=tgt_rotmat,
+        tgt_flange_rotmat = tgt_rotmat @ self.loc_tcp_rotmat.T
+        tgt_flange_pos = tgt_pos - tgt_rotmat @ self.loc_tcp_pos
+        return self.jlc.ik(tgt_pos=tgt_flange_pos,
+                           tgt_rotmat=tgt_flange_rotmat,
                            seed_jnt_values=seed_jnt_values,
+                           option=option,
                            toggle_dbg=toggle_dbg)
 
     def jacobian(self, jnt_values=None):

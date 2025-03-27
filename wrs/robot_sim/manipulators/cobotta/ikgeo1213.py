@@ -132,17 +132,10 @@ def ik(jlc, tgt_pos, tgt_rotmat, n_div = 36, seed_jnt_values=None, option='singl
         if q5 is not None:
             # backbone_solver uses jlc properties and takes into account jlc.pos and jlc.rotmat
             # there is not need to convert tgt_pos and tgt_rotmat
-            
-            '''result as seed in numik'''
             result = _backbone_solver(tgt_pos=tgt_pos, tgt_rotmat=tgt_rotmat, seed_jnt_values=[q1, q2, q3, q4, q5, q6],
                                       max_n_iter=7)
             if result is not None:
                 candidate_jnt_values.append(result)
-
-            '''direct as solution'''
-            # result = [q1, q2, q3, q4, q5, q6]
-            # candidate_jnt_values.append(result)
-    
     if len(candidate_jnt_values) > 0:
         filtered_result = rm.np.array(candidate_jnt_values)
         if seed_jnt_values is None:

@@ -58,7 +58,7 @@ class CVR038(mi.ManipulatorInterface):
         self.jlc.jnts[5].lnk.cmodel = mcm.CollisionModel(
             initor=os.path.join(current_file_dir, "meshes", "cvr038_j6.dae"), name=self.name + "_link6")
         self.jlc.jnts[5].lnk.cmodel.rgba = np.array([.7, .7, .7, 1.0])
-        self.jlc.finalize(ik_solver='d', identifier_str=name)
+        self.jlc.finalize(ik_solver='s', identifier_str=name)
         # tcp
         self.loc_tcp_pos = np.array([0, 0, 0])
         self.loc_tcp_rotmat = np.eye(3)
@@ -81,7 +81,6 @@ class CVR038(mi.ManipulatorInterface):
     def ik(self,
            tgt_pos,
            tgt_rotmat,
-           best_sol_num,
            seed_jnt_values=None,
            option="single",
            toggle_dbg=False):
@@ -98,53 +97,30 @@ class CVR038(mi.ManipulatorInterface):
         """
         toggle_update = False
         # directly use specified ik
-        self.jlc._ik_solver._k_max = 200
+        self.jlc._ik_solver._k_max = 5
         rel_rotmat = tgt_rotmat @ self.loc_tcp_rotmat.T
         rel_pos = tgt_pos - tgt_rotmat @ self.loc_tcp_pos
-        result = self.jlc.ik(tgt_pos=rel_pos, tgt_rotmat=rel_rotmat, seed_jnt_values=seed_jnt_values, best_sol_num = best_sol_num)
-        '''ikgeo'''
-        # result = ikgeo.ik(jlc=self.jlc, tgt_pos=rel_pos, tgt_rotmat=rel_rotmat, seed_jnt_values=None)
-
-        return result
-    
-        # if result is None:
-        #     # mcm.mgm.gen_myc_frame(pos=tgt_pos, rotmat=tgt_rotmat).attach_to(base)
-        #     result = ikgeo.ik(jlc=self.jlc, tgt_pos=rel_pos, tgt_rotmat=rel_rotmat, seed_jnt_values=None)
-        #     if result is None:
-        #         # print("No valid solutions found")
-        #         return None
-        #     else:
-        #         if toggle_update:
-        #             rel_pos, rel_rotmat = rm.rel_pose(self.jlc.pos, self.jlc.rotmat, rel_pos, rel_rotmat)
-        #             rel_rotvec = self.jlc._ik_solver._rotmat_to_vec(rel_rotmat)
-        #             query_point = np.concatenate((rel_pos, rel_rotvec))
-        #             # update dd driven file
-        #             tree_data = np.vstack((self.jlc._ik_solver.query_tree.data, query_point))
-        #             self.jlc._ik_solver.jnt_data.append(result)
-        #             self.jlc._ik_solver.query_tree = scipy.spatial.cKDTree(tree_data)
-        #             print(f"Updating query tree, {id} explored...")
-        #             self.jlc._ik_solver.persist_data()
-        #         return result
-        # else:
-        #     return result
-
-        # mcm.mgm.gen_myc_frame(pos=tgt_pos, rotmat=tgt_rotmat).attach_to(base)
-        # result = ikgeo.ik(jlc=self.jlc, tgt_pos=rel_pos, tgt_rotmat=rel_rotmat, seed_jnt_values=None)
-        # if result is None:
-        #     # print("No valid solutions found")
-        #     return None
-        # else:
-        #     if toggle_update:
-        #         rel_pos, rel_rotmat = rm.rel_pose(self.jlc.pos, self.jlc.rotmat, rel_pos, rel_rotmat)
-        #         rel_rotvec = self.jlc._ik_solver._rotmat_to_vec(rel_rotmat)
-        #         query_point = np.concatenate((rel_pos, rel_rotvec))
-        #         # update dd driven file
-        #         tree_data = np.vstack((self.jlc._ik_solver.query_tree.data, query_point))
-        #         self.jlc._ik_solver.jnt_data.append(result)
-        #         self.jlc._ik_solver.query_tree = scipy.spatial.cKDTree(tree_data)
-        #         print(f"Updating query tree, {id} explored...")
-        #         self.jlc._ik_solver.persist_data()
-        #     return result
+        result = self.jlc.ik(tgt_pos=rel_pos, tgt_rotmat=rel_rotmat, seed_jnt_values=seed_jnt_values)
+        if result is None:
+            # mcm.mgm.gen_myc_frame(pos=tgt_pos, rotmat=tgt_rotmat).attach_to(base)
+            result = ikgeo.ik(jlc=self.jlc, tgt_pos=rel_pos, tgt_rotmat=rel_rotmat, seed_jnt_values=None)
+            if result is None:
+                print("No valid solutions found")
+                return None
+            else:
+                if toggle_update:
+                    rel_pos, rel_rotmat = rm.rel_pose(self.jlc.pos, self.jlc.rotmat, rel_pos, rel_rotmat)
+                    rel_rotvec = self.jlc._ik_solver._rotmat_to_vec(rel_rotmat)
+                    query_point = np.concatenate((rel_pos, rel_rotvec))
+                    # update dd driven file
+                    tree_data = np.vstack((self.jlc._ik_solver.query_tree.data, query_point))
+                    self.jlc._ik_solver.jnt_data.append(result)
+                    self.jlc._ik_solver.query_tree = scipy.spatial.cKDTree(tree_data)
+                    print(f"Updating query tree, {id} explored...")
+                    self.jlc._ik_solver.persist_data()
+                return result
+        else:
+            return result
 
 
 if __name__ == '__main__':
@@ -153,7 +129,14 @@ if __name__ == '__main__':
 
     base = wd.World(cam_pos=[2, 0, 1], lookat_pos=[0, 0, .3])
     mcm.mgm.gen_frame().attach_to(base)
+    arm = CVR038()
+    arm.gen_meshmodel(alpha=.3).attach_to(base)
+    arm.gen_stickmodel().attach_to(base)
+    # base.run()
+
     arm = CVR038(pos =rm.vec(0.168, .3, 0), rotmat = rm.rotmat_from_euler(0, 0, rm.pi / 2), enable_cc=True)
+    arm.jlc.test_ik_success_rate()
+    base.run()
 
     # arm.jlc._ik_solver.test_success_rate()
     arm_mesh = arm.gen_meshmodel(alpha=.3)

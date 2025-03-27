@@ -3,14 +3,7 @@ import wrs.robot_sim._kinematics.ik_num as ikn
 import wrs.robot_sim._kinematics.ikgeo.sp4_lib as sp4_lib
 import wrs.robot_sim._kinematics.ikgeo.sp3_lib as sp3_lib
 import wrs.robot_sim._kinematics.ikgeo.sp1_lib as sp1_lib
-import numpy as np
-import json
 
-# for seed data collection purpose
-def append_to_logfile(filename, data):
-    with open(filename, "a") as f: 
-        json.dump(data, f) 
-        f.write("\n")
 
 def err_given_q4(q4, jlc, p06, R06):
     R34 = rm.rotmat_from_axangle(jlc.jnts[3].loc_motion_ax, q4)
@@ -124,7 +117,6 @@ def solve_q56(jlc, R06, q1, q2, q3, q4):
 
 
 def ik(jlc, tgt_pos, tgt_rotmat, n_div = 36, seed_jnt_values=None, option='single'):
-    collect_successful_seed = False
     _backbone_solver = ikn.NumIKSolver(jlc)
     # if seed_jnt_values is not None:
     #     result = _backbone_solver(tgt_pos, tgt_rotmat, seed_jnt_values)
@@ -142,24 +134,10 @@ def ik(jlc, tgt_pos, tgt_rotmat, n_div = 36, seed_jnt_values=None, option='singl
         if q5 is not None:
             # backbone_solver uses jlc properties and takes into account jlc.pos and jlc.rotmat
             # there is not need to convert tgt_pos and tgt_rotmat
-            
-            '''result as seed in numik'''
             result = _backbone_solver(tgt_pos=tgt_pos, tgt_rotmat=tgt_rotmat, seed_jnt_values=[q1, q2, q3, q4, q5, q6],
                                       max_n_iter=7)
-
-            '''direct as solution'''
-            # result = [q1, q2, q3, q4, q5, q6]
-
             if result is not None:
-                if collect_successful_seed == True:
-                    '''data format transformation'''
-                    rel_rotvec = rm.rotmat_to_wvec(rel_rotmat)
-                    query_point = np.concatenate((rel_pos, rel_rotvec))
-                    seed_jnt_values = [q1, q2, q3, q4, q5, q6]
-                    data = {"source": 'ikgeo',"target": query_point.tolist(), "seed_jnt_value": seed_jnt_values, "jnt_result": result.tolist()}
-                    append_to_logfile("successful_seed_dataset.json", data)                
                 candidate_jnt_values.append(result)
-    
     if len(candidate_jnt_values) > 0:
         filtered_result = rm.np.array(candidate_jnt_values)
         if seed_jnt_values is None:
@@ -173,6 +151,7 @@ def ik(jlc, tgt_pos, tgt_rotmat, n_div = 36, seed_jnt_values=None, option='singl
 
 
 if __name__ == '__main__':
+    from tqdm import tqdm
     from wrs import wd, mcm, rm
     import wrs.robot_sim.manipulators.cobotta.cvr038 as cbtm
 
@@ -181,20 +160,29 @@ if __name__ == '__main__':
     arm = cbtm.CVR038()
     arm.gen_meshmodel(alpha=.3).attach_to(base)
 
-    tgt_pos = rm.np.array([0.23, 0.118, 0.058])
-    tgt_rotmat = rm.np.array([[0.30810811, 0.95135135, 0.],
-                              [0.95135135, -0.30810811, 0.],
-                              [0., 0., -1.]])
-    # tgt_pos = rm.vec(.1, -.3, .3)
-    # tgt_rotmat = rm.rotmat_from_euler(0, rm.pi / 3, 0)
-    mcm.mgm.gen_frame(pos=tgt_pos, rotmat=tgt_rotmat).attach_to(base)
-    candidate_jnt_values = ik(arm.jlc, tgt_pos, tgt_rotmat)
-    if candidate_jnt_values is not None:
-        print(candidate_jnt_values)
-        for jnt_values in candidate_jnt_values:
-            arm.goto_given_conf(jnt_values=jnt_values)
-            arm_mesh = arm.gen_meshmodel(alpha=.3)
-            arm_mesh.attach_to(base)
-            tmp_arm_stick = arm.gen_stickmodel(toggle_flange_frame=True)
-            tmp_arm_stick.attach_to(base)
-    base.run()
+    # tgt_pos = rm.np.array([0.23, 0.118, 0.058])
+    # tgt_rotmat = rm.np.array([[0.30810811, 0.95135135, 0.],
+    #                           [0.95135135, -0.30810811, 0.],
+    #                           [0., 0., -1.]])
+    # # tgt_pos = rm.vec(.1, -.3, .3)
+    # # tgt_rotmat = rm.rotmat_from_euler(0, rm.pi / 3, 0)
+    # mcm.mgm.gen_frame(pos=tgt_pos, rotmat=tgt_rotmat).attach_to(base)
+    # candidate_jnt_values = ik(arm.jlc, tgt_pos, tgt_rotmat)
+    # if candidate_jnt_values is not None:
+    #     print(candidate_jnt_values)
+    #     for jnt_values in candidate_jnt_values:
+    #         arm.goto_given_conf(jnt_values=jnt_values)
+    #         arm_mesh = arm.gen_meshmodel(alpha=.3)
+    #         arm_mesh.attach_to(base)
+    #         tmp_arm_stick = arm.gen_stickmodel(toggle_flange_frame=True)
+    #         tmp_arm_stick.attach_to(base)
+    # base.run()
+
+    count = 0
+    for i in tqdm(range(100)):
+        jnt_vals = arm.rand_conf()
+        tgt_pos, tgt_rotmat = arm.fk(jnt_values=jnt_vals)
+        candidate_jnt_values = ik(jlc=arm.jlc, n_div=360, tgt_pos=tgt_pos, tgt_rotmat=tgt_rotmat)
+        if candidate_jnt_values is not None:
+            count += 1
+    print(count/100)
