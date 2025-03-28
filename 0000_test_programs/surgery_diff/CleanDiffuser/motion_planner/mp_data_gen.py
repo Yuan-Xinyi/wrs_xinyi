@@ -7,7 +7,7 @@ import wrs.motion.probabilistic.rrt as rrt
 
 from wrs.motion.trajectory.quintic import QuinticSpline
 import matplotlib.pyplot as plt
-import wrs.motion.trajectory.topp_ra as toppra
+import wrs.motion.trajectory.totg as toppra
 
 import cv2
 import time
