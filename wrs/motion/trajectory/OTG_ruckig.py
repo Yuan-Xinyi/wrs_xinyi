@@ -33,6 +33,12 @@ if __name__ == '__main__':
 
     '''assign the default dynamic constraints'''
     start_conf, goal_conf = gen_collision_free_start_goal(robot)
+    # start_conf =[-0.38842029, -0.93861186,  0.34365911, -2.84284857, -0.81828512,
+    #     3.65697029, -1.89065783]
+    # goal_conf = [-1.49891993,  0.99706583,  1.31858635, -0.32932128, -0.93099948,
+    #     4.07281978,  1.67859311]
+    print(f'Start Configuration: {repr(start_conf)}')
+    print(f'Goal Configuration: {repr(goal_conf)}')
     inp.current_position, inp.target_position = start_conf, goal_conf
     inp.current_velocity = rm.np.zeros(robot.n_dof) # support non-zero vel, zero for simplicity
     inp.current_acceleration = rm.np.zeros(robot.n_dof) # support non-zero acc, zero for simplicity
@@ -60,7 +66,7 @@ if __name__ == '__main__':
     print(f'Trajectory duration: {trajectory.duration:0.4f} [s]')
 
     '''start the ploting session'''
-    sampling_interval = 0.01  # seconds
+    sampling_interval = 0.02  # seconds
     time_points = np.linspace(0, trajectory.duration, 
                               num=int(trajectory.duration/sampling_interval)+1,
                               endpoint=True)
@@ -108,7 +114,7 @@ if __name__ == '__main__':
     robot.goto_given_conf(jnt_values=goal_conf)
     robot.gen_meshmodel(rgb=[0,1,0], alpha=.3).attach_to(base)
 
-    sampled_indices = np.linspace(0, len(positions)-1, num=10, dtype=int)
+    sampled_indices = np.linspace(0, len(positions)-1, num=100, dtype=int)
     sampled_positions = [positions[i] for i in sampled_indices]
 
     for conf in sampled_positions:
