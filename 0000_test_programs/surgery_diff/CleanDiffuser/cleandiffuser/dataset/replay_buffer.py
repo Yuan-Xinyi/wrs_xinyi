@@ -173,6 +173,7 @@ class ReplayBuffer:
             for key in keys:
                 arr = src_root['data'][key]
                 data[key] = arr[:]
+                print(key, data[key].shape)
 
             root = {
                 'meta': meta,

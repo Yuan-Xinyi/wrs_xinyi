@@ -25,7 +25,7 @@ import matplotlib.pyplot as plt
 from torch.optim.lr_scheduler import CosineAnnealingLR
 from cleandiffuser.dataset.dataset_utils import loop_dataloader
 from cleandiffuser.utils import report_parameters
-from ruckig_dataset import MotionPlanningDataset
+from ruckig_dataset import MotionPlanningDataset, ObstaclePlanningDataset
 from torch.utils.data import random_split
 
 def set_seed(seed: int):
@@ -98,9 +98,9 @@ with open(config_file, "r") as file:
 
 '''dataset loading'''
 if config['mode'] == "train":
-    dataset_path = os.path.join(parent_dir, 'datasets/franka_mp_ruckig.zarr')
+    dataset_path = os.path.join(parent_dir, 'datasets', config['dataset_name'])
 
-    dataset = MotionPlanningDataset(dataset_path, horizon=config['horizon'], obs_keys=config['obs_keys'], 
+    dataset = ObstaclePlanningDataset(dataset_path, horizon=config['horizon'], obs_keys=config['obs_keys'], 
                                     pad_before=config['obs_steps']-1, pad_after=config['action_steps']-1, abs_action=config['abs_action'])
 
     train_dataset, val_dataset = random_split(
@@ -138,7 +138,7 @@ from cleandiffuser.diffusion.diffusionsde import DiscreteDiffusionSDE
 
 # --------------- Network Architecture -----------------
 nn_diffusion = ChiUNet1d(
-    config['action_dim'], config['obs_dim'], config['obs_steps'], model_dim=256, emb_dim=256, dim_mult=[1, 2, 2],
+    config['action_dim'], config['obs_dim'], config['obs_steps'], model_dim=256, emb_dim=256, dim_mult=config['dim_mult'],
     obs_as_global_cond=True, timestep_emb_type="positional").to(config['device'])
 nn_condition = IdentityCondition(dropout=0.0).to(config['device'])
 
@@ -147,9 +147,9 @@ print(f"======================= Parameter Report of Diffusion Model ============
 report_parameters(nn_diffusion)
 
 
-import wrs.robot_sim.manipulators.franka_research_3_arm.franka_research_3_arm as franka
+import wrs.robot_sim.robots.franka_research_3.franka_research_3 as franka
 from wrs import wd, rm, mcm
-robot_s = franka.FrankaResearch3Arm(enable_cc=True)
+robot_s = franka.FrankaResearch3(enable_cc=True)
 
 '''define the robot joint limits'''
 jnt_v_max = rm.np.asarray([rm.pi * 2 / 3] * robot_s.n_dof)
@@ -181,7 +181,7 @@ if config['mode'] == "train":
     if not os.path.exists(save_path):
         os.makedirs(save_path)
 
-    wandb.init(project="mp_diff", name=rootpath)
+    wandb.init(project="rrt_ruckig", name=rootpath)
 
     # ----------------- Training ----------------------
     agent.train()
@@ -192,10 +192,9 @@ if config['mode'] == "train":
     
     for batch in loop_dataloader(train_loader):
         # get condition
-        obs = batch['obs'].to(config['device'])
+        condition = batch['cond'].to(config['device'])
         action = batch['action'].to(config['device'])
 
-        condition = obs[:, [0, -1], :]
         condition = condition.flatten(start_dim=1) # (64,12)
         
         # update diffusion

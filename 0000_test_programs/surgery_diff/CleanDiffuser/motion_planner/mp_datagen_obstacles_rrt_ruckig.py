@@ -138,7 +138,8 @@ def gen_toppra_traj(rrt, start_conf, goal_conf):
 
 def gen_collision_free_start_goal(robot, obstacle_list=[]):
     '''generate the start and goal conf'''
-    while True:
+    MAX_ITER = 100  
+    for _ in range(MAX_ITER):
         start_conf = robot.rand_conf()
         goal_conf = robot.rand_conf()
         robot.goto_given_conf(jnt_values=start_conf)
@@ -146,8 +147,8 @@ def gen_collision_free_start_goal(robot, obstacle_list=[]):
         robot.goto_given_conf(jnt_values=goal_conf)
         goal_cc = robot.cc.is_collided(obstacle_list=obstacle_list)
         if not start_cc and not goal_cc:
-            break
-    return start_conf, goal_conf
+            return start_conf, goal_conf
+    return None, None
 
 def generate_obstacle(xyz_lengths, pos, rotmat, rgb=None, alpha=None):
     # generate a single obstacle
@@ -161,7 +162,7 @@ def generate_obstacle(xyz_lengths, pos, rotmat, rgb=None, alpha=None):
 def generate_multiple_obstacles(obstacle_num):
     # generate multiple obstacles
     obstacle_list = []
-    obstacle_info = np.zeros(18, dtype=np.float32)
+    obstacle_info = np.zeros(9, dtype=np.float32)
     for i in range(obstacle_num):
         xyz_lengths = rm.np.array([.05, .05, .05])
         pos = np.array([
@@ -187,7 +188,6 @@ def generate_obstacle_confs(robot, obstacle_num=3):
                     return start_conf, goal_conf, obstacle_list, obstacle_info
             except Exception as e:
                 break
-
 
 
 if __name__ == '__main__':
@@ -233,7 +233,7 @@ if __name__ == '__main__':
         config = yaml.safe_load(file)
 
     dataset_dir = os.path.join(parent_dir, 'datasets')
-    dataset_name = os.path.join(dataset_dir, 'franka_kinodyn_obstacles.zarr')
+    dataset_name = os.path.join(dataset_dir, 'franka_kinodyn_obstacles_3.zarr')
     # dataset_name = os.path.join(dataset_dir, 'test.zarr')
     store = zarr.DirectoryStore(dataset_name)
     root = zarr.group(store=store)
@@ -246,12 +246,12 @@ if __name__ == '__main__':
     jnt_p = data_group.create_dataset("jnt_pos", shape=(0, dof), chunks=(1, dof), dtype=np.float32, append=True)
     jnt_v = data_group.create_dataset("jnt_vel", shape=(0, dof), chunks=(1, dof), dtype=np.float32, append=True)
     jnt_a = data_group.create_dataset("jnt_acc", shape=(0, dof), chunks=(1, dof), dtype=np.float32, append=True)
-    obstacles = data_group.create_dataset("obstacles", shape=(0, 18), chunks=(1, 18), dtype=np.float32, append=True)
+    obstacles = data_group.create_dataset("obstacles", shape=(0, 9), chunks=(1, 18), dtype=np.float32, append=True)
 
     episode_ends_counter = 0
     max_steps_per_episode = 2000
     for _ in tqdm(range(config['traj_num'])):
-        start_conf, goal_conf, obstacle_list, obstacle_info = generate_obstacle_confs(robot, obstacle_num=6)  
+        start_conf, goal_conf, obstacle_list, obstacle_info = generate_obstacle_confs(robot, obstacle_num=3)  
         inp.current_position, inp.target_position = start_conf, goal_conf
         print('-'*100)
         print('start_conf:', start_conf)
@@ -283,7 +283,7 @@ if __name__ == '__main__':
                 # print('\t'.join([f'{out.time:0.3f}'] + [f'{p:0.3f}' for p in out.new_position]))
                 out_list.append(copy(out))
                 out.pass_to_input(inp)
-                obstacles.append(obstacle_info.reshape(1, 18))
+                obstacles.append(obstacle_info.reshape(1, 9))
                 jnt_p.append(np.array((out.new_position)).reshape(1, dof))
                 jnt_v.append(np.array((out.new_velocity)).reshape(1, dof))
                 jnt_a.append(np.array((out.new_acceleration)).reshape(1, dof))
