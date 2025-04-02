@@ -1,5 +1,5 @@
 abs_action: false
-mode: train  # train or inference
+mode: inference  # train or inference
 obs_keys: ['jnt_pos', 'jnt_vel', 'jnt_acc','obstacles']
 dataset_name: franka_kinodyn_obstacles_3.zarr
 action_dim: 14

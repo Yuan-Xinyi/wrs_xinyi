@@ -43,18 +43,18 @@ def validate(agent, val_dataloader, device):
             total_val_loss += val_loss.item()
     return total_val_loss / len(val_dataloader)
 
-def gen_collision_free_start_goal(robot):
-    '''generate the start and goal conf'''
-    while True:
-        start_conf = robot.rand_conf()
-        goal_conf = robot.rand_conf()
-        robot.goto_given_conf(jnt_values=start_conf)
-        start_cc = robot.cc.is_collided()
-        robot.goto_given_conf(jnt_values=goal_conf)
-        goal_cc = robot.cc.is_collided()
-        if not start_cc and not goal_cc:
-            break
-    return start_conf, goal_conf
+# def gen_collision_free_start_goal(robot):
+#     '''generate the start and goal conf'''
+#     while True:
+#         start_conf = robot.rand_conf()
+#         goal_conf = robot.rand_conf()
+#         robot.goto_given_conf(jnt_values=start_conf)
+#         start_cc = robot.cc.is_collided()
+#         robot.goto_given_conf(jnt_values=goal_conf)
+#         goal_cc = robot.cc.is_collided()
+#         if not start_cc and not goal_cc:
+#             break
+#     return start_conf, goal_conf
 
 def plot_details(robot_s, jnt_pos_list, jnt_vel_list, jnt_acc_list):
     sampling_interval = 0.01
@@ -230,7 +230,7 @@ if config['mode'] == "train":
 
 elif config['mode'] == "inference":
     # ----------------- Inference ----------------------
-    model_path = '0000_test_programs/surgery_diff/CleanDiffuser/motion_planner/results/0331_1600_h64_unnorm/diffusion_ckpt_latest.pt'    
+    model_path = '0000_test_programs/surgery_diff/CleanDiffuser/motion_planner/results/0402_1328_h256_unnorm/diffusion_ckpt_latest.pt'    
     agent.load(model_path)
     agent.model.eval()
     agent.model_ema.eval()
@@ -257,9 +257,10 @@ elif config['mode'] == "inference":
         jnt_acc_list = []
         delta_t = 0.01
 
-        start_conf, goal_conf = gen_collision_free_start_goal(robot_s)
+        import mp_datagen_obstacles_rrt_ruckig as mp_datagen
+        start_conf, goal_conf, obstacle_list, obstacle_info = mp_datagen.generate_obstacle_confs(robot_s, obstacle_num=3)
         tgt_pos, tgt_rotmat = robot_s.fk(jnt_values=goal_conf)
-        print(f"Start Conf: {start_conf}, Goal Conf: {goal_conf}")
+        print(f"Start Conf: {start_conf}, Goal Conf: {goal_conf}, Obstacle Info: {obstacle_info}")
         
         if visualization:
             robot_s.goto_given_conf(jnt_values=goal_conf)
@@ -273,8 +274,9 @@ elif config['mode'] == "inference":
 
         for _ in range(inference_steps):
             start_conf = robot_s.get_jnt_values()
-            condition[:, :config['obs_dim']] = torch.tensor(start_conf).to(config['device'])
-            condition[:, config['obs_dim']:] = torch.tensor(goal_conf).to(config['device'])
+            condition[:, :robot_s.n_dof] = torch.tensor(start_conf).to(config['device'])
+            condition[:, robot_s.n_dof:2*robot_s.n_dof] = torch.tensor(goal_conf).to(config['device'])
+            condition[:, 2*robot_s.n_dof:] = torch.tensor(obstacle_info).to(config['device'])
             
             with torch.no_grad():
                 prior = torch.zeros((1, config['horizon'], config['action_dim']), device=config['device'])
@@ -302,13 +304,13 @@ elif config['mode'] == "inference":
                 update_counter += 1
                 # print(f"Step: {update_counter}, distance: {np.linalg.norm(robot_s.get_jnt_values() - goal_conf)}")
 
-                if robot_s.cc.is_collided():
+                if robot_s.cc.is_collided(obstacle_list=obstacle_list):
                     break
 
                 if (pos_err < config['max_pos_err'] and rot_err < config['max_rot_err']) or update_counter > config['max_iter']:
                     break
             
-            if pos_err < config['max_pos_err'] and rot_err < config['max_rot_err'] and not robot_s.cc.is_collided():
+            if pos_err < config['max_pos_err'] and rot_err < config['max_rot_err'] and not robot_s.cc.is_collided(obstacle_list=obstacle_list):
                 success_num += 1
                 break
         
