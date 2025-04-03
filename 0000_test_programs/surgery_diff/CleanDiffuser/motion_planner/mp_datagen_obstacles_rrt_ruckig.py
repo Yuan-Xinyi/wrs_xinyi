@@ -110,44 +110,6 @@ def visualize_anime(robot, rrt, start_conf, goal_conf):
 
     base.run()
 
-
-# def visualize_anime_diffusion(robot, path, start_conf, goal_conf):
-#     class Data(object):
-#         def __init__(self):
-#             self.counter = 0
-#             self.path = None
-#             self.on_screen = []
-
-#     robot.goto_given_conf(jnt_values=start_conf)
-#     robot.gen_meshmodel(rgb=[0,0,1], alpha=.3).attach_to(base)
-#     robot.goto_given_conf(jnt_values=goal_conf)
-#     robot.gen_meshmodel(rgb=[0,1,0], alpha=.3).attach_to(base)
-
-#     anime_data = Data()
-#     anime_data.path = path
-
-#     def update(robot, anime_data, task):
-#         if anime_data.counter >= len(anime_data.path):
-#             for model in anime_data.on_screen:
-#                 model.detach()
-#             anime_data.counter = 0
-#             anime_data.on_screen = []
-#             return task.done
-
-#         conf = anime_data.path[anime_data.counter]
-#         robot.goto_given_conf(conf)
-#         model = robot.gen_meshmodel(alpha=.2)
-#         model.attach_to(base)
-#         anime_data.on_screen.append(model)
-
-#         anime_data.counter += 1
-#         return task.again
-
-
-#     taskMgr.doMethodLater(0.01, update, "update",
-#                         extraArgs=[robot, anime_data],
-#                         appendTask=True)
-
 def visualize_anime_diffusion(robot, path, start_conf, goal_conf):
     class Data(object):
         def __init__(self):

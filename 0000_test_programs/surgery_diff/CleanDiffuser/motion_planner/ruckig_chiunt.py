@@ -230,8 +230,8 @@ if config['mode'] == "train":
 
 elif config['mode'] == "inference":
     # ----------------- Inference ----------------------
-    model_path = '0000_test_programs/surgery_diff/CleanDiffuser/motion_planner/results/0402_1328_h256_unnorm/diffusion_ckpt_latest.pt'    
-    # model_path = '0000_test_programs/surgery_diff/CleanDiffuser/motion_planner/results/0403_1111_h128_unnorm/diffusion_ckpt_latest.pt'
+    # model_path = '0000_test_programs/surgery_diff/CleanDiffuser/motion_planner/results/0402_1328_h256_unnorm/diffusion_ckpt_latest.pt'    
+    model_path = '0000_test_programs/surgery_diff/CleanDiffuser/motion_planner/results/0403_1111_h128_unnorm/diffusion_ckpt_latest.pt'
     agent.load(model_path)
     agent.model.eval()
     agent.model_ema.eval()
@@ -261,7 +261,7 @@ elif config['mode'] == "inference":
         import mp_datagen_obstacles_rrt_ruckig as mp_datagen
         import copy
 
-        start_conf, goal_conf, obstacle_list, obstacle_info = mp_datagen.generate_obstacle_confs(robot_s, obstacle_num=3)
+        start_conf, goal_conf, obstacle_list, obstacle_info = mp_datagen.generate_obstacle_confs(robot_s, obstacle_num=6)
         START_CONF = copy.deepcopy(start_conf)
         GOAL_CONF = copy.deepcopy(goal_conf)
         tgt_pos, tgt_rotmat = robot_s.fk(jnt_values=goal_conf)
@@ -274,8 +274,6 @@ elif config['mode'] == "inference":
 
         assert config['normalize'] == False
         update_counter = 0
-        last_pos_err = 1000
-        last_rot_err = 1000
         condition = torch.zeros((1, config['obs_dim']*config['obs_steps']), device=config['device'])
 
         for _ in range(inference_steps):
@@ -311,18 +309,27 @@ elif config['mode'] == "inference":
                 # print(f"Step: {update_counter}, distance: {np.linalg.norm(robot_s.get_jnt_values() - goal_conf)}")
 
                 if robot_s.cc.is_collided(obstacle_list=obstacle_list):
+                    print("Collision detected!")
                     break
 
-                if (pos_err < config['max_pos_err'] and rot_err < config['max_rot_err']) or update_counter > config['max_iter']:
+                if (pos_err < config['max_pos_err'] and rot_err < config['max_rot_err']):
+                    print("Goal reached!")
+                    break
+
+                if update_counter > config['max_iter']:
+                    print("Max iteration reached!")
                     break
             
             if pos_err < config['max_pos_err'] and rot_err < config['max_rot_err'] and not robot_s.cc.is_collided(obstacle_list=obstacle_list):
                 success_num += 1
+                print("Success!")
                 break
         
         if visualization:
             # mp_datagen.visualize_anime_diffusion(robot=robot_s, path = jnt_pos_list, 
             #                                      start_conf=START_CONF, goal_conf=GOAL_CONF)
+            jnt_pos_array, jnt_vel_arrat, jnt_acc_array = np.array(jnt_pos_list), np.array(jnt_vel_list), np.array(jnt_acc_list)
+            np.savez('jnt_info.npz', jnt_pos=jnt_pos_array, jnt_vel=jnt_vel_arrat, jnt_acc=jnt_acc_array)
             plot_details(robot_s, jnt_pos_list, jnt_vel_list, jnt_acc_list)
             base.run()    
 
