@@ -162,7 +162,7 @@ def generate_obstacle(xyz_lengths, pos, rotmat, rgb=None, alpha=None):
 def generate_multiple_obstacles(obstacle_num):
     # generate multiple obstacles
     obstacle_list = []
-    obstacle_info = np.zeros(9, dtype=np.float32)
+    obstacle_info = np.zeros(obstacle_info_shape, dtype=np.float32)
     for i in range(obstacle_num):
         xyz_lengths = rm.np.array([.05, .05, .05])
         pos = np.array([
@@ -189,6 +189,8 @@ def generate_obstacle_confs(robot, obstacle_num=3):
             except Exception as e:
                 break
 
+obstacle_num = 6
+obstacle_info_shape = 3*obstacle_num
 
 if __name__ == '__main__':
     '''init the parameters'''
@@ -233,7 +235,7 @@ if __name__ == '__main__':
         config = yaml.safe_load(file)
 
     dataset_dir = os.path.join(parent_dir, 'datasets')
-    dataset_name = os.path.join(dataset_dir, 'franka_kinodyn_obstacles_3.zarr')
+    dataset_name = os.path.join(dataset_dir, f'franka_kinodyn_obstacles_{obstacle_num}.zarr')
     # dataset_name = os.path.join(dataset_dir, 'test.zarr')
     store = zarr.DirectoryStore(dataset_name)
     root = zarr.group(store=store)
@@ -246,7 +248,7 @@ if __name__ == '__main__':
     jnt_p = data_group.create_dataset("jnt_pos", shape=(0, dof), chunks=(1, dof), dtype=np.float32, append=True)
     jnt_v = data_group.create_dataset("jnt_vel", shape=(0, dof), chunks=(1, dof), dtype=np.float32, append=True)
     jnt_a = data_group.create_dataset("jnt_acc", shape=(0, dof), chunks=(1, dof), dtype=np.float32, append=True)
-    obstacles = data_group.create_dataset("obstacles", shape=(0, 9), chunks=(1, 18), dtype=np.float32, append=True)
+    obstacles = data_group.create_dataset("obstacles", shape=(0, obstacle_info_shape), chunks=(1, obstacle_info_shape), dtype=np.float32, append=True)
 
     episode_ends_counter = 0
     max_steps_per_episode = 2000
@@ -257,7 +259,7 @@ if __name__ == '__main__':
         print('start_conf:', start_conf)
         print('goal_conf:', goal_conf)
         
-        for _ in range(3):
+        for _ in range(2):
             
             path = rrt.plan(start_conf=start_conf,
                             goal_conf=goal_conf,
@@ -283,7 +285,7 @@ if __name__ == '__main__':
                 # print('\t'.join([f'{out.time:0.3f}'] + [f'{p:0.3f}' for p in out.new_position]))
                 out_list.append(copy(out))
                 out.pass_to_input(inp)
-                obstacles.append(obstacle_info.reshape(1, 9))
+                obstacles.append(obstacle_info.reshape(1, obstacle_info_shape))
                 jnt_p.append(np.array((out.new_position)).reshape(1, dof))
                 jnt_v.append(np.array((out.new_velocity)).reshape(1, dof))
                 jnt_a.append(np.array((out.new_acceleration)).reshape(1, dof))
