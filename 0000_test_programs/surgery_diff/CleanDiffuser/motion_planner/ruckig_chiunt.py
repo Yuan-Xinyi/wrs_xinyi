@@ -231,6 +231,7 @@ if config['mode'] == "train":
 elif config['mode'] == "inference":
     # ----------------- Inference ----------------------
     model_path = '0000_test_programs/surgery_diff/CleanDiffuser/motion_planner/results/0402_1328_h256_unnorm/diffusion_ckpt_latest.pt'    
+    # model_path = '0000_test_programs/surgery_diff/CleanDiffuser/motion_planner/results/0403_1111_h128_unnorm/diffusion_ckpt_latest.pt'
     agent.load(model_path)
     agent.model.eval()
     agent.model_ema.eval()
@@ -258,18 +259,23 @@ elif config['mode'] == "inference":
         delta_t = 0.01
 
         import mp_datagen_obstacles_rrt_ruckig as mp_datagen
+        import copy
+
         start_conf, goal_conf, obstacle_list, obstacle_info = mp_datagen.generate_obstacle_confs(robot_s, obstacle_num=3)
+        START_CONF = copy.deepcopy(start_conf)
+        GOAL_CONF = copy.deepcopy(goal_conf)
         tgt_pos, tgt_rotmat = robot_s.fk(jnt_values=goal_conf)
         print(f"Start Conf: {start_conf}, Goal Conf: {goal_conf}, Obstacle Info: {obstacle_info}")
         
-        if visualization:
-            robot_s.goto_given_conf(jnt_values=goal_conf)
-            robot_s.gen_meshmodel(rgb=[0,1,0], alpha=.5).attach_to(base)
-            robot_s.goto_given_conf(jnt_values=start_conf)
-            robot_s.gen_meshmodel(rgb=[0,0,1], alpha=.5).attach_to(base)
+        robot_s.goto_given_conf(jnt_values=goal_conf)
+        robot_s.gen_meshmodel(alpha=0.2, rgb=[0,1,0]).attach_to(base)
+        robot_s.goto_given_conf(jnt_values=start_conf)
+        robot_s.gen_meshmodel(alpha=0.2, rgb=[0,0,1]).attach_to(base)
 
         assert config['normalize'] == False
         update_counter = 0
+        last_pos_err = 1000
+        last_rot_err = 1000
         condition = torch.zeros((1, config['obs_dim']*config['obs_steps']), device=config['device'])
 
         for _ in range(inference_steps):
@@ -289,11 +295,11 @@ elif config['mode'] == "inference":
             jnt_vel_list.append(action[0, 0, :7].detach().to('cpu').numpy())
             
             for idx in range(jnt_acc_pred.shape[0]):
-                print(update_counter)
+                # print(update_counter)
                 robot_s.goto_given_conf(jnt_values=jnt_pos_list[-1])
                 pred_pos, pred_rotmat = robot_s.fk(jnt_values=jnt_pos_list[-1])
                 pos_err, rot_err, _ = rm.diff_between_poses(tgt_pos, tgt_rotmat, pred_pos, pred_rotmat)
-                # print(f"Step: {update_counter}, pos_err: {pos_err} mms, rot_err: {rot_err} degrees")
+                print(f"Step: {update_counter}, pos_err: {pos_err} mms, rot_err: {rot_err} degrees")
 
                 jnt_pos_list.append(jnt_pos_list[-1] + delta_t*jnt_vel_list[-1])  # p(t+1)
                 jnt_acc_list.append(jnt_acc_pred[idx]) # a(t)
@@ -315,6 +321,8 @@ elif config['mode'] == "inference":
                 break
         
         if visualization:
+            # mp_datagen.visualize_anime_diffusion(robot=robot_s, path = jnt_pos_list, 
+            #                                      start_conf=START_CONF, goal_conf=GOAL_CONF)
             plot_details(robot_s, jnt_pos_list, jnt_vel_list, jnt_acc_list)
             base.run()    
 

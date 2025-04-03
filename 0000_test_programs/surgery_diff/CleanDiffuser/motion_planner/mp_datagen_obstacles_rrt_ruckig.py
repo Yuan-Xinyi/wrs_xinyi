@@ -111,6 +111,83 @@ def visualize_anime(robot, rrt, start_conf, goal_conf):
     base.run()
 
 
+# def visualize_anime_diffusion(robot, path, start_conf, goal_conf):
+#     class Data(object):
+#         def __init__(self):
+#             self.counter = 0
+#             self.path = None
+#             self.on_screen = []
+
+#     robot.goto_given_conf(jnt_values=start_conf)
+#     robot.gen_meshmodel(rgb=[0,0,1], alpha=.3).attach_to(base)
+#     robot.goto_given_conf(jnt_values=goal_conf)
+#     robot.gen_meshmodel(rgb=[0,1,0], alpha=.3).attach_to(base)
+
+#     anime_data = Data()
+#     anime_data.path = path
+
+#     def update(robot, anime_data, task):
+#         if anime_data.counter >= len(anime_data.path):
+#             for model in anime_data.on_screen:
+#                 model.detach()
+#             anime_data.counter = 0
+#             anime_data.on_screen = []
+#             return task.done
+
+#         conf = anime_data.path[anime_data.counter]
+#         robot.goto_given_conf(conf)
+#         model = robot.gen_meshmodel(alpha=.2)
+#         model.attach_to(base)
+#         anime_data.on_screen.append(model)
+
+#         anime_data.counter += 1
+#         return task.again
+
+
+#     taskMgr.doMethodLater(0.01, update, "update",
+#                         extraArgs=[robot, anime_data],
+#                         appendTask=True)
+
+def visualize_anime_diffusion(robot, path, start_conf, goal_conf):
+    class Data(object):
+        def __init__(self):
+            self.counter = 0
+            self.path = None
+            self.current_model = None  # 当前帧的模型
+
+    robot.goto_given_conf(jnt_values=start_conf)
+    robot.gen_meshmodel(rgb=[0, 0, 1], alpha=.3).attach_to(base)
+    robot.goto_given_conf(jnt_values=goal_conf)
+    robot.gen_meshmodel(rgb=[0, 1, 0], alpha=.3).attach_to(base)
+
+    anime_data = Data()
+    anime_data.path = path
+
+    def update(robot, anime_data, task):
+        if anime_data.counter >= len(anime_data.path):
+            if anime_data.current_model:
+                anime_data.current_model.detach()  # 移除最后一帧的模型
+            anime_data.counter = 0
+            return task.done
+
+        # 移除上一帧的模型
+        if anime_data.current_model:
+            anime_data.current_model.detach()
+
+        # 更新机器人位置并生成当前帧的模型
+        conf = anime_data.path[anime_data.counter]
+        robot.goto_given_conf(conf)
+        anime_data.current_model = robot.gen_meshmodel(alpha=1.0)
+        anime_data.current_model.attach_to(base)
+
+        anime_data.counter += 1
+        return task.again
+
+    taskMgr.doMethodLater(0.01, update, "update",
+                        extraArgs=[robot, anime_data],
+                        appendTask=True)
+
+
 def gen_toppra_traj(rrt, start_conf, goal_conf):
     
     '''generate the dataset'''
@@ -162,6 +239,7 @@ def generate_obstacle(xyz_lengths, pos, rotmat, rgb=None, alpha=None):
 def generate_multiple_obstacles(obstacle_num):
     # generate multiple obstacles
     obstacle_list = []
+    obstacle_info_shape = 3*obstacle_num
     obstacle_info = np.zeros(obstacle_info_shape, dtype=np.float32)
     for i in range(obstacle_num):
         xyz_lengths = rm.np.array([.05, .05, .05])
@@ -189,8 +267,6 @@ def generate_obstacle_confs(robot, obstacle_num=3):
             except Exception as e:
                 break
 
-obstacle_num = 6
-obstacle_info_shape = 3*obstacle_num
 
 if __name__ == '__main__':
     '''init the parameters'''

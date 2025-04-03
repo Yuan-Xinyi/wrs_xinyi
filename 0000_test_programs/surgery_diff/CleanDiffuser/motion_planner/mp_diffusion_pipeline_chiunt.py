@@ -182,6 +182,7 @@ if config['mode'] == "train":
 elif config['mode'] == "inference":
     # ----------------- Inference ----------------------
     model_path = '0000_test_programs/surgery_diff/CleanDiffuser/motion_planner/results/0325_1926_h32_unnorm/diffusion_ckpt_latest.pt'    
+    # model_path = '0000_test_programs/surgery_diff/CleanDiffuser/motion_planner/results/0403_1111_h128_unnorm/diffusion_ckpt_latest.pt'
     agent.load(model_path)
     agent.model.eval()
     agent.model_ema.eval()
