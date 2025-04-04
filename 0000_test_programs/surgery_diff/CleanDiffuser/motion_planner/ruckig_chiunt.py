@@ -25,7 +25,7 @@ import matplotlib.pyplot as plt
 from torch.optim.lr_scheduler import CosineAnnealingLR
 from cleandiffuser.dataset.dataset_utils import loop_dataloader
 from cleandiffuser.utils import report_parameters
-from ruckig_dataset import MotionPlanningDataset, ObstaclePlanningDataset
+from ruckig_dataset import MotionPlanningDataset, ObstaclePlanningDataset, PosVelAccPlanningDataset
 from torch.utils.data import random_split
 
 class LinearActionStepScheduler:
@@ -136,7 +136,7 @@ with open(config_file, "r") as file:
 if config['mode'] == "train":
     dataset_path = os.path.join('/home/lqin', 'zarr_datasets', config['dataset_name'])
 
-    dataset = MotionPlanningDataset(dataset_path, horizon=config['horizon'], obs_keys=config['obs_keys'], 
+    dataset = PosVelAccPlanningDataset(dataset_path, horizon=config['horizon'], obs_keys=config['obs_keys'], 
                                     pad_before=config['obs_steps']-1, pad_after=config['action_steps']-1, abs_action=config['abs_action'])
 
     train_dataset, val_dataset = random_split(
@@ -269,7 +269,9 @@ elif config['mode'] == "inference":
     # model_path = '0000_test_programs/surgery_diff/CleanDiffuser/motion_planner/results/0402_1328_h256_unnorm/diffusion_ckpt_latest.pt'    
     # model_path = '0000_test_programs/surgery_diff/CleanDiffuser/motion_planner/results/0403_1111_h128_unnorm/diffusion_ckpt_latest.pt'
     # model_path = '0000_test_programs/surgery_diff/CleanDiffuser/motion_planner/results/0404_1130_h256_unnorm/diffusion_ckpt_latest.pt'
-    model_path = '0000_test_programs/surgery_diff/CleanDiffuser/motion_planner/results/0404_1417_h512_unnorm/diffusion_ckpt_latest.pt'
+    # model_path = '0000_test_programs/surgery_diff/CleanDiffuser/motion_planner/results/0404_1417_h512_unnorm/diffusion_ckpt_latest.pt'
+    model_path = '0000_test_programs/surgery_diff/CleanDiffuser/motion_planner/results/0404_1947_h64_unnorm/diffusion_ckpt_latest.pt'
+    
     agent.load(model_path)
     agent.model.eval()
     agent.model_ema.eval()
@@ -325,10 +327,24 @@ elif config['mode'] == "inference":
         update_counter = 0
         condition = torch.zeros((1, config['obs_dim']*config['obs_steps']), device=config['device'])
 
+        '''initialize the condition'''
+        start_acc = np.zeros((robot_s.n_dof))
+        start_vel = np.zeros((robot_s.n_dof))
+        goal_acc = np.zeros((robot_s.n_dof))
+        goal_vel = np.zeros((robot_s.n_dof))
+
         for _ in range(inference_steps):
             start_conf = robot_s.get_jnt_values()
+            start_vel = jnt_vel_list[-1] if len(jnt_vel_list) > 0 else start_vel
+            start_acc = jnt_acc_list[-1] if len(jnt_acc_list) > 0 else start_acc
+            
+            '''generate the condition'''
+            # condition = np.concatenate([start_conf, start_vel, start_acc, goal_conf, goal_vel, goal_acc], axis=-1)
+            # condition = torch.tensor(condition).unsqueeze(0).to(config['device']) # (64,12)
             condition[:, :robot_s.n_dof] = torch.tensor(start_conf).to(config['device'])
-            condition[:, robot_s.n_dof:2*robot_s.n_dof] = torch.tensor(goal_conf).to(config['device'])
+            condition[:, robot_s.n_dof:2*robot_s.n_dof] = torch.tensor(start_vel).to(config['device'])
+            condition[:, 2*robot_s.n_dof:3*robot_s.n_dof] = torch.tensor(start_acc).to(config['device'])
+
             if 'obstacles' in config['obs_keys']:
                 condition[:, 2*robot_s.n_dof:] = torch.tensor(obstacle_info).to(config['device'])
             
@@ -338,14 +354,16 @@ elif config['mode'] == "inference":
                                         solver=solver, condition_cfg=condition, w_cfg=1.0, use_ema=True)
 
             # sample actions and unnorm
-            jnt_acc_pred = action[0, :,-7:].detach().to('cpu').numpy()
+            jnt_acc_pred = action[0, :,2*robot_s.n_dof:3*robot_s.n_dof].detach().to('cpu').numpy()
             jnt_pos_list.append(start_conf)
-            jnt_vel_list.append(action[0, 0, :7].detach().to('cpu').numpy())
+            jnt_vel_list.append(start_vel)
+            jnt_acc_list.append(start_acc)
             
-            # for idx in range(jnt_acc_pred.shape[0]):
+            for idx in range(jnt_acc_pred.shape[0]):
             # for idx in range(config['action_steps']):
-            for idx in range(scheduler.get_action_steps(update_counter)):
+            # for idx in range(scheduler.get_action_steps(update_counter)):
                 # print(update_counter)
+
                 robot_s.goto_given_conf(jnt_values=jnt_pos_list[-1])
                 pred_pos, pred_rotmat = robot_s.fk(jnt_values=jnt_pos_list[-1])
                 pos_err, rot_err, _ = rm.diff_between_poses(tgt_pos, tgt_rotmat, pred_pos, pred_rotmat)

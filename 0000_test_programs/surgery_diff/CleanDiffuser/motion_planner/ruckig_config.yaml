@@ -2,8 +2,8 @@ abs_action: false
 mode: inference  # train or inference
 obs_keys: ['jnt_pos', 'jnt_vel', 'jnt_acc']
 dataset_name: franka_mp_ruckig_1000hz.zarr
-action_dim: 14
-obs_dim: 14
+action_dim: 21
+obs_dim: 42
 obs_steps: 1
 action_steps: 64
 use_group_norm: true
@@ -13,8 +13,8 @@ use_seq: true
 device: cuda:0
 seed: 0
 gradient_steps: 10000000
-batch_size: 64
-horizon: 512
+batch_size: 256
+horizon: 64
 nn: chi_unet
 diffusion: ddpm
 sample_steps: 20
