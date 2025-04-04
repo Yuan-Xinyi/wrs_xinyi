@@ -28,6 +28,42 @@ from cleandiffuser.utils import report_parameters
 from ruckig_dataset import MotionPlanningDataset, ObstaclePlanningDataset
 from torch.utils.data import random_split
 
+class LinearActionStepScheduler:
+    """带衰减范围限制的线性调度器（根据外部计数器驱动）
+    
+    参数:
+        initial_steps (int): 初始action steps数量
+        final_steps (int): 衰减结束后的固定action steps数量
+        decay_updates (int): 线性衰减需要的总更新次数
+    """
+    def __init__(self, initial_steps: int, final_steps: int, decay_updates: int):
+        assert decay_updates > 0, "decay_updates必须为正整数"
+        
+        self.initial = initial_steps
+        self.final = final_steps
+        self.decay_updates = decay_updates
+        self._completed_updates = 0  # 内部不维护步数，由外部驱动
+
+    def get_action_steps(self, update_counter: int) -> int:
+        """根据外部计数器返回当前action steps
+        
+        参数:
+            update_counter (int): 外部传入的更新次数计数器
+        返回:
+            int: 计算后的action steps
+        """
+        if update_counter >= self.decay_updates:
+            return self.final
+        
+        progress = min(update_counter / self.decay_updates, 1.0)
+        return int(round(self.initial + (self.final - self.initial) * progress))
+
+    @property
+    def is_decay_finished(self) -> bool:
+        """检查衰减是否已完成"""
+        return self._completed_updates >= self.decay_updates
+
+
 def set_seed(seed: int):
     torch.manual_seed(seed)
     np.random.seed(seed)
@@ -238,6 +274,12 @@ elif config['mode'] == "inference":
     agent.model.eval()
     agent.model_ema.eval()
 
+    scheduler = LinearActionStepScheduler(
+        initial_steps=128, 
+        final_steps=16, 
+        decay_updates=4000
+    )
+
     '''capture the image'''
     sys.path.append('/home/lqin/wrs_xinyi/wrs')
     import wrs.visualization.panda.world as wd
@@ -301,12 +343,13 @@ elif config['mode'] == "inference":
             jnt_vel_list.append(action[0, 0, :7].detach().to('cpu').numpy())
             
             # for idx in range(jnt_acc_pred.shape[0]):
-            for idx in range(config['action_steps']):
+            # for idx in range(config['action_steps']):
+            for idx in range(scheduler.get_action_steps(update_counter)):
                 # print(update_counter)
                 robot_s.goto_given_conf(jnt_values=jnt_pos_list[-1])
                 pred_pos, pred_rotmat = robot_s.fk(jnt_values=jnt_pos_list[-1])
                 pos_err, rot_err, _ = rm.diff_between_poses(tgt_pos, tgt_rotmat, pred_pos, pred_rotmat)
-                print(f"Step: {update_counter}, pos_err: {pos_err} m, rot_err: {rot_err} rad")
+                print(f"Step: {update_counter}, action step: {scheduler.get_action_steps(update_counter)}, pos_err: {pos_err} m, rot_err: {rot_err} rad")
 
                 jnt_pos_list.append(jnt_pos_list[-1] + delta_t*jnt_vel_list[-1])  # p(t+1)
                 jnt_acc_list.append(jnt_acc_pred[idx]) # a(t)
@@ -324,7 +367,7 @@ elif config['mode'] == "inference":
                     print("Collision detected!")
                     break
 
-                if (pos_err < config['max_pos_err']):
+                if (pos_err < config['max_pos_err']) and rot_err < config['max_rot_err']:
                     print("Goal reached!")
                     break
 
@@ -344,7 +387,7 @@ elif config['mode'] == "inference":
                 print("Max iteration reached!")
                 break            
             
-            if pos_err < config['max_pos_err'] and not robot_s.cc.is_collided(obstacle_list=obstacle_list):
+            if pos_err < config['max_pos_err'] and rot_err < config['max_rot_err'] and not robot_s.cc.is_collided(obstacle_list=obstacle_list):
                 success_num += 1
                 print("Success!")
                 break
