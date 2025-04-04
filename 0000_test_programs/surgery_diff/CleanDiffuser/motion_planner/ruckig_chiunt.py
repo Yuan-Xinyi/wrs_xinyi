@@ -57,7 +57,7 @@ def validate(agent, val_dataloader, device):
 #     return start_conf, goal_conf
 
 def plot_details(robot_s, jnt_pos_list, jnt_vel_list, jnt_acc_list):
-    sampling_interval = 0.01
+    sampling_interval = 0.001
     
     plt.figure(figsize=(10, 12))
     plt.subplot(3, 1, 1)
@@ -98,7 +98,7 @@ with open(config_file, "r") as file:
 
 '''dataset loading'''
 if config['mode'] == "train":
-    dataset_path = os.path.join(parent_dir, 'datasets', config['dataset_name'])
+    dataset_path = os.path.join('/home/lqin', 'zarr_datasets', config['dataset_name'])
 
     dataset = MotionPlanningDataset(dataset_path, horizon=config['horizon'], obs_keys=config['obs_keys'], 
                                     pad_before=config['obs_steps']-1, pad_after=config['action_steps']-1, abs_action=config['abs_action'])
@@ -231,7 +231,9 @@ if config['mode'] == "train":
 elif config['mode'] == "inference":
     # ----------------- Inference ----------------------
     # model_path = '0000_test_programs/surgery_diff/CleanDiffuser/motion_planner/results/0402_1328_h256_unnorm/diffusion_ckpt_latest.pt'    
-    model_path = '0000_test_programs/surgery_diff/CleanDiffuser/motion_planner/results/0403_1111_h128_unnorm/diffusion_ckpt_latest.pt'
+    # model_path = '0000_test_programs/surgery_diff/CleanDiffuser/motion_planner/results/0403_1111_h128_unnorm/diffusion_ckpt_latest.pt'
+    # model_path = '0000_test_programs/surgery_diff/CleanDiffuser/motion_planner/results/0404_1130_h256_unnorm/diffusion_ckpt_latest.pt'
+    model_path = '0000_test_programs/surgery_diff/CleanDiffuser/motion_planner/results/0404_1417_h512_unnorm/diffusion_ckpt_latest.pt'
     agent.load(model_path)
     agent.model.eval()
     agent.model_ema.eval()
@@ -248,7 +250,7 @@ elif config['mode'] == "inference":
 
     # inference
     solver = config['inference_solver']
-    inference_steps = config['inference_samples']
+    inference_steps = config['inference_steps']
     visualization = config['visualization']
     
     success_num = 0
@@ -256,16 +258,21 @@ elif config['mode'] == "inference":
         jnt_pos_list = []
         jnt_vel_list = []
         jnt_acc_list = []
-        delta_t = 0.01
+        delta_t = 0.001
 
         import mp_datagen_obstacles_rrt_ruckig as mp_datagen
         import copy
 
-        start_conf, goal_conf, obstacle_list, obstacle_info = mp_datagen.generate_obstacle_confs(robot_s, obstacle_num=6)
+        if 'obstacles' in config['obs_keys']:
+            start_conf, goal_conf, obstacle_list, obstacle_info = mp_datagen.generate_obstacle_confs(robot_s, obstacle_num=6)
+            print(f"Start Conf: {start_conf}, Goal Conf: {goal_conf}, Obstacle Info: {obstacle_info}")
+        else:
+            start_conf, goal_conf = mp_datagen.gen_collision_free_start_goal(robot_s)
+            obstacle_list = []
+            print(f"Start Conf: {start_conf}, Goal Conf: {goal_conf}")
         START_CONF = copy.deepcopy(start_conf)
         GOAL_CONF = copy.deepcopy(goal_conf)
         tgt_pos, tgt_rotmat = robot_s.fk(jnt_values=goal_conf)
-        print(f"Start Conf: {start_conf}, Goal Conf: {goal_conf}, Obstacle Info: {obstacle_info}")
         
         robot_s.goto_given_conf(jnt_values=goal_conf)
         robot_s.gen_meshmodel(alpha=0.2, rgb=[0,1,0]).attach_to(base)
@@ -280,7 +287,8 @@ elif config['mode'] == "inference":
             start_conf = robot_s.get_jnt_values()
             condition[:, :robot_s.n_dof] = torch.tensor(start_conf).to(config['device'])
             condition[:, robot_s.n_dof:2*robot_s.n_dof] = torch.tensor(goal_conf).to(config['device'])
-            condition[:, 2*robot_s.n_dof:] = torch.tensor(obstacle_info).to(config['device'])
+            if 'obstacles' in config['obs_keys']:
+                condition[:, 2*robot_s.n_dof:] = torch.tensor(obstacle_info).to(config['device'])
             
             with torch.no_grad():
                 prior = torch.zeros((1, config['horizon'], config['action_dim']), device=config['device'])
@@ -292,19 +300,23 @@ elif config['mode'] == "inference":
             jnt_pos_list.append(start_conf)
             jnt_vel_list.append(action[0, 0, :7].detach().to('cpu').numpy())
             
-            for idx in range(jnt_acc_pred.shape[0]):
+            # for idx in range(jnt_acc_pred.shape[0]):
+            for idx in range(config['action_steps']):
                 # print(update_counter)
                 robot_s.goto_given_conf(jnt_values=jnt_pos_list[-1])
                 pred_pos, pred_rotmat = robot_s.fk(jnt_values=jnt_pos_list[-1])
                 pos_err, rot_err, _ = rm.diff_between_poses(tgt_pos, tgt_rotmat, pred_pos, pred_rotmat)
-                print(f"Step: {update_counter}, pos_err: {pos_err} mms, rot_err: {rot_err} degrees")
+                print(f"Step: {update_counter}, pos_err: {pos_err} m, rot_err: {rot_err} rad")
 
                 jnt_pos_list.append(jnt_pos_list[-1] + delta_t*jnt_vel_list[-1])  # p(t+1)
                 jnt_acc_list.append(jnt_acc_pred[idx]) # a(t)
                 jnt_vel_list.append(jnt_vel_list[-1] + delta_t*jnt_acc_pred[idx]) # v(t+1)
 
                 if visualization:
-                    robot_s.gen_meshmodel(alpha=0.2).attach_to(base)
+                    # robot_s.gen_meshmodel(alpha=0.2).attach_to(base)
+                    s_pos, _ = robot_s.fk(jnt_values=jnt_pos_list[-2])
+                    e_pos, _ = robot_s.fk(jnt_values=jnt_pos_list[-1])
+                    mgm.gen_stick(spos=s_pos, epos=e_pos, rgb=[0,0,0]).attach_to(base)
                 update_counter += 1
                 # print(f"Step: {update_counter}, distance: {np.linalg.norm(robot_s.get_jnt_values() - goal_conf)}")
 
@@ -312,7 +324,7 @@ elif config['mode'] == "inference":
                     print("Collision detected!")
                     break
 
-                if (pos_err < config['max_pos_err'] and rot_err < config['max_rot_err']):
+                if (pos_err < config['max_pos_err']):
                     print("Goal reached!")
                     break
 
@@ -320,7 +332,19 @@ elif config['mode'] == "inference":
                     print("Max iteration reached!")
                     break
             
-            if pos_err < config['max_pos_err'] and rot_err < config['max_rot_err'] and not robot_s.cc.is_collided(obstacle_list=obstacle_list):
+            if robot_s.cc.is_collided(obstacle_list=obstacle_list):
+                print("Collision detected!")
+                break
+
+            if (pos_err < config['max_pos_err']):
+                print("Goal reached!")
+                break
+
+            if update_counter > config['max_iter']:
+                print("Max iteration reached!")
+                break            
+            
+            if pos_err < config['max_pos_err'] and not robot_s.cc.is_collided(obstacle_list=obstacle_list):
                 success_num += 1
                 print("Success!")
                 break
@@ -334,6 +358,8 @@ elif config['mode'] == "inference":
             base.run()    
 
     print(f"Success rate: {success_num/config['episode_num']*100}%")
+    print('strart conf:', repr(START_CONF))
+    print('goal conf:', repr(GOAL_CONF))
 
 else:
     raise ValueError("Illegal mode")
