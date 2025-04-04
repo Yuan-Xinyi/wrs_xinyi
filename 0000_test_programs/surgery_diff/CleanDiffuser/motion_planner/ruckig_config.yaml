@@ -40,4 +40,4 @@ visualization: True
 episode_num: 1
 max_pos_err: 0.05
 max_rot_err: 0.1
-max_iter: 10000
+max_iter: 2000

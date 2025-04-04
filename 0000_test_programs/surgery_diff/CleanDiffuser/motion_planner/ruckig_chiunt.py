@@ -299,9 +299,6 @@ elif config['mode'] == "inference":
     
     success_num = 0
     for _ in tqdm(range(config['episode_num'])):
-        jnt_pos_list = []
-        jnt_vel_list = []
-        jnt_acc_list = []
         delta_t = 0.001
 
         import mp_datagen_obstacles_rrt_ruckig as mp_datagen
@@ -333,17 +330,12 @@ elif config['mode'] == "inference":
         goal_acc = np.zeros((robot_s.n_dof))
         goal_vel = np.zeros((robot_s.n_dof))
 
+        '''generate the condition'''
+        condition[:, :robot_s.n_dof] = torch.tensor(start_conf).to(config['device'])
+        condition[:, robot_s.n_dof:2*robot_s.n_dof] = torch.tensor(start_vel).to(config['device'])
+        condition[:, 2*robot_s.n_dof:3*robot_s.n_dof] = torch.tensor(start_acc).to(config['device'])
+
         for _ in range(inference_steps):
-            start_conf = robot_s.get_jnt_values()
-            start_vel = jnt_vel_list[-1] if len(jnt_vel_list) > 0 else start_vel
-            start_acc = jnt_acc_list[-1] if len(jnt_acc_list) > 0 else start_acc
-            
-            '''generate the condition'''
-            # condition = np.concatenate([start_conf, start_vel, start_acc, goal_conf, goal_vel, goal_acc], axis=-1)
-            # condition = torch.tensor(condition).unsqueeze(0).to(config['device']) # (64,12)
-            condition[:, :robot_s.n_dof] = torch.tensor(start_conf).to(config['device'])
-            condition[:, robot_s.n_dof:2*robot_s.n_dof] = torch.tensor(start_vel).to(config['device'])
-            condition[:, 2*robot_s.n_dof:3*robot_s.n_dof] = torch.tensor(start_acc).to(config['device'])
 
             if 'obstacles' in config['obs_keys']:
                 condition[:, 2*robot_s.n_dof:] = torch.tensor(obstacle_info).to(config['device'])
@@ -354,32 +346,23 @@ elif config['mode'] == "inference":
                                         solver=solver, condition_cfg=condition, w_cfg=1.0, use_ema=True)
 
             # sample actions and unnorm
-            jnt_acc_pred = action[0, :,2*robot_s.n_dof:3*robot_s.n_dof].detach().to('cpu').numpy()
-            jnt_pos_list.append(start_conf)
-            jnt_vel_list.append(start_vel)
-            jnt_acc_list.append(start_acc)
+            actions = action[0, :, :].detach().to('cpu').numpy()
             
-            for idx in range(jnt_acc_pred.shape[0]):
-            # for idx in range(config['action_steps']):
+            for idx in range(actions.shape[0]):
             # for idx in range(scheduler.get_action_steps(update_counter)):
-                # print(update_counter)
-
-                robot_s.goto_given_conf(jnt_values=jnt_pos_list[-1])
-                pred_pos, pred_rotmat = robot_s.fk(jnt_values=jnt_pos_list[-1])
+                last_pos = robot_s.get_jnt_values()
+                robot_s.goto_given_conf(jnt_values=actions[idx, :robot_s.n_dof])
+                current_pos = robot_s.get_jnt_values()
+                pred_pos, pred_rotmat = robot_s.fk(jnt_values=robot_s.get_jnt_values())
+                
                 pos_err, rot_err, _ = rm.diff_between_poses(tgt_pos, tgt_rotmat, pred_pos, pred_rotmat)
-                print(f"Step: {update_counter}, action step: {scheduler.get_action_steps(update_counter)}, pos_err: {pos_err} m, rot_err: {rot_err} rad")
-
-                jnt_pos_list.append(jnt_pos_list[-1] + delta_t*jnt_vel_list[-1])  # p(t+1)
-                jnt_acc_list.append(jnt_acc_pred[idx]) # a(t)
-                jnt_vel_list.append(jnt_vel_list[-1] + delta_t*jnt_acc_pred[idx]) # v(t+1)
-
+                print(f"Step: {update_counter}, action step: {scheduler.get_action_steps(update_counter)}, pos_err: {pos_err} m, rot_err: {rot_err} rad, distance: {np.linalg.norm(robot_s.get_jnt_values() - goal_conf)}")
+                
                 if visualization:
-                    # robot_s.gen_meshmodel(alpha=0.2).attach_to(base)
-                    s_pos, _ = robot_s.fk(jnt_values=jnt_pos_list[-2])
-                    e_pos, _ = robot_s.fk(jnt_values=jnt_pos_list[-1])
+                    s_pos, _ = robot_s.fk(jnt_values=last_pos)
+                    e_pos, _ = robot_s.fk(jnt_values=current_pos)
                     mgm.gen_stick(spos=s_pos, epos=e_pos, rgb=[0,0,0]).attach_to(base)
                 update_counter += 1
-                # print(f"Step: {update_counter}, distance: {np.linalg.norm(robot_s.get_jnt_values() - goal_conf)}")
 
                 if robot_s.cc.is_collided(obstacle_list=obstacle_list):
                     print("Collision detected!")
@@ -392,7 +375,13 @@ elif config['mode'] == "inference":
                 if update_counter > config['max_iter']:
                     print("Max iteration reached!")
                     break
-            
+
+                if idx == actions.shape[0] - 1:
+                    condition[:, :robot_s.n_dof] = torch.tensor(actions[idx, :robot_s.n_dof]).to(config['device'])
+                    condition[:, robot_s.n_dof:2*robot_s.n_dof] = torch.tensor(actions[idx, robot_s.n_dof:2*robot_s.n_dof]).to(config['device'])
+                    condition[:, 2*robot_s.n_dof:3*robot_s.n_dof] = torch.tensor(actions[idx, 2*robot_s.n_dof:3*robot_s.n_dof]).to(config['device'])
+                    print(f"Update condition: {condition}")
+
             if robot_s.cc.is_collided(obstacle_list=obstacle_list):
                 print("Collision detected!")
                 break
@@ -413,9 +402,9 @@ elif config['mode'] == "inference":
         if visualization:
             # mp_datagen.visualize_anime_diffusion(robot=robot_s, path = jnt_pos_list, 
             #                                      start_conf=START_CONF, goal_conf=GOAL_CONF)
-            jnt_pos_array, jnt_vel_arrat, jnt_acc_array = np.array(jnt_pos_list), np.array(jnt_vel_list), np.array(jnt_acc_list)
-            np.savez('jnt_info.npz', jnt_pos=jnt_pos_array, jnt_vel=jnt_vel_arrat, jnt_acc=jnt_acc_array)
-            plot_details(robot_s, jnt_pos_list, jnt_vel_list, jnt_acc_list)
+            # jnt_pos_array, jnt_vel_arrat, jnt_acc_array = np.array(jnt_pos_list), np.array(jnt_vel_list), np.array(jnt_acc_list)
+            # np.savez('jnt_info.npz', jnt_pos=jnt_pos_array, jnt_vel=jnt_vel_arrat, jnt_acc=jnt_acc_array)
+            # plot_details(robot_s, jnt_pos_list, jnt_vel_list, jnt_acc_list)
             base.run()    
 
     print(f"Success rate: {success_num/config['episode_num']*100}%")
