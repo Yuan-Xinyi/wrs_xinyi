@@ -277,7 +277,7 @@ elif config['mode'] == "inference":
     agent.model_ema.eval()
 
     scheduler = LinearActionStepScheduler(
-        initial_steps=128, 
+        initial_steps=config['horizon'], 
         final_steps=16, 
         decay_updates=4000
     )
@@ -334,7 +334,8 @@ elif config['mode'] == "inference":
         condition[:, :robot_s.n_dof] = torch.tensor(start_conf).to(config['device'])
         condition[:, robot_s.n_dof:2*robot_s.n_dof] = torch.tensor(start_vel).to(config['device'])
         condition[:, 2*robot_s.n_dof:3*robot_s.n_dof] = torch.tensor(start_acc).to(config['device'])
-
+        condition[:, 3*robot_s.n_dof:4*robot_s.n_dof] = torch.tensor(goal_conf).to(config['device'])
+        
         for _ in range(inference_steps):
 
             if 'obstacles' in config['obs_keys']:
@@ -361,7 +362,7 @@ elif config['mode'] == "inference":
                 if visualization:
                     s_pos, _ = robot_s.fk(jnt_values=last_pos)
                     e_pos, _ = robot_s.fk(jnt_values=current_pos)
-                    mgm.gen_stick(spos=s_pos, epos=e_pos, rgb=[0,0,0]).attach_to(base)
+                    mgm.gen_stick(spos=s_pos, epos=e_pos, radius=.0005, rgb=[0,0,0]).attach_to(base)
                 update_counter += 1
 
                 if robot_s.cc.is_collided(obstacle_list=obstacle_list):
@@ -377,10 +378,11 @@ elif config['mode'] == "inference":
                     break
 
                 if idx == actions.shape[0] - 1:
+                # if idx == scheduler.get_action_steps(update_counter) - 1:
                     condition[:, :robot_s.n_dof] = torch.tensor(actions[idx, :robot_s.n_dof]).to(config['device'])
                     condition[:, robot_s.n_dof:2*robot_s.n_dof] = torch.tensor(actions[idx, robot_s.n_dof:2*robot_s.n_dof]).to(config['device'])
                     condition[:, 2*robot_s.n_dof:3*robot_s.n_dof] = torch.tensor(actions[idx, 2*robot_s.n_dof:3*robot_s.n_dof]).to(config['device'])
-                    print(f"Update condition: {condition}")
+                    # print(f"Update condition: {condition}")
 
             if robot_s.cc.is_collided(obstacle_list=obstacle_list):
                 print("Collision detected!")
