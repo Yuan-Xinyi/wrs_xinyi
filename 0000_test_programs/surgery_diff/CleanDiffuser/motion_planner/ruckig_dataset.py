@@ -9,7 +9,7 @@ from cleandiffuser.dataset.dataset_utils import SequenceSampler, MinMaxNormalize
 class MotionPlanningDataset(BaseDataset):
     def __init__(self,
             zarr_path,
-            obs_keys=['jnt_pos', 'jnt_vel', 'jnt_acc'], 
+            obs_keys=[], 
             horizon=1,
             pad_before=0,
             pad_after=0,
@@ -30,18 +30,18 @@ class MotionPlanningDataset(BaseDataset):
         self.pad_before = pad_before
         self.pad_after = pad_after
         
-        self.normalizer = self.get_normalizer()
+        # self.normalizer = self.get_normalizer()
 
     def get_normalizer(self):
-        jnt_p_normalizer = MinMaxNormalizer(self.replay_buffer['jnt_pos'])
-        jnt_v_normalizer = MinMaxNormalizer(self.replay_buffer['jnt_vel'])
-        jnt_a_normalizer = MinMaxNormalizer(self.replay_buffer['jnt_acc'])
+        jnt_pos_normalizer = MinMaxNormalizer(self.replay_buffer['jnt_pos'][:])
+        jnt_vel_normalizer = MinMaxNormalizer(self.replay_buffer['jnt_vel'][:])
+        jnt_acc_normalizer = MinMaxNormalizer(self.replay_buffer['jnt_acc'][:])
 
         return {
-            "obs": jnt_p_normalizer,
-            "action": {
-                "jnt_vel": jnt_v_normalizer,
-                "jnt_acc": jnt_a_normalizer
+            "obs": {
+                "jnt_pos": jnt_pos_normalizer,
+                "jnt_vel": jnt_vel_normalizer,
+                "jnt_acc": jnt_acc_normalizer
             }
         }
 
@@ -52,23 +52,17 @@ class MotionPlanningDataset(BaseDataset):
         return len(self.sampler)
 
     def _sample_to_data(self, sample):
-        # image
-        jnt_pos = sample['jnt_pos']
-        njnt_pos = self.normalizer['obs'].normalize(jnt_pos)
-
-        jnt_vel = sample['jnt_vel']
-        jnt_acc = sample['jnt_acc']
-        njnt_vel = self.normalizer['action']['jnt_vel'].normalize(jnt_vel)
-        njnt_acc = self.normalizer['action']['jnt_acc'].normalize(jnt_acc)
-        naction = np.concatenate([njnt_vel, njnt_acc], axis=-1)
+        jnt_vel = sample['jnt_vel'][:]
+        jnt_acc = sample['jnt_acc'][:]
         action = np.concatenate([jnt_vel, jnt_acc], axis=-1)
 
-        '''if not normalize'''
+        '''condition'''
+        condition = np.concatenate([sample['jnt_pos'][0], sample['jnt_pos'][-1]], axis=-1)
+        
+
         data = {
-            'obs': jnt_pos, 
-            'action': action,
-            'jnt_vel': jnt_vel,
-            'jnt_acc': jnt_acc,
+            'cond': condition,
+            'action': action
         }
         return data
     

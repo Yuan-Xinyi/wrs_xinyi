@@ -1,4 +1,4 @@
-traj_num: 2000
+traj_num: 1000
 abs_action: false
 mode: inference  # train or inference
 obs_keys: ['interp_confs', 'interp_spds']

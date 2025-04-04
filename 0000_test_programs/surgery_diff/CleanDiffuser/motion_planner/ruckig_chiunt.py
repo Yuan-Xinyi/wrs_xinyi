@@ -100,7 +100,7 @@ with open(config_file, "r") as file:
 if config['mode'] == "train":
     dataset_path = os.path.join(parent_dir, 'datasets', config['dataset_name'])
 
-    dataset = ObstaclePlanningDataset(dataset_path, horizon=config['horizon'], obs_keys=config['obs_keys'], 
+    dataset = MotionPlanningDataset(dataset_path, horizon=config['horizon'], obs_keys=config['obs_keys'], 
                                     pad_before=config['obs_steps']-1, pad_after=config['action_steps']-1, abs_action=config['abs_action'])
 
     train_dataset, val_dataset = random_split(

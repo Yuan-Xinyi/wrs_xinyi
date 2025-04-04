@@ -15,7 +15,7 @@ current_file_dir = os.path.dirname(__file__)
 parent_dir = os.path.dirname(os.path.dirname(__file__))
 
 dataset_dir = os.path.join(parent_dir, 'datasets')
-dataset_name = os.path.join(dataset_dir, 'franka_mp_ruckig.zarr')
+dataset_name = os.path.join(dataset_dir, 'franka_mp_ruckig_1000hz_2.zarr')
 store = zarr.DirectoryStore(dataset_name)
 root = zarr.group(store=store)
 print('dataset created in:', dataset_name)
@@ -48,7 +48,7 @@ if __name__ == '__main__':
     robot = franka.FrankaResearch3Arm(enable_cc=True)
     inp = InputParameter(robot.n_dof)
 
-    traj_num = 2000
+    traj_num = 1000
     episode_ends_counter = 0
 
     '''assign the default dynamic constraints'''
@@ -83,7 +83,7 @@ if __name__ == '__main__':
         print(f'Trajectory duration: {trajectory.duration:0.4f} [s]')
 
         '''start the ploting session'''
-        sampling_interval = 0.01  # seconds
+        sampling_interval = 0.001  # seconds
         time_points = np.linspace(0, trajectory.duration, 
                                 num=int(trajectory.duration/sampling_interval)+1,
                                 endpoint=True)

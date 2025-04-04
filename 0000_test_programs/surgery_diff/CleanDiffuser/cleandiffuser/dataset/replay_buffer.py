@@ -171,8 +171,7 @@ class ReplayBuffer:
                 keys = src_root['data'].keys()
             data = dict()
             for key in keys:
-                arr = src_root['data'][key]
-                data[key] = arr[:]
+                data[key] = src_root['data'][key]
                 print(key, data[key].shape)
 
             root = {
@@ -208,7 +207,11 @@ class ReplayBuffer:
                         source=value, dest=data_group, name=key,
                         chunks=cks, compressor=cpr, if_exists=if_exists
                     )
+        import time
+        tic = time.time()
         buffer = cls(root=root)
+        toc = time.time()
+        print(f"ReplayBuffer.copy_from_store: {toc - tic:.2f}s")
         return buffer
 
     @classmethod

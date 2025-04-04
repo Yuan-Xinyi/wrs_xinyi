@@ -273,6 +273,10 @@ if __name__ == '__main__':
         config = yaml.safe_load(file)
 
     dataset_dir = os.path.join(parent_dir, 'datasets')
+    
+    obstacle_num = 3
+    obstacle_info_shape = 3*obstacle_num
+
     dataset_name = os.path.join(dataset_dir, f'franka_kinodyn_obstacles_{obstacle_num}.zarr')
     # dataset_name = os.path.join(dataset_dir, 'test.zarr')
     store = zarr.DirectoryStore(dataset_name)
