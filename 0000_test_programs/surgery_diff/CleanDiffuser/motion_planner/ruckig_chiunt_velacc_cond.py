@@ -25,8 +25,44 @@ import matplotlib.pyplot as plt
 from torch.optim.lr_scheduler import CosineAnnealingLR
 from cleandiffuser.dataset.dataset_utils import loop_dataloader
 from cleandiffuser.utils import report_parameters
-from ruckig_dataset import MotionPlanningDataset, ObstaclePlanningDataset
+from ruckig_dataset import MotionPlanningDataset, ObstaclePlanningDataset, PosVelAccPlanningDataset
 from torch.utils.data import random_split
+
+class LinearActionStepScheduler:
+    """带衰减范围限制的线性调度器（根据外部计数器驱动）
+    
+    参数:
+        initial_steps (int): 初始action steps数量
+        final_steps (int): 衰减结束后的固定action steps数量
+        decay_updates (int): 线性衰减需要的总更新次数
+    """
+    def __init__(self, initial_steps: int, final_steps: int, decay_updates: int):
+        assert decay_updates > 0, "decay_updates必须为正整数"
+        
+        self.initial = initial_steps
+        self.final = final_steps
+        self.decay_updates = decay_updates
+        self._completed_updates = 0  # 内部不维护步数，由外部驱动
+
+    def get_action_steps(self, update_counter: int) -> int:
+        """根据外部计数器返回当前action steps
+        
+        参数:
+            update_counter (int): 外部传入的更新次数计数器
+        返回:
+            int: 计算后的action steps
+        """
+        if update_counter >= self.decay_updates:
+            return self.final
+        
+        progress = min(update_counter / self.decay_updates, 1.0)
+        return int(round(self.initial + (self.final - self.initial) * progress))
+
+    @property
+    def is_decay_finished(self) -> bool:
+        """检查衰减是否已完成"""
+        return self._completed_updates >= self.decay_updates
+
 
 def set_seed(seed: int):
     torch.manual_seed(seed)
@@ -90,8 +126,7 @@ def plot_details(robot_s, jnt_pos_list, jnt_vel_list, jnt_acc_list):
 
 
 '''load the config file'''
-# current_file_dir = os.path.dirname(__file__)
-current_file_dir = '0000_test_programs/surgery_diff/CleanDiffuser/motion_planner/results/0404_1417_h512_unnorm'
+current_file_dir = os.path.dirname(__file__)
 parent_dir = os.path.dirname(os.path.dirname(__file__))
 config_file = os.path.join(current_file_dir, 'ruckig_config.yaml')
 with open(config_file, "r") as file:
@@ -101,7 +136,7 @@ with open(config_file, "r") as file:
 if config['mode'] == "train":
     dataset_path = os.path.join('/home/lqin', 'zarr_datasets', config['dataset_name'])
 
-    dataset = MotionPlanningDataset(dataset_path, horizon=config['horizon'], obs_keys=config['obs_keys'], 
+    dataset = PosVelAccPlanningDataset(dataset_path, horizon=config['horizon'], obs_keys=config['obs_keys'], 
                                     pad_before=config['obs_steps']-1, pad_after=config['action_steps']-1, abs_action=config['abs_action'])
 
     train_dataset, val_dataset = random_split(
@@ -159,11 +194,13 @@ jnt_config_range = robot_s.jnt_ranges
 x_max = torch.zeros((1, config['horizon'], config['action_dim']), device=config['device'])
 x_min = torch.zeros((1, config['horizon'], config['action_dim']), device=config['device'])
 
-x_max[:, :, :7] = torch.tensor(jnt_v_max, device=config['device']) 
-x_max[:, :, -7:] = torch.tensor(jnt_a_max, device=config['device']) 
+x_max[:, :, :robot_s.n_dof] = torch.tensor(jnt_config_range[:,1], device=config['device'])
+x_max[:, :, robot_s.n_dof:2*robot_s.n_dof] = torch.tensor(jnt_v_max, device=config['device']) 
+x_max[:, :, 2*robot_s.n_dof:3*robot_s.n_dof] = torch.tensor(jnt_a_max, device=config['device']) 
 
-x_min[:, :, :7] = torch.tensor(-jnt_v_max, device=config['device'])
-x_min[:, :, -7:] = torch.tensor(-jnt_a_max, device=config['device'])
+x_min[:, :, :robot_s.n_dof] = torch.tensor(jnt_config_range[:,0], device=config['device'])
+x_min[:, :, robot_s.n_dof:2*robot_s.n_dof] = torch.tensor(-jnt_v_max, device=config['device'])
+x_min[:, :, 2*robot_s.n_dof:3*robot_s.n_dof] = torch.tensor(-jnt_a_max, device=config['device'])
 
 agent = DDPM(
     nn_diffusion=nn_diffusion, nn_condition=nn_condition, device=config['device'],
@@ -235,10 +272,17 @@ elif config['mode'] == "inference":
     # model_path = '0000_test_programs/surgery_diff/CleanDiffuser/motion_planner/results/0403_1111_h128_unnorm/diffusion_ckpt_latest.pt'
     # model_path = '0000_test_programs/surgery_diff/CleanDiffuser/motion_planner/results/0404_1130_h256_unnorm/diffusion_ckpt_latest.pt'
     # model_path = '0000_test_programs/surgery_diff/CleanDiffuser/motion_planner/results/0404_1417_h512_unnorm/diffusion_ckpt_latest.pt'
-    model_path = os.path.join(current_file_dir, 'diffusion_ckpt_latest.pt')
+    model_path = '0000_test_programs/surgery_diff/CleanDiffuser/motion_planner/results/0404_1947_h64_unnorm/diffusion_ckpt_latest.pt'
+    
     agent.load(model_path)
     agent.model.eval()
     agent.model_ema.eval()
+
+    scheduler = LinearActionStepScheduler(
+        initial_steps=config['horizon'], 
+        final_steps=16, 
+        decay_updates=4000
+    )
 
     '''capture the image'''
     sys.path.append('/home/lqin/wrs_xinyi/wrs')
@@ -257,10 +301,10 @@ elif config['mode'] == "inference":
     
     success_num = 0
     for _ in tqdm(range(config['episode_num'])):
+        delta_t = 0.001
         jnt_pos_list = []
         jnt_vel_list = []
         jnt_acc_list = []
-        delta_t = 0.001
 
         import mp_datagen_obstacles_rrt_ruckig as mp_datagen
         import copy
@@ -285,10 +329,28 @@ elif config['mode'] == "inference":
         update_counter = 0
         condition = torch.zeros((1, config['obs_dim']*config['obs_steps']), device=config['device'])
 
+        '''initialize the condition'''
+        start_acc = np.zeros((robot_s.n_dof))
+        start_vel = np.zeros((robot_s.n_dof))
+        goal_acc = np.zeros((robot_s.n_dof))
+        goal_vel = np.zeros((robot_s.n_dof))
+
+        '''initialize the joint velocity and acceleration'''
+        jnt_pos_list.append(start_conf)
+        jnt_vel_list.append(start_vel)
+        jnt_acc_list.append(start_acc)
+
+        '''generate the condition'''
+        condition[:, :robot_s.n_dof] = torch.tensor(start_conf).to(config['device'])
+        condition[:, 3*robot_s.n_dof:4*robot_s.n_dof] = torch.tensor(goal_conf).to(config['device'])
+        
         for _ in range(inference_steps):
+            '''update the condition'''
             start_conf = robot_s.get_jnt_values()
             condition[:, :robot_s.n_dof] = torch.tensor(start_conf).to(config['device'])
-            condition[:, robot_s.n_dof:2*robot_s.n_dof] = torch.tensor(goal_conf).to(config['device'])
+            condition[:, robot_s.n_dof:2*robot_s.n_dof] = torch.tensor(jnt_vel_list[-1]).to(config['device'])
+            condition[:, 2*robot_s.n_dof:3*robot_s.n_dof] = torch.tensor(jnt_acc_list[-1]).to(config['device'])
+            
             if 'obstacles' in config['obs_keys']:
                 condition[:, 2*robot_s.n_dof:] = torch.tensor(obstacle_info).to(config['device'])
             
@@ -298,13 +360,12 @@ elif config['mode'] == "inference":
                                         solver=solver, condition_cfg=condition, w_cfg=1.0, use_ema=True)
 
             # sample actions and unnorm
-            jnt_acc_pred = action[0, :,-7:].detach().to('cpu').numpy()
+            actions = action[0, 1:-1, 7:21].detach().to('cpu').numpy()  # (horizon-2, 14) vel and acc
+            jnt_acc_pred = actions[:, robot_s.n_dof:] # (horizon-2, 7)
             jnt_pos_list.append(start_conf)
-            jnt_vel_list.append(action[0, 0, :7].detach().to('cpu').numpy())
+            jnt_vel_list.append(actions[0, :robot_s.n_dof])
             
-            # for idx in range(jnt_acc_pred.shape[0]):
-            for idx in range(config['action_steps']):
-                # print(update_counter)
+            for idx in range(jnt_acc_pred.shape[0]):
                 robot_s.goto_given_conf(jnt_values=jnt_pos_list[-1])
                 pred_pos, pred_rotmat = robot_s.fk(jnt_values=jnt_pos_list[-1])
                 pos_err, rot_err, _ = rm.diff_between_poses(tgt_pos, tgt_rotmat, pred_pos, pred_rotmat)
@@ -315,25 +376,23 @@ elif config['mode'] == "inference":
                 jnt_vel_list.append(jnt_vel_list[-1] + delta_t*jnt_acc_pred[idx]) # v(t+1)
 
                 if visualization:
-                    # robot_s.gen_meshmodel(alpha=0.2).attach_to(base)
                     s_pos, _ = robot_s.fk(jnt_values=jnt_pos_list[-2])
                     e_pos, _ = robot_s.fk(jnt_values=jnt_pos_list[-1])
-                    mgm.gen_stick(spos=s_pos, epos=e_pos, rgb=[0,0,0]).attach_to(base)
+                    mgm.gen_stick(spos=s_pos, epos=e_pos, radius=.0005, rgb=[0,0,0]).attach_to(base)
                 update_counter += 1
-                # print(f"Step: {update_counter}, distance: {np.linalg.norm(robot_s.get_jnt_values() - goal_conf)}")
 
                 if robot_s.cc.is_collided(obstacle_list=obstacle_list):
                     print("Collision detected!")
                     break
 
-                if (pos_err < config['max_pos_err']):
+                if (pos_err < config['max_pos_err']) and rot_err < config['max_rot_err']:
                     print("Goal reached!")
                     break
 
                 if update_counter > config['max_iter']:
                     print("Max iteration reached!")
                     break
-            
+
             if robot_s.cc.is_collided(obstacle_list=obstacle_list):
                 print("Collision detected!")
                 break
@@ -346,7 +405,7 @@ elif config['mode'] == "inference":
                 print("Max iteration reached!")
                 break            
             
-            if pos_err < config['max_pos_err'] and not robot_s.cc.is_collided(obstacle_list=obstacle_list):
+            if pos_err < config['max_pos_err'] and rot_err < config['max_rot_err'] and not robot_s.cc.is_collided(obstacle_list=obstacle_list):
                 success_num += 1
                 print("Success!")
                 break
@@ -357,11 +416,11 @@ elif config['mode'] == "inference":
             jnt_pos_array, jnt_vel_arrat, jnt_acc_array = np.array(jnt_pos_list), np.array(jnt_vel_list), np.array(jnt_acc_list)
             np.savez('jnt_info.npz', jnt_pos=jnt_pos_array, jnt_vel=jnt_vel_arrat, jnt_acc=jnt_acc_array)
             plot_details(robot_s, jnt_pos_list, jnt_vel_list, jnt_acc_list)
+            print('strart conf:', repr(START_CONF))
+            print('goal conf:', repr(GOAL_CONF))
             base.run()    
 
-    print(f"Success rate: {success_num/config['episode_num']*100}%")
-    print('strart conf:', repr(START_CONF))
-    print('goal conf:', repr(GOAL_CONF))
+    # print(f"Success rate: {success_num/config['episode_num']*100}%")
 
 else:
     raise ValueError("Illegal mode")

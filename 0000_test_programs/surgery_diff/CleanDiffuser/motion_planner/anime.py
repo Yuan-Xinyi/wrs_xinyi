@@ -57,6 +57,6 @@ if __name__ == '__main__':
 
     with open('jnt_info.npz', 'rb') as f:
         data = np.load(f)
-        jnt_pos = data['jnt_pos'][:400]
+        jnt_pos = data['jnt_pos']
 
     visualize_anime_diffusion(robot_s, jnt_pos, start_conf=jnt_pos[0], goal_conf=jnt_pos[-1])
