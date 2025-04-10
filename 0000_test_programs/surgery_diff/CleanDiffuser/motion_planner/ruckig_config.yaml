@@ -1,9 +1,9 @@
 abs_action: false
-mode: inference  # train or inference
-obs_keys: ['jnt_pos', 'jnt_vel', 'jnt_acc']
+mode: train  # train or inference
+obs_keys: ['jnt_pos', 'jnt_vel', 'jnt_acc', 'goal_conf']
 dataset_name: franka_mp_ruckig_1000hz.zarr
-action_dim: 21
-obs_dim: 42
+action_dim: 14
+obs_dim: 28
 obs_steps: 1
 action_steps: 64
 use_group_norm: true

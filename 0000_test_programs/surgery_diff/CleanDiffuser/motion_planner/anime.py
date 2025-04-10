@@ -47,16 +47,24 @@ def visualize_anime_diffusion(robot, path, start_conf, goal_conf):
         anime_data.counter += 1
         return task.again  # 继续任务，循环播放
 
-    taskMgr.doMethodLater(0.01, update, "update",
+    taskMgr.doMethodLater(0.001, update, "update",
                           extraArgs=[robot, anime_data],
                           appendTask=True)
     base.run()
 
 if __name__ == '__main__':
-    import numpy as np
+    '''anime the npz'''
+    # import numpy as np
+    # with open('jnt_info.npz', 'rb') as f:
+    #     data = np.load(f)
+    #     jnt_pos = data['jnt_pos']
 
-    with open('jnt_info.npz', 'rb') as f:
-        data = np.load(f)
-        jnt_pos = data['jnt_pos']
+    '''anime zarr'''
+    import zarr
+    import numpy as np
+    root = zarr.open('/home/lqin/zarr_datasets/test.zarr', mode='r')
+    traj_id = 2
+    traj_end = int(root['meta']['episode_ends'][traj_id])
+    jnt_pos = root['data']['jnt_pos'][:traj_end+1]
 
     visualize_anime_diffusion(robot_s, jnt_pos, start_conf=jnt_pos[0], goal_conf=jnt_pos[-1])

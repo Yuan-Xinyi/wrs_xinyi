@@ -25,7 +25,7 @@ import matplotlib.pyplot as plt
 from torch.optim.lr_scheduler import CosineAnnealingLR
 from cleandiffuser.dataset.dataset_utils import loop_dataloader
 from cleandiffuser.utils import report_parameters
-from ruckig_dataset import MotionPlanningDataset, ObstaclePlanningDataset
+from ruckig_dataset import MotionPlanningDataset, ObstaclePlanningDataset, FixedGoalPlanningDataset
 from torch.utils.data import random_split
 
 def set_seed(seed: int):
@@ -91,7 +91,7 @@ def plot_details(robot_s, jnt_pos_list, jnt_vel_list, jnt_acc_list):
 
 '''load the config file'''
 # current_file_dir = os.path.dirname(__file__)
-current_file_dir = '0000_test_programs/surgery_diff/CleanDiffuser/motion_planner/results/0404_1417_h512_unnorm'
+current_file_dir = '0000_test_programs/surgery_diff/CleanDiffuser/motion_planner/results/0408_1122_h64_unnorm'
 parent_dir = os.path.dirname(os.path.dirname(__file__))
 config_file = os.path.join(current_file_dir, 'ruckig_config.yaml')
 with open(config_file, "r") as file:
@@ -101,7 +101,7 @@ with open(config_file, "r") as file:
 if config['mode'] == "train":
     dataset_path = os.path.join('/home/lqin', 'zarr_datasets', config['dataset_name'])
 
-    dataset = MotionPlanningDataset(dataset_path, horizon=config['horizon'], obs_keys=config['obs_keys'], 
+    dataset = FixedGoalPlanningDataset(dataset_path, horizon=config['horizon'], obs_keys=config['obs_keys'], 
                                     pad_before=config['obs_steps']-1, pad_after=config['action_steps']-1, abs_action=config['abs_action'])
 
     train_dataset, val_dataset = random_split(
@@ -269,7 +269,11 @@ elif config['mode'] == "inference":
             start_conf, goal_conf, obstacle_list, obstacle_info = mp_datagen.generate_obstacle_confs(robot_s, obstacle_num=6)
             print(f"Start Conf: {start_conf}, Goal Conf: {goal_conf}, Obstacle Info: {obstacle_info}")
         else:
-            start_conf, goal_conf = mp_datagen.gen_collision_free_start_goal(robot_s)
+            # start_conf, goal_conf = mp_datagen.gen_collision_free_start_goal(robot_s)
+            start_conf = np.array([-1.7025723, -1.6633874,  2.366811 , -1.3851819, -1.2213441,
+        2.4003718,  1.6417598])
+            goal_conf = np.array([ 0.99554193, -1.1346126 ,  2.0240295 , -1.0696198 ,  2.5264194 ,
+        4.397985  , -2.518342  ])
             obstacle_list = []
             print(f"Start Conf: {start_conf}, Goal Conf: {goal_conf}")
         START_CONF = copy.deepcopy(start_conf)
@@ -284,11 +288,12 @@ elif config['mode'] == "inference":
         assert config['normalize'] == False
         update_counter = 0
         condition = torch.zeros((1, config['obs_dim']*config['obs_steps']), device=config['device'])
+        condition[:, robot_s.n_dof:2*robot_s.n_dof] = torch.tensor(GOAL_CONF).to(config['device'])
 
         for _ in range(inference_steps):
             start_conf = robot_s.get_jnt_values()
             condition[:, :robot_s.n_dof] = torch.tensor(start_conf).to(config['device'])
-            condition[:, robot_s.n_dof:2*robot_s.n_dof] = torch.tensor(goal_conf).to(config['device'])
+            
             if 'obstacles' in config['obs_keys']:
                 condition[:, 2*robot_s.n_dof:] = torch.tensor(obstacle_info).to(config['device'])
             
@@ -333,6 +338,10 @@ elif config['mode'] == "inference":
                 if update_counter > config['max_iter']:
                     print("Max iteration reached!")
                     break
+            
+            '''update the condition'''
+            condition[:, 2*robot_s.n_dof:3*robot_s.n_dof] = torch.tensor(jnt_vel_list[-1]).to(config['device'])
+            condition[:, 3*robot_s.n_dof:4*robot_s.n_dof] = torch.tensor(jnt_acc_list[-1]).to(config['device'])
             
             if robot_s.cc.is_collided(obstacle_list=obstacle_list):
                 print("Collision detected!")
