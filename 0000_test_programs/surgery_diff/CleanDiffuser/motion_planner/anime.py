@@ -54,17 +54,17 @@ def visualize_anime_diffusion(robot, path, start_conf, goal_conf):
 
 if __name__ == '__main__':
     '''anime the npz'''
-    # import numpy as np
-    # with open('jnt_info.npz', 'rb') as f:
-    #     data = np.load(f)
-    #     jnt_pos = data['jnt_pos']
+    import numpy as np
+    with open('jnt_info.npz', 'rb') as f:
+        data = np.load(f)
+        jnt_pos = data['jnt_pos']
 
     '''anime zarr'''
-    import zarr
-    import numpy as np
-    root = zarr.open('/home/lqin/zarr_datasets/test.zarr', mode='r')
-    traj_id = 2
-    traj_end = int(root['meta']['episode_ends'][traj_id])
-    jnt_pos = root['data']['jnt_pos'][:traj_end+1]
+    # import zarr
+    # import numpy as np
+    # root = zarr.open('/home/lqin/zarr_datasets/test.zarr', mode='r')
+    # traj_id = 2
+    # traj_end = int(root['meta']['episode_ends'][traj_id])
+    # jnt_pos = root['data']['jnt_pos'][:traj_end+1]
 
     visualize_anime_diffusion(robot_s, jnt_pos, start_conf=jnt_pos[0], goal_conf=jnt_pos[-1])

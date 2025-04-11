@@ -15,28 +15,48 @@ import wrs.modeling.geometric_model as mgm
 '''helper functions'''
 import obstacle_utils as obstacle_utils
 
-current_file_dir = os.path.dirname(__file__)
-parent_dir = os.path.dirname(os.path.dirname(__file__))
+def plot_details(robot_s, jnt_pos_list, jnt_vel_list, jnt_acc_list):
+    sampling_interval = 0.001
+    time_points = np.arange(0, len(jnt_pos_list) * sampling_interval, sampling_interval)[:len(jnt_pos_list)]
 
-dataset_path = os.path.join('/home/lqin', 'zarr_datasets', 'franka_ruckig.zarr')
-store = zarr.DirectoryStore(dataset_path)
-root = zarr.group(store=store)
-print('Current dataset created in:', dataset_path)
+    plt.figure(figsize=(10, 3 * robot_s.n_dof))
 
-meta_group = root.create_group("meta")
-data_group = root.create_group("data")
-episode_ends_ds = meta_group.create_dataset("episode_ends", shape=(0,), chunks=(1,), dtype=np.float32, append=True)
-goal_conf_ds = data_group.create_dataset("goal_conf", shape=(0, 7), chunks=(1, 7), dtype=np.float32, append=True)
-jnt_p = data_group.create_dataset("jnt_pos", shape=(0, 7), chunks=(1, 7), dtype=np.float32, append=True)
-jnt_v = data_group.create_dataset("jnt_vel", shape=(0, 7), chunks=(1, 7), dtype=np.float32, append=True)
-jnt_a = data_group.create_dataset("jnt_acc", shape=(0, 7), chunks=(1, 7), dtype=np.float32, append=True)
+    for i in range(robot_s.n_dof):
+        plt.subplot(robot_s.n_dof, 1, i + 1)
+        pos = [p[i] for p in jnt_pos_list]
+        vel = [v[i] for v in jnt_vel_list]
+        acc = [a[i] for a in jnt_acc_list]
 
+        plt.plot(time_points, pos, label='Position')
+        plt.plot(time_points, vel, label='Velocity')
+        plt.plot(time_points, acc, label='Acceleration')
+
+        plt.ylabel(f'DoF {i}')
+        plt.legend()
+        plt.grid(True)
+
+    plt.xlabel('Time [s]')
+    plt.tight_layout()
+    plt.show()
 
 def gen_start_goal_conf(robot):
     '''generate the start and goal conf'''
     start_conf = robot.rand_conf()
     goal_conf = robot.rand_conf()
     
+    return start_conf, goal_conf
+
+def gen_collision_free_start_goal(robot):
+    '''generate the start and goal conf'''
+    while True:
+        start_conf = robot.rand_conf()
+        goal_conf = robot.rand_conf()
+        robot.goto_given_conf(jnt_values=start_conf)
+        start_cc = robot.cc.is_collided()
+        robot.goto_given_conf(jnt_values=goal_conf)
+        goal_cc = robot.cc.is_collided()
+        if not start_cc and not goal_cc:
+            break
     return start_conf, goal_conf
 
 def initialize(sampling_interval):
@@ -50,10 +70,28 @@ def initialize(sampling_interval):
     
     return base, robot, otg, inp, out
 
-traj_num = 2000
-sampling_interval = 0.001  # seconds
+
 
 if __name__ == '__main__':
+    traj_num = 2000
+    sampling_interval = 0.001  # seconds
+
+    current_file_dir = os.path.dirname(__file__)
+    parent_dir = os.path.dirname(os.path.dirname(__file__))
+
+    dataset_path = os.path.join('/home/lqin', 'zarr_datasets', 'franka_ruckig.zarr')
+    store = zarr.DirectoryStore(dataset_path)
+    root = zarr.group(store=store)
+    print('Current dataset created in:', dataset_path)
+
+    meta_group = root.create_group("meta")
+    data_group = root.create_group("data")
+    episode_ends_ds = meta_group.create_dataset("episode_ends", shape=(0,), chunks=(1,), dtype=np.float32, append=True)
+    goal_conf_ds = data_group.create_dataset("goal_conf", shape=(0, 7), chunks=(1, 7), dtype=np.float32, append=True)
+    jnt_p = data_group.create_dataset("jnt_pos", shape=(0, 7), chunks=(1, 7), dtype=np.float32, append=True)
+    jnt_v = data_group.create_dataset("jnt_vel", shape=(0, 7), chunks=(1, 7), dtype=np.float32, append=True)
+    jnt_a = data_group.create_dataset("jnt_acc", shape=(0, 7), chunks=(1, 7), dtype=np.float32, append=True)
+
     # Initialize the world and robot
     base, robot, otg, inp, out = initialize(sampling_interval)
     

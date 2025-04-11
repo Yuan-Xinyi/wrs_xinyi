@@ -15,13 +15,14 @@ SPACE_Z_OFFSET = 0.365  # Z-axis offset for the space
 NOISE_POINTS_PER_OBSTACLE = 20  # Number of noise points around each obstacle
 NOISE_MAX_DISTANCE = 0.02       # Maximum distance for noise points
 NOISE_MIN_DISTANCE = 0.0        # Minimum distance for noise points
-NOISE_SIZE = 0.01               # Size of noise points
+NOISE_SIZE = 0.01 
+NOISE_ALPHA = 0.1              # Size of noise points
 
 def obstacle_setup(length, width, height, pos):
     """Create a collision model for an obstacle"""
     planecm = mcm.gen_box(xyz_lengths=[length, width, height],
                          pos=pos,
-                         rgb=ct.chinese_red, alpha=1.)
+                         rgb=ct.chinese_red, alpha=NOISE_ALPHA)
     planecm.attach_to(base)
     return planecm
 
@@ -76,7 +77,7 @@ def generate_noise_around_obstacle(obstacle_pos, obstacle_size):
     return noise_points
 
 
-def generate_grid_obstacles(n_samples=10):
+def generate_grid_obstacles(n_samples=10, generate_noise=True):
     """Generate grid-based obstacles with noise points"""
     # Calculate grid counts
     nx = int(SPACE_LENGTH / GRID_SIZE)
@@ -120,10 +121,13 @@ def generate_grid_obstacles(n_samples=10):
         obstacle_list.append(obstacle)
         
         # Generate noise points for obstacle
-        noise_points = generate_noise_around_obstacle(pos, np.array([length, width, height]))
-        all_noise_points.extend(noise_points)
+        if generate_noise:
+            noise_points = generate_noise_around_obstacle(pos, np.array([length, width, height]))
+            all_noise_points.extend(noise_points)
 
-    return obstacle_list + all_noise_points
+            return obstacle_list + all_noise_points
+    
+    return obstacle_list
 
 def voxelize_scene(voxel_size=GRID_SIZE):
     """Convert scene obstacles into voxel representation"""
@@ -190,7 +194,7 @@ def visualize_voxels(voxels, voxel_origin, voxel_size):
             mgm.gen_box(xyz_lengths=[display_size] * 3,
                       pos=pos,
                       rgb=ct.red,  # Red for obstacles
-                      alpha=1.).attach_to(base)
+                      alpha=NOISE_ALPHA).attach_to(base)
 
 
 def visualize_space():
@@ -204,7 +208,7 @@ def visualize_space():
     )
     space_box.attach_to(base)
 
-
+import zarr
 # Example usage
 if __name__ == '__main__':
     # Initialize 3D visualization environment
@@ -215,17 +219,40 @@ if __name__ == '__main__':
     import wrs.robot_sim.robots.franka_research_3.franka_research_3 as franka
     from wrs import wd, rm, mcm
     robot_s = franka.FrankaResearch3(enable_cc=True)
-    robot_s.goto_given_conf([0, 0, 0, 0, 0, 0, 0])
-    robot_s.gen_meshmodel().attach_to(base)
+    jnt_values = robot_s.rand_conf()
     
-    # 1. Generate random obstacles with noise points
-    obstacles = generate_grid_obstacles(n_samples=6)
+    '''generate obstacles'''
+    # robot_s.goto_given_conf(jnt_values)
+    # robot_s.gen_meshmodel().attach_to(base)
+    # # 1. Generate random obstacles with noise points
+    # obstacles = generate_grid_obstacles(n_samples=6, generate_noise=False)
     
-    # 2. Voxelize the scene
-    obstacle_voxels, voxel_origin = voxelize_scene()
+    # # 2. Voxelize the scene
+    # obstacle_voxels, voxel_origin = voxelize_scene()
     
-    # 3. Visualize voxels
-    visualize_voxels(obstacle_voxels, voxel_origin, GRID_SIZE)
+    # # 3. Visualize voxels
+    # visualize_voxels(obstacle_voxels, voxel_origin, GRID_SIZE)
     
-    # Run visualization
+    # # Run visualization
+    # base.run()
+
+    '''traj obstacle'''
+    root = zarr.open('/home/lqin/zarr_datasets/franka_ruckig.zarr', mode='r')
+
+    traj_id = 1
+    traj_start = int(np.sum(root['meta']['episode_ends'][:traj_id]))
+    traj_end = int(np.sum(root['meta']['episode_ends'][:traj_id + 1]))
+    jnt_pos_list = root['data']['jnt_pos'][traj_start:traj_start+64]
+
+    obstacles = generate_grid_obstacles(n_samples=6, generate_noise=False)
+
+    for jnt in jnt_pos_list:
+        robot_s.goto_given_conf(jnt_values=jnt)
+        for obstacle in obstacles:
+            if robot_s.cc.is_collided(obstacle_list=[obstacle]):
+                obstacles.remove(obstacle)
+        robot_s.gen_meshmodel(alpha=0.1).attach_to(base)
+    print('obstacles:', len(obstacles))
+    
     base.run()
+

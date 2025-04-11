@@ -25,7 +25,7 @@ import matplotlib.pyplot as plt
 from torch.optim.lr_scheduler import CosineAnnealingLR
 from cleandiffuser.dataset.dataset_utils import loop_dataloader
 from cleandiffuser.utils import report_parameters
-from ruckig_dataset import MotionPlanningDataset, ObstaclePlanningDataset, FixedGoalPlanningDataset
+from ruckig_dataset import MotionPlanningDataset, ObstaclePlanningDataset, FixedGoalPlanningDataset, PosPlanningDataset
 from torch.utils.data import random_split
 
 def set_seed(seed: int):
@@ -33,20 +33,9 @@ def set_seed(seed: int):
     np.random.seed(seed)
     random.seed(seed)
 
-def validate(agent, val_dataloader, device):
-    agent.eval()
-    total_val_loss = 0.0
-    with torch.no_grad():
-        for batch in val_dataloader:
-            x = batch['trajectory'].to(device)
-            val_loss = agent.loss(x)
-            total_val_loss += val_loss.item()
-    return total_val_loss / len(val_dataloader)
-
-
 '''load the config file'''
-current_file_dir = os.path.dirname(__file__)
-# current_file_dir = '0000_test_programs/surgery_diff/CleanDiffuser/motion_planner/results/0408_1122_h64_unnorm'
+# current_file_dir = os.path.dirname(__file__)
+current_file_dir = '0000_test_programs/surgery_diff/CleanDiffuser/motion_planner/results/0411_2123_h128_unnorm'
 parent_dir = os.path.dirname(os.path.dirname(__file__))
 config_file = os.path.join(current_file_dir, 'ruckig_config.yaml')
 with open(config_file, "r") as file:
@@ -56,29 +45,16 @@ with open(config_file, "r") as file:
 if config['mode'] == "train":
     dataset_path = os.path.join('/home/lqin', 'zarr_datasets', config['dataset_name'])
 
-    dataset = FixedGoalPlanningDataset(dataset_path, horizon=config['horizon'], obs_keys=config['obs_keys'], 
+    dataset = PosPlanningDataset(dataset_path, horizon=config['horizon'], obs_keys=config['obs_keys'], 
                                     pad_before=config['obs_steps']-1, pad_after=config['action_steps']-1, abs_action=config['abs_action'])
 
-    train_dataset, val_dataset = random_split(
-        dataset, lengths=[0.95, 0.05],
-        generator=torch.Generator().manual_seed(config['seed'])
-    )
-
     train_loader = torch.utils.data.DataLoader(
-        train_dataset,
+        dataset,
         batch_size=config["batch_size"],
         num_workers=4,
         shuffle=True,
         pin_memory=True,
         persistent_workers=True
-    )
-
-    val_dataloader = torch.utils.data.DataLoader(
-        val_dataset,
-        batch_size=config["batch_size"],
-        num_workers=2,
-        shuffle=False,
-        pin_memory=True
     )
 
 # --------------- Create Diffusion Model -----------------
@@ -119,10 +95,12 @@ x_max[:, :, :7] = torch.tensor(jnt_v_max, device=config['device'])
 x_max[:, :, -7:] = torch.tensor(jnt_a_max, device=config['device']) 
 x_min[:, :, :7] = torch.tensor(-jnt_v_max, device=config['device'])
 x_min[:, :, -7:] = torch.tensor(-jnt_a_max, device=config['device'])
+fix_mask = torch.zeros((config['horizon'], config['action_dim']), device=config['device'])
+fix_mask[0, :] = 1.
 
 agent = DDPM(
-    nn_diffusion=nn_diffusion, nn_condition=nn_condition, device=config['device'],
-    diffusion_steps=config['sample_steps'], x_max=x_max, x_min=x_min,
+    nn_diffusion=nn_diffusion, nn_condition=nn_condition, fix_mask = fix_mask,
+    device=config['device'], diffusion_steps=config['sample_steps'], x_max=x_max, x_min=x_min,
     optim_params={"lr": config['lr']})
 
 lr_scheduler = CosineAnnealingLR(agent.optimizer, T_max=config['gradient_steps'])
@@ -174,17 +152,12 @@ if config['mode'] == "train":
             agent.save(save_path + f"/diffusion_ckpt_{n_gradient_step}.pt")
             agent.save(save_path + f"/diffusion_ckpt_latest.pt")
         
-        if n_gradient_step != 0 and n_gradient_step % config['val_freq'] == 0:
-            val_loss = validate(agent, val_dataloader, config['device'])
-            print(f"Validation Loss: {val_loss}")
-            wandb.log({'val_loss': val_loss}, commit=False)
-
         n_gradient_step += 1
         if n_gradient_step >= config['gradient_steps']:
             break
     wandb.finish()
 
-elif config['mode'] == "inference":
+elif config['mode'] == "pos_inference":
     # ----------------- Inference ----------------------
     model_path = os.path.join(current_file_dir, 'diffusion_ckpt_latest.pt')
     agent.load(model_path)
@@ -196,6 +169,131 @@ elif config['mode'] == "inference":
     import wrs.visualization.panda.world as wd
     from wrs import wd, rm, mcm
     import wrs.modeling.geometric_model as mgm
+    import mp_datagen_ruckig_obstacle as mp_helper
+    import copy
+    
+    # init
+    base = wd.World(cam_pos=[2, 0, 1], lookat_pos=[0, 0, 0])
+    mgm.gen_frame().attach_to(base)
+
+    # inference
+    solver = config['inference_solver']
+    inference_steps = config['inference_steps']
+    visualization = config['visualization']
+    
+    success_num = 0
+    for _ in tqdm(range(config['episode_num'])):
+        jnt_pos_list = []
+        delta_t = 0.001
+
+        start_conf, goal_conf = mp_helper.gen_collision_free_start_goal(robot_s)
+        jnt_pos_list.append(start_conf)
+        print(f"Start Conf: {start_conf}, Goal Conf: {goal_conf}")
+
+        START_CONF = copy.deepcopy(start_conf)
+        GOAL_CONF = copy.deepcopy(goal_conf)
+        tgt_pos, tgt_rotmat = robot_s.fk(jnt_values=goal_conf)
+        
+        robot_s.goto_given_conf(jnt_values=goal_conf)
+        robot_s.gen_meshmodel(alpha=0.2, rgb=[0,1,0]).attach_to(base)
+        robot_s.goto_given_conf(jnt_values=start_conf)
+        robot_s.gen_meshmodel(alpha=0.2, rgb=[0,0,1]).attach_to(base)
+
+        assert config['normalize'] == False
+        update_counter = 0
+        condition = torch.zeros((1, config['obs_dim']*config['obs_steps']), device=config['device'])
+        condition[:, robot_s.n_dof:2*robot_s.n_dof] = torch.tensor(GOAL_CONF).to(config['device'])
+        prior = torch.zeros((1, config['horizon'], config['action_dim']), device=config['device'])
+        prior[:, 0, :] = torch.tensor(start_conf).to(config['device'])
+
+        for _ in range(inference_steps):
+            start_conf = robot_s.get_jnt_values()
+            condition[:, :robot_s.n_dof] = torch.tensor(start_conf).to(config['device'])
+            prior[:, 0, :] = torch.tensor(start_conf).to(config['device'])
+            
+            with torch.no_grad():
+                action, _ = agent.sample(prior=prior, n_samples=1, sample_steps=config['sample_steps'],
+                                        solver=solver, condition_cfg=condition, w_cfg=1.0, use_ema=True)
+
+            # sample actions and unnorm
+            jnt_pred = action[0, :, :].detach().to('cpu').numpy()
+            
+            for idx in range(16):
+            # for idx in range(config['action_steps']):
+                # print(update_counter)
+                action = jnt_pred[idx]
+                robot_s.goto_given_conf(jnt_values=action)
+                jnt_pos_list.append(action)
+                pred_pos, pred_rotmat = robot_s.fk(jnt_values=action)
+                pos_err, rot_err, _ = rm.diff_between_poses(tgt_pos, tgt_rotmat, pred_pos, pred_rotmat)
+                print(f"Step: {update_counter}, pos_err: {pos_err} m, rot_err: {rot_err} rad")
+
+                if visualization:
+                    # robot_s.gen_meshmodel(alpha=0.2).attach_to(base)
+                    s_pos, _ = robot_s.fk(jnt_values=jnt_pos_list[-2])
+                    e_pos, _ = robot_s.fk(jnt_values=jnt_pos_list[-1])
+                    mgm.gen_stick(spos=s_pos, epos=e_pos, rgb=[0,0,0]).attach_to(base)
+                update_counter += 1
+
+                if robot_s.cc.is_collided(obstacle_list=[]):
+                    print("Collision detected!")
+                    break
+
+                if (pos_err < config['max_pos_err']):
+                    print("Goal reached!")
+                    break
+
+                if update_counter > config['max_iter']:
+                    print("Max iteration reached!")
+                    break
+
+            
+            if robot_s.cc.is_collided(obstacle_list=[]):
+                print("Collision detected!")
+                break
+
+            if (pos_err < config['max_pos_err']):
+                print("Goal reached!")
+                break
+
+            if update_counter > config['max_iter']:
+                print("Max iteration reached!")
+                break            
+            
+            if pos_err < config['max_pos_err'] and not robot_s.cc.is_collided(obstacle_list=[]):
+                success_num += 1
+                print("Success!")
+                break
+        
+        if visualization:
+            # mp_datagen.visualize_anime_diffusion(robot=robot_s, path = jnt_pos_list, 
+            #                                      start_conf=START_CONF, goal_conf=GOAL_CONF)
+            # jnt_pos_array, jnt_vel_arrat, jnt_acc_array = np.array(jnt_pos_list), np.array(jnt_vel_list), np.array(jnt_acc_list)
+            # np.savez('jnt_info.npz', jnt_pos=jnt_pos_array, jnt_vel=jnt_vel_arrat, jnt_acc=jnt_acc_array)
+            jnt_pos_array = np.array(jnt_pos_list)
+            np.savez('jnt_info.npz', jnt_pos=jnt_pos_array)
+            # mp_helper.plot_details(robot_s, jnt_pos_list, jnt_vel_list, jnt_acc_list)
+            base.run()    
+
+    print(f"Success rate: {success_num/config['episode_num']*100}%")
+    print('strart conf:', repr(START_CONF))
+    print('goal conf:', repr(GOAL_CONF))
+
+
+elif config['mode'] == "acc_inference":
+    # ----------------- Inference ----------------------
+    model_path = os.path.join(current_file_dir, 'diffusion_ckpt_latest.pt')
+    agent.load(model_path)
+    agent.model.eval()
+    agent.model_ema.eval()
+
+    '''capture the image'''
+    sys.path.append('/home/lqin/wrs_xinyi/wrs')
+    import wrs.visualization.panda.world as wd
+    from wrs import wd, rm, mcm
+    import wrs.modeling.geometric_model as mgm
+    import mp_datagen_ruckig_obstacle as mp_helper
+    import copy
     
     # init
     base = wd.World(cam_pos=[2, 0, 1], lookat_pos=[0, 0, 0])
@@ -213,20 +311,9 @@ elif config['mode'] == "inference":
         jnt_acc_list = []
         delta_t = 0.001
 
-        import mp_datagen_obstacles_rrt_ruckig as mp_datagen
-        import copy
+        start_conf, goal_conf = mp_helper.gen_start_goal_conf(robot_s)
+        print(f"Start Conf: {start_conf}, Goal Conf: {goal_conf}")
 
-        if 'obstacles' in config['obs_keys']:
-            start_conf, goal_conf, obstacle_list, obstacle_info = mp_datagen.generate_obstacle_confs(robot_s, obstacle_num=6)
-            print(f"Start Conf: {start_conf}, Goal Conf: {goal_conf}, Obstacle Info: {obstacle_info}")
-        else:
-            start_conf, goal_conf = mp_datagen.gen_collision_free_start_goal(robot_s)
-        #     start_conf = np.array([-1.7025723, -1.6633874,  2.366811 , -1.3851819, -1.2213441,
-        # 2.4003718,  1.6417598])
-        #     goal_conf = np.array([ 0.99554193, -1.1346126 ,  2.0240295 , -1.0696198 ,  2.5264194 ,
-        # 4.397985  , -2.518342  ])
-            obstacle_list = []
-            print(f"Start Conf: {start_conf}, Goal Conf: {goal_conf}")
         START_CONF = copy.deepcopy(start_conf)
         GOAL_CONF = copy.deepcopy(goal_conf)
         tgt_pos, tgt_rotmat = robot_s.fk(jnt_values=goal_conf)
@@ -240,16 +327,13 @@ elif config['mode'] == "inference":
         update_counter = 0
         condition = torch.zeros((1, config['obs_dim']*config['obs_steps']), device=config['device'])
         condition[:, robot_s.n_dof:2*robot_s.n_dof] = torch.tensor(GOAL_CONF).to(config['device'])
+        prior = torch.zeros((1, config['horizon'], config['action_dim']), device=config['device'])
 
         for _ in range(inference_steps):
             start_conf = robot_s.get_jnt_values()
             condition[:, :robot_s.n_dof] = torch.tensor(start_conf).to(config['device'])
             
-            if 'obstacles' in config['obs_keys']:
-                condition[:, 2*robot_s.n_dof:] = torch.tensor(obstacle_info).to(config['device'])
-            
             with torch.no_grad():
-                prior = torch.zeros((1, config['horizon'], config['action_dim']), device=config['device'])
                 action, _ = agent.sample(prior=prior, n_samples=1, sample_steps=config['sample_steps'],
                                         solver=solver, condition_cfg=condition, w_cfg=1.0, use_ema=True)
 
@@ -278,7 +362,7 @@ elif config['mode'] == "inference":
                 update_counter += 1
                 # print(f"Step: {update_counter}, distance: {np.linalg.norm(robot_s.get_jnt_values() - goal_conf)}")
 
-                if robot_s.cc.is_collided(obstacle_list=obstacle_list):
+                if robot_s.cc.is_collided(obstacle_list=[]):
                     print("Collision detected!")
                     break
 
@@ -290,11 +374,14 @@ elif config['mode'] == "inference":
                     print("Max iteration reached!")
                     break
             
+            prior[:,0,:7] = torch.tensor(jnt_vel_list[-1])
+            prior[:,0,-7:] = torch.tensor(jnt_acc_list[-1])
+            
             '''update the condition'''
             condition[:, 2*robot_s.n_dof:3*robot_s.n_dof] = torch.tensor(jnt_vel_list[-1]).to(config['device'])
             condition[:, 3*robot_s.n_dof:4*robot_s.n_dof] = torch.tensor(jnt_acc_list[-1]).to(config['device'])
             
-            if robot_s.cc.is_collided(obstacle_list=obstacle_list):
+            if robot_s.cc.is_collided(obstacle_list=[]):
                 print("Collision detected!")
                 break
 
@@ -306,7 +393,7 @@ elif config['mode'] == "inference":
                 print("Max iteration reached!")
                 break            
             
-            if pos_err < config['max_pos_err'] and not robot_s.cc.is_collided(obstacle_list=obstacle_list):
+            if pos_err < config['max_pos_err'] and not robot_s.cc.is_collided(obstacle_list=[]):
                 success_num += 1
                 print("Success!")
                 break
@@ -316,7 +403,7 @@ elif config['mode'] == "inference":
             #                                      start_conf=START_CONF, goal_conf=GOAL_CONF)
             jnt_pos_array, jnt_vel_arrat, jnt_acc_array = np.array(jnt_pos_list), np.array(jnt_vel_list), np.array(jnt_acc_list)
             np.savez('jnt_info.npz', jnt_pos=jnt_pos_array, jnt_vel=jnt_vel_arrat, jnt_acc=jnt_acc_array)
-            plot_details(robot_s, jnt_pos_list, jnt_vel_list, jnt_acc_list)
+            # mp_helper.plot_details(robot_s, jnt_pos_list, jnt_vel_list, jnt_acc_list)
             base.run()    
 
     print(f"Success rate: {success_num/config['episode_num']*100}%")
