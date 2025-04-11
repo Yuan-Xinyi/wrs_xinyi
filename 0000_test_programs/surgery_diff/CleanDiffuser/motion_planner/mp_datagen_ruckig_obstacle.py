@@ -18,7 +18,7 @@ import obstacle_utils as obstacle_utils
 current_file_dir = os.path.dirname(__file__)
 parent_dir = os.path.dirname(os.path.dirname(__file__))
 
-dataset_path = os.path.join('/home/lqin', 'zarr_datasets', 'test.zarr')
+dataset_path = os.path.join('/home/lqin', 'zarr_datasets', 'franka_ruckig.zarr')
 store = zarr.DirectoryStore(dataset_path)
 root = zarr.group(store=store)
 print('Current dataset created in:', dataset_path)
@@ -39,23 +39,23 @@ def gen_start_goal_conf(robot):
     
     return start_conf, goal_conf
 
-def initialize():
+def initialize(sampling_interval):
     '''init the robot and world'''
     base = wd.World(cam_pos=[2, 0, 1], lookat_pos=[0, 0, 0])
     mgm.gen_frame().attach_to(base)
     robot = franka.FrankaResearch3Arm(enable_cc=True)
     inp = InputParameter(robot.n_dof)
     out = OutputParameter(robot.n_dof)
-    otg = Ruckig(robot.n_dof, 0.001)
+    otg = Ruckig(robot.n_dof, sampling_interval)
     
     return base, robot, otg, inp, out
 
-traj_num = 5
+traj_num = 2000
 sampling_interval = 0.001  # seconds
 
 if __name__ == '__main__':
     # Initialize the world and robot
-    base, robot, otg, inp, out = initialize()
+    base, robot, otg, inp, out = initialize(sampling_interval)
     
     for id in tqdm(range(traj_num)):
         # Generate random start and goal configurations

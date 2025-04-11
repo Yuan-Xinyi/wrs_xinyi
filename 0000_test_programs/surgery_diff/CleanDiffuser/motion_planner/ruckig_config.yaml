@@ -1,7 +1,7 @@
 abs_action: false
 mode: train  # train or inference
 obs_keys: ['jnt_pos', 'jnt_vel', 'jnt_acc', 'goal_conf']
-dataset_name: franka_mp_ruckig_1000hz.zarr
+dataset_name: franka_ruckig.zarr
 action_dim: 14
 obs_dim: 28
 obs_steps: 1
@@ -27,7 +27,7 @@ predict_noise: True
 ema_rate: 0.9999
 diffusion_steps: 25
 action_loss_weight: 1.0
-val_freq: 20000
+val_freq: 1000
 
 # log and inference
 log_freq: 100

@@ -43,55 +43,10 @@ def validate(agent, val_dataloader, device):
             total_val_loss += val_loss.item()
     return total_val_loss / len(val_dataloader)
 
-# def gen_collision_free_start_goal(robot):
-#     '''generate the start and goal conf'''
-#     while True:
-#         start_conf = robot.rand_conf()
-#         goal_conf = robot.rand_conf()
-#         robot.goto_given_conf(jnt_values=start_conf)
-#         start_cc = robot.cc.is_collided()
-#         robot.goto_given_conf(jnt_values=goal_conf)
-#         goal_cc = robot.cc.is_collided()
-#         if not start_cc and not goal_cc:
-#             break
-#     return start_conf, goal_conf
-
-def plot_details(robot_s, jnt_pos_list, jnt_vel_list, jnt_acc_list):
-    sampling_interval = 0.001
-    
-    plt.figure(figsize=(10, 12))
-    plt.subplot(3, 1, 1)
-    time_points = np.arange(0, len(jnt_pos_list) * sampling_interval, sampling_interval)[:len(jnt_pos_list)]
-    for i in range(robot_s.n_dof):
-        plt.plot(time_points, [p[i] for p in jnt_pos_list], label=f'DoF {i}')
-    plt.ylabel('Position [m]')
-    plt.legend()
-    # plt.grid(True)
-
-    plt.subplot(3, 1, 2)
-    time_points = np.arange(0, len(jnt_vel_list) * sampling_interval, sampling_interval)[:len(jnt_vel_list)]
-    for i in range(robot_s.n_dof):
-        plt.plot(time_points, [v[i] for v in jnt_vel_list], label=f'DoF {i}')
-    plt.ylabel('Velocity [m/s]')
-    plt.legend()
-    # plt.grid(True)
-
-    plt.subplot(3, 1, 3)
-    time_points = np.arange(0, len(jnt_acc_list) * sampling_interval, sampling_interval)[:len(jnt_acc_list)]
-    for i in range(robot_s.n_dof):
-        plt.plot(time_points, [a[i] for a in jnt_acc_list], label=f'DoF {i}')
-    plt.ylabel('Acceleration [m/s²]')
-    plt.xlabel('Time [s]')
-    plt.legend()
-    # plt.grid(True)
-
-    plt.tight_layout()
-    plt.show()    
-
 
 '''load the config file'''
-# current_file_dir = os.path.dirname(__file__)
-current_file_dir = '0000_test_programs/surgery_diff/CleanDiffuser/motion_planner/results/0408_1122_h64_unnorm'
+current_file_dir = os.path.dirname(__file__)
+# current_file_dir = '0000_test_programs/surgery_diff/CleanDiffuser/motion_planner/results/0408_1122_h64_unnorm'
 parent_dir = os.path.dirname(os.path.dirname(__file__))
 config_file = os.path.join(current_file_dir, 'ruckig_config.yaml')
 with open(config_file, "r") as file:
@@ -156,12 +111,12 @@ robot_s = franka.FrankaResearch3(enable_cc=True)
 jnt_v_max = rm.np.asarray([rm.pi * 2 / 3] * robot_s.n_dof)
 jnt_a_max = rm.np.asarray([rm.pi] * robot_s.n_dof)
 jnt_config_range = robot_s.jnt_ranges
+
 x_max = torch.zeros((1, config['horizon'], config['action_dim']), device=config['device'])
 x_min = torch.zeros((1, config['horizon'], config['action_dim']), device=config['device'])
 
 x_max[:, :, :7] = torch.tensor(jnt_v_max, device=config['device']) 
 x_max[:, :, -7:] = torch.tensor(jnt_a_max, device=config['device']) 
-
 x_min[:, :, :7] = torch.tensor(-jnt_v_max, device=config['device'])
 x_min[:, :, -7:] = torch.tensor(-jnt_a_max, device=config['device'])
 
@@ -231,10 +186,6 @@ if config['mode'] == "train":
 
 elif config['mode'] == "inference":
     # ----------------- Inference ----------------------
-    # model_path = '0000_test_programs/surgery_diff/CleanDiffuser/motion_planner/results/0402_1328_h256_unnorm/diffusion_ckpt_latest.pt'    
-    # model_path = '0000_test_programs/surgery_diff/CleanDiffuser/motion_planner/results/0403_1111_h128_unnorm/diffusion_ckpt_latest.pt'
-    # model_path = '0000_test_programs/surgery_diff/CleanDiffuser/motion_planner/results/0404_1130_h256_unnorm/diffusion_ckpt_latest.pt'
-    # model_path = '0000_test_programs/surgery_diff/CleanDiffuser/motion_planner/results/0404_1417_h512_unnorm/diffusion_ckpt_latest.pt'
     model_path = os.path.join(current_file_dir, 'diffusion_ckpt_latest.pt')
     agent.load(model_path)
     agent.model.eval()
@@ -269,11 +220,11 @@ elif config['mode'] == "inference":
             start_conf, goal_conf, obstacle_list, obstacle_info = mp_datagen.generate_obstacle_confs(robot_s, obstacle_num=6)
             print(f"Start Conf: {start_conf}, Goal Conf: {goal_conf}, Obstacle Info: {obstacle_info}")
         else:
-            # start_conf, goal_conf = mp_datagen.gen_collision_free_start_goal(robot_s)
-            start_conf = np.array([-1.7025723, -1.6633874,  2.366811 , -1.3851819, -1.2213441,
-        2.4003718,  1.6417598])
-            goal_conf = np.array([ 0.99554193, -1.1346126 ,  2.0240295 , -1.0696198 ,  2.5264194 ,
-        4.397985  , -2.518342  ])
+            start_conf, goal_conf = mp_datagen.gen_collision_free_start_goal(robot_s)
+        #     start_conf = np.array([-1.7025723, -1.6633874,  2.366811 , -1.3851819, -1.2213441,
+        # 2.4003718,  1.6417598])
+        #     goal_conf = np.array([ 0.99554193, -1.1346126 ,  2.0240295 , -1.0696198 ,  2.5264194 ,
+        # 4.397985  , -2.518342  ])
             obstacle_list = []
             print(f"Start Conf: {start_conf}, Goal Conf: {goal_conf}")
         START_CONF = copy.deepcopy(start_conf)
