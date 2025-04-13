@@ -348,32 +348,34 @@ class ImageNormalizer:
 
 
 class MinMaxNormalizer:
-    """
-        normalizes data through maximum and minimum expansion.
-    """
+    """Normalizes data to [-1, 1] range using min/max scaling."""
+    
+    def __init__(self, X=None, min=None, max=None):
+        if X is not None:
+            # Compute min/max from data
+            X = X.reshape(-1, X.shape[-1]).astype(np.float32)
+            self.min, self.max = np.min(X, axis=0), np.max(X, axis=0)
+        else:
+            # Use provided min/max
+            assert min is not None and max is not None, "Must provide either X or (min, max)"
+            self.min, self.max = np.array(min, dtype=np.float32), np.array(max, dtype=np.float32)
 
-    def __init__(self, X):
-        X = X.reshape(-1, X.shape[-1]).astype(np.float32)
-        self.min, self.max = np.min(X, axis=0), np.max(X, axis=0)
         self.range = self.max - self.min
         if np.any(self.range == 0):
-            self.range = self.max - self.min
-            print("Warning: Some features have the same min and max value. These will be set to 0.")
+            print("Warning: Constant features detected. Setting range=1 to avoid division by zero.")
             self.range[self.range == 0] = 1
 
     def normalize(self, x):
+        """Scale input to [-1, 1] range."""
         x = x.astype(np.float32)
-        # nomalize to [0,1]
-        nx = (x - self.min) / self.range
-        # normalize to [-1, 1]
-        nx = nx * 2 - 1
-        return nx
+        nx = (x - self.min) / self.range  # [0, 1]
+        return nx * 2 - 1  # [-1, 1]
 
     def unnormalize(self, x):
+        """Reverse scaling from [-1, 1] to original range."""
         x = x.astype(np.float32)
-        nx = (x + 1) / 2
-        x = nx * self.range + self.min
-        return x
+        nx = (x + 1) / 2  # [0, 1]
+        return nx * self.range + self.min
 
 
 class EmptyNormalizer:

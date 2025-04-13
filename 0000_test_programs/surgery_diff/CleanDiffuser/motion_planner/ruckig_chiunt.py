@@ -35,19 +35,20 @@ def set_seed(seed: int):
 
 '''load the config file'''
 # current_file_dir = os.path.dirname(__file__)
-current_file_dir = '0000_test_programs/surgery_diff/CleanDiffuser/motion_planner/results/0411_2123_h128_unnorm'
-parent_dir = os.path.dirname(os.path.dirname(__file__))
+current_file_dir = '0000_test_programs/surgery_diff/CleanDiffuser/motion_planner/results/0413_1256_64h_128b_norm'
+# current_file_dir = '0000_test_programs/surgery_diff/CleanDiffuser/motion_planner/results/0413_1305_64h_128b_norm'
+# parent_dir = os.path.dirname(os.path.dirname(__file__))
 config_file = os.path.join(current_file_dir, 'ruckig_config.yaml')
 with open(config_file, "r") as file:
     config = yaml.safe_load(file)
 
 '''dataset loading'''
+dataset_path = os.path.join('/home/lqin', 'zarr_datasets', config['dataset_name'])
+
+dataset = MotionPlanningDataset(dataset_path, horizon=config['horizon'], obs_keys=config['obs_keys'], normalize=config['normalize'],
+                                pad_before=config['obs_steps']-1, pad_after=config['action_steps']-1, abs_action=config['abs_action'])
+
 if config['mode'] == "train":
-    dataset_path = os.path.join('/home/lqin', 'zarr_datasets', config['dataset_name'])
-
-    dataset = PosPlanningDataset(dataset_path, horizon=config['horizon'], obs_keys=config['obs_keys'], 
-                                    pad_before=config['obs_steps']-1, pad_after=config['action_steps']-1, abs_action=config['abs_action'])
-
     train_loader = torch.utils.data.DataLoader(
         dataset,
         batch_size=config["batch_size"],
@@ -101,7 +102,7 @@ fix_mask[0, :] = 1.
 agent = DDPM(
     nn_diffusion=nn_diffusion, nn_condition=nn_condition, fix_mask = fix_mask,
     device=config['device'], diffusion_steps=config['sample_steps'], x_max=x_max, x_min=x_min,
-    optim_params={"lr": config['lr']})
+    optim_params={"lr": config['lr']}, predict_noise=config['predict_noise'])
 
 lr_scheduler = CosineAnnealingLR(agent.optimizer, T_max=config['gradient_steps'])
 
@@ -109,7 +110,7 @@ if config['mode'] == "train":
     # --------------- Data Loading -----------------
     '''prepare the save path'''
     TimeCode = ((datetime.now()).strftime("%m%d_%H%M")).replace(" ", "")
-    rootpath = f"{TimeCode}_h{config['horizon']}_unnorm"
+    rootpath = f"{TimeCode}_{config['horizon']}h_{config['batch_size']}b_norm"
     current_file_dir = os.path.dirname(__file__)
     save_path = os.path.join(current_file_dir, 'results', rootpath)
     if not os.path.exists(save_path):
@@ -127,9 +128,9 @@ if config['mode'] == "train":
     for batch in loop_dataloader(train_loader):
         # get condition
         condition = batch['cond'].to(config['device'])
-        action = batch['action'].to(config['device'])
+        action = batch['action'].to(config['device']) # (batch,horizon,7)
 
-        condition = condition.flatten(start_dim=1) # (64,12)
+        condition = condition.flatten(start_dim=1) # (batch,14)
         
         # update diffusion
         diffusion_loss = agent.update(action, condition)['loss']
@@ -212,8 +213,8 @@ elif config['mode'] == "pos_inference":
             prior[:, 0, :] = torch.tensor(start_conf).to(config['device'])
             
             with torch.no_grad():
-                action, _ = agent.sample(prior=prior, n_samples=1, sample_steps=config['sample_steps'],
-                                        solver=solver, condition_cfg=condition, w_cfg=1.0, use_ema=True)
+                action, _ = agent.sample(prior=prior, n_samples=1, sample_steps=config['sample_steps'],temperature=1.0,
+                                        solver=solver, condition_cfg=condition, w_cfg=0.01, use_ema=True)
 
             # sample actions and unnorm
             jnt_pred = action[0, :, :].detach().to('cpu').numpy()
@@ -305,13 +306,14 @@ elif config['mode'] == "acc_inference":
     visualization = config['visualization']
     
     success_num = 0
+    n_samples = 1
     for _ in tqdm(range(config['episode_num'])):
         jnt_pos_list = []
         jnt_vel_list = []
         jnt_acc_list = []
         delta_t = 0.001
 
-        start_conf, goal_conf = mp_helper.gen_start_goal_conf(robot_s)
+        start_conf, goal_conf = mp_helper.gen_collision_free_start_goal(robot_s)
         print(f"Start Conf: {start_conf}, Goal Conf: {goal_conf}")
 
         START_CONF = copy.deepcopy(start_conf)
@@ -323,48 +325,82 @@ elif config['mode'] == "acc_inference":
         robot_s.goto_given_conf(jnt_values=start_conf)
         robot_s.gen_meshmodel(alpha=0.2, rgb=[0,0,1]).attach_to(base)
 
-        assert config['normalize'] == False
+        if n_samples != 1:
+            start_conf = np.tile(robot_s.get_jnt_values(), (n_samples, 1))
+
         update_counter = 0
-        condition = torch.zeros((1, config['obs_dim']*config['obs_steps']), device=config['device'])
-        condition[:, robot_s.n_dof:2*robot_s.n_dof] = torch.tensor(GOAL_CONF).to(config['device'])
-        prior = torch.zeros((1, config['horizon'], config['action_dim']), device=config['device'])
+        condition = torch.zeros((n_samples, config['obs_dim']*config['obs_steps']), device=config['device'])
+        if config['normalize']:
+            normed_goal_conf = dataset.normalizer['obs']['jnt_pos'].normalize(GOAL_CONF)
+            condition[:, robot_s.n_dof:2*robot_s.n_dof] = torch.tensor(normed_goal_conf).to(config['device'])
+        else:
+            condition[:, robot_s.n_dof:2*robot_s.n_dof] = torch.tensor(GOAL_CONF).to(config['device'])
+        prior = torch.zeros((n_samples, config['horizon'], config['action_dim']), device=config['device'])
 
         for _ in range(inference_steps):
-            start_conf = robot_s.get_jnt_values()
-            condition[:, :robot_s.n_dof] = torch.tensor(start_conf).to(config['device'])
+            if n_samples == 1:
+                start_conf = robot_s.get_jnt_values()
+            elif n_samples > 1 and update_counter != 0:
+                start_conf = jnt_pos_list[-1]
+
+            if config['normalize']:
+                normed_start_conf = dataset.normalizer['obs']['jnt_pos'].normalize(start_conf)
+                condition[:, :robot_s.n_dof] = torch.tensor(normed_start_conf).to(config['device'])
+            else:
+                condition[:, :robot_s.n_dof] = torch.tensor(start_conf).to(config['device'])
             
             with torch.no_grad():
-                action, _ = agent.sample(prior=prior, n_samples=1, sample_steps=config['sample_steps'],
-                                        solver=solver, condition_cfg=condition, w_cfg=1.0, use_ema=True)
+                action, _ = agent.sample(prior=prior, n_samples=n_samples, sample_steps=config['sample_steps'], temperature=0.3,
+                                        solver=solver, condition_cfg=condition, w_cfg=7.0, use_ema=True)
+                # action, _ = agent.sample(prior=prior, n_samples=n_samples, sample_steps=config['sample_steps'], temperature=1.0,
+                #                         solver=solver, use_ema=True)
 
-            # sample actions and unnorm
-            jnt_acc_pred = action[0, :,-7:].detach().to('cpu').numpy()
-            jnt_pos_list.append(start_conf)
-            jnt_vel_list.append(action[0, 0, :7].detach().to('cpu').numpy())
-            
-            # for idx in range(jnt_acc_pred.shape[0]):
-            for idx in range(config['action_steps']):
-                # print(update_counter)
-                robot_s.goto_given_conf(jnt_values=jnt_pos_list[-1])
-                pred_pos, pred_rotmat = robot_s.fk(jnt_values=jnt_pos_list[-1])
-                pos_err, rot_err, _ = rm.diff_between_poses(tgt_pos, tgt_rotmat, pred_pos, pred_rotmat)
-                print(f"Step: {update_counter}, pos_err: {pos_err} m, rot_err: {rot_err} rad")
+            if n_samples == 1:
+                # sample actions and unnorm
+                jnt_pos_list.append(start_conf)
+                jnt_acc_pred = action[0, :,14:21].detach().to('cpu').numpy()
+                jnt_vel_pred = action[0, :, 7:14].detach().to('cpu').numpy()
+                
+                if config['normalize']:
+                    jnt_acc_pred = dataset.normalizer['obs']['jnt_acc'].unnormalize(jnt_acc_pred)
+                    jnt_vel_pred = dataset.normalizer['obs']['jnt_vel'].unnormalize(jnt_vel_pred)
 
-                jnt_pos_list.append(jnt_pos_list[-1] + delta_t*jnt_vel_list[-1])  # p(t+1)
-                jnt_acc_list.append(jnt_acc_pred[idx]) # a(t)
-                jnt_vel_list.append(jnt_vel_list[-1] + delta_t*jnt_acc_pred[idx]) # v(t+1)
+                jnt_vel_list.append(jnt_vel_pred[0])
 
-                if visualization:
-                    # robot_s.gen_meshmodel(alpha=0.2).attach_to(base)
-                    s_pos, _ = robot_s.fk(jnt_values=jnt_pos_list[-2])
-                    e_pos, _ = robot_s.fk(jnt_values=jnt_pos_list[-1])
-                    mgm.gen_stick(spos=s_pos, epos=e_pos, rgb=[0,0,0]).attach_to(base)
-                update_counter += 1
-                # print(f"Step: {update_counter}, distance: {np.linalg.norm(robot_s.get_jnt_values() - goal_conf)}")
+                for idx in range(config['action_steps']):
+                    # print(update_counter)
+                    robot_s.goto_given_conf(jnt_values=jnt_pos_list[-1])
+                    pred_pos, pred_rotmat = robot_s.fk(jnt_values=jnt_pos_list[-1])
+                    pos_err, rot_err, _ = rm.diff_between_poses(tgt_pos, tgt_rotmat, pred_pos, pred_rotmat)
+                    print(f"Step: {update_counter}, pos_err: {pos_err} m, rot_err: {rot_err} rad")
 
+                    jnt_pos_list.append(jnt_pos_list[-1] + delta_t*jnt_vel_list[-1])  # p(t+1)
+                    jnt_acc_list.append(jnt_acc_pred[idx]) # a(t)
+                    jnt_vel_list.append(jnt_vel_list[-1] + delta_t*jnt_acc_pred[idx]) # v(t+1)
+
+                    if visualization:
+                        # robot_s.gen_meshmodel(alpha=0.2).attach_to(base)
+                        s_pos, _ = robot_s.fk(jnt_values=jnt_pos_list[-2])
+                        e_pos, _ = robot_s.fk(jnt_values=jnt_pos_list[-1])
+                        mgm.gen_stick(spos=s_pos, epos=e_pos, rgb=[0,0,0]).attach_to(base)
+                    update_counter += 1
+                    # print(f"Step: {update_counter}, distance: {np.linalg.norm(robot_s.get_jnt_values() - goal_conf)}")
+
+                    if robot_s.cc.is_collided(obstacle_list=[]):
+                        print("Collision detected!")
+                        # break
+
+                    if (pos_err < config['max_pos_err']):
+                        print("Goal reached!")
+                        break
+
+                    if update_counter > config['max_iter']:
+                        print("Max iteration reached!")
+                        break
+                
                 if robot_s.cc.is_collided(obstacle_list=[]):
                     print("Collision detected!")
-                    break
+                    # break
 
                 if (pos_err < config['max_pos_err']):
                     print("Goal reached!")
@@ -372,31 +408,47 @@ elif config['mode'] == "acc_inference":
 
                 if update_counter > config['max_iter']:
                     print("Max iteration reached!")
+                    break            
+                
+                if pos_err < config['max_pos_err'] and not robot_s.cc.is_collided(obstacle_list=[]):
+                    success_num += 1
+                    print("Success!")
                     break
-            
-            prior[:,0,:7] = torch.tensor(jnt_vel_list[-1])
-            prior[:,0,-7:] = torch.tensor(jnt_acc_list[-1])
+            else:
+                # sample actions and unnorm
+                jnt_pos_list.append(start_conf)
+                jnt_acc_pred = action[:, :,14:21].detach().to('cpu').numpy()
+                jnt_vel_pred = action[:, :, 7:14].detach().to('cpu').numpy()
+                
+                if config['normalize']:
+                    jnt_acc_pred = dataset.normalizer['obs']['jnt_acc'].unnormalize(jnt_acc_pred)
+                    jnt_vel_pred = dataset.normalizer['obs']['jnt_vel'].unnormalize(jnt_vel_pred)
+
+                jnt_vel_list.append(jnt_vel_pred[:,0,:])
+
+                for idx in range(config['action_steps']):
+                    jnt_pos_list.append(jnt_pos_list[-1] + delta_t*jnt_vel_list[-1])  # p(t+1)
+                    jnt_acc_list.append(jnt_acc_pred[:,idx,:]) # a(t)
+                    jnt_vel_list.append(jnt_vel_list[-1] + delta_t*jnt_acc_pred[:,idx,:]) # v(t+1)
+
+                    if visualization:
+                        for id in range(n_samples):
+                            s_pos, _ = robot_s.fk(jnt_values=jnt_pos_list[-2][id])
+                            e_pos, _ = robot_s.fk(jnt_values=jnt_pos_list[-1][id])
+                            mgm.gen_stick(spos=s_pos, epos=e_pos, radius=.0015, rgb=[0,0,0]).attach_to(base)
+                    update_counter += 1
+                    print(f"Step: {update_counter}")
+                
+                if update_counter > config['max_iter']:
+                    print("Max iteration reached!")
+                    break  
+
+            prior[:,0,7:14] = torch.tensor(dataset.normalizer['obs']['jnt_vel'].normalize(jnt_vel_list[-1]))
+            prior[:,0,14:21] = torch.tensor(dataset.normalizer['obs']['jnt_acc'].normalize(jnt_acc_list[-1]))
             
             '''update the condition'''
             condition[:, 2*robot_s.n_dof:3*robot_s.n_dof] = torch.tensor(jnt_vel_list[-1]).to(config['device'])
             condition[:, 3*robot_s.n_dof:4*robot_s.n_dof] = torch.tensor(jnt_acc_list[-1]).to(config['device'])
-            
-            if robot_s.cc.is_collided(obstacle_list=[]):
-                print("Collision detected!")
-                break
-
-            if (pos_err < config['max_pos_err']):
-                print("Goal reached!")
-                break
-
-            if update_counter > config['max_iter']:
-                print("Max iteration reached!")
-                break            
-            
-            if pos_err < config['max_pos_err'] and not robot_s.cc.is_collided(obstacle_list=[]):
-                success_num += 1
-                print("Success!")
-                break
         
         if visualization:
             # mp_datagen.visualize_anime_diffusion(robot=robot_s, path = jnt_pos_list, 

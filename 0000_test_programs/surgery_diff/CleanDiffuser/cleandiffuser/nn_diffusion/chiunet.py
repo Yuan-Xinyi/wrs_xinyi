@@ -146,8 +146,9 @@ class ChiUNet1d(BaseNNDiffusion):
 
         # If obs_as_global_cond, concatenate obs and emb
         if self.obs_as_global_cond:
-            condition = self.global_cond_encoder(torch.flatten(condition, 1))
+
             if condition is not None:
+                condition = self.global_cond_encoder(torch.flatten(condition, 1))
                 emb = torch.cat([emb, condition], dim=-1)
             else:
                 emb = torch.cat([emb, torch.zeros_like(emb)], dim=-1)

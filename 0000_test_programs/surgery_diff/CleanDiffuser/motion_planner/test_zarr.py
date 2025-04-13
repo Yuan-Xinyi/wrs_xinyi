@@ -46,7 +46,7 @@ root = zarr.open('/home/lqin/zarr_datasets/franka_ruckig.zarr', mode='r')
 #     current_start = end_idx + 1
 # root['data'].create_dataset('goal_conf', data=goal_conf, chunks=True)
 
-traj_id = 200
+traj_id = 128
 traj_start = int(np.sum(root['meta']['episode_ends'][:traj_id]))
 traj_end = int(np.sum(root['meta']['episode_ends'][:traj_id + 1]))
 jnt_pos_list = root['data']['jnt_pos'][traj_start:traj_end]
@@ -54,18 +54,18 @@ jnt_vel_list = root['data']['jnt_vel'][traj_start:traj_end]
 jnt_acc_list = root['data']['jnt_acc'][traj_start:traj_end]
 goal_conf = root['data']['goal_conf'][traj_start:traj_end]
 print('start:', repr(jnt_pos_list[0]))
-print('waypoint:', repr(jnt_pos_list[500]))
+print('waypoint:', repr(jnt_pos_list[1000]))
 print('goal:', repr(jnt_pos_list[-1]))
 
-# robot_s.goto_given_conf(jnt_values=jnt_pos_list[-1])
-# robot_s.gen_meshmodel(alpha=0.2, rgb=[0,1,0]).attach_to(base)
-# robot_s.goto_given_conf(jnt_values=jnt_pos_list[0])
-# robot_s.gen_meshmodel(alpha=0.2, rgb=[0,0,1]).attach_to(base)
-# for id in range(0, len(jnt_pos_list)-1):
-#     # robot_s.gen_meshmodel(alpha=0.2).attach_to(base)
-#     s_pos, _ = robot_s.fk(jnt_values=jnt_pos_list[id])
-#     e_pos, _ = robot_s.fk(jnt_values=jnt_pos_list[id+1])
-#     mgm.gen_stick(spos=s_pos, epos=e_pos, rgb=[0,0,0]).attach_to(base)
+robot_s.goto_given_conf(jnt_values=jnt_pos_list[-1])
+robot_s.gen_meshmodel(alpha=0.2, rgb=[0,1,0]).attach_to(base)
+robot_s.goto_given_conf(jnt_values=jnt_pos_list[0])
+robot_s.gen_meshmodel(alpha=0.2, rgb=[0,0,1]).attach_to(base)
+for id in range(0, len(jnt_pos_list)-1):
+    # robot_s.gen_meshmodel(alpha=0.2).attach_to(base)
+    s_pos, _ = robot_s.fk(jnt_values=jnt_pos_list[id])
+    e_pos, _ = robot_s.fk(jnt_values=jnt_pos_list[id+1])
+    mgm.gen_stick(spos=s_pos, epos=e_pos, rgb=[0,0,0]).attach_to(base)
 # plot_details(robot_s, jnt_pos_list, jnt_vel_list, jnt_acc_list)
 
 # import numpy as np
@@ -73,12 +73,12 @@ print('goal:', repr(jnt_pos_list[-1]))
 #     data = np.load(f)
 #     jnt_pos = data['jnt_pos']
 
-# for id in range(0, len(jnt_pos)-1):
+# for id in range(0, len(jnt_pos_list)-1):
 #     # robot_s.gen_meshmodel(alpha=0.2).attach_to(base)
-#     s_pos, _ = robot_s.fk(jnt_values=jnt_pos[id])
-#     e_pos, _ = robot_s.fk(jnt_values=jnt_pos[id+1])
+#     s_pos, _ = robot_s.fk(jnt_values=jnt_pos_list[id])
+#     e_pos, _ = robot_s.fk(jnt_values=jnt_pos_list[id+1])
 #     mgm.gen_stick(spos=s_pos, epos=e_pos, rgb=[1,0,0]).attach_to(base)
 
 
-# base.run()
-# print('done')
+base.run()
+print('done')

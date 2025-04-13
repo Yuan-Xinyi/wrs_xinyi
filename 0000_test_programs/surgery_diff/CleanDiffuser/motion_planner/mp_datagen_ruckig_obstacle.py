@@ -79,7 +79,8 @@ if __name__ == '__main__':
     current_file_dir = os.path.dirname(__file__)
     parent_dir = os.path.dirname(os.path.dirname(__file__))
 
-    dataset_path = os.path.join('/home/lqin', 'zarr_datasets', 'franka_ruckig.zarr')
+    # dataset_path = os.path.join('/home/lqin', 'zarr_datasets', 'franka_ruckig.zarr')
+    dataset_path = os.path.join(parent_dir, 'datasets', 'test.zarr')
     store = zarr.DirectoryStore(dataset_path)
     root = zarr.group(store=store)
     print('Current dataset created in:', dataset_path)
