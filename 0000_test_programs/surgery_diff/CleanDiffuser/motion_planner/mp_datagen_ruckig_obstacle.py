@@ -15,8 +15,7 @@ import wrs.modeling.geometric_model as mgm
 '''helper functions'''
 import obstacle_utils as obstacle_utils
 
-def plot_details(robot_s, jnt_pos_list, jnt_vel_list, jnt_acc_list):
-    sampling_interval = 0.001
+def plot_details(robot_s, jnt_pos_list, jnt_vel_list, jnt_acc_list, sampling_interval=0.001):
     time_points = np.arange(0, len(jnt_pos_list) * sampling_interval, sampling_interval)[:len(jnt_pos_list)]
 
     plt.figure(figsize=(10, 3 * robot_s.n_dof))
@@ -73,14 +72,14 @@ def initialize(sampling_interval):
 
 
 if __name__ == '__main__':
-    traj_num = 2000
-    sampling_interval = 0.001  # seconds
+    traj_num = 500
+    sampling_interval = 0.01  # seconds
 
     current_file_dir = os.path.dirname(__file__)
     parent_dir = os.path.dirname(os.path.dirname(__file__))
 
-    # dataset_path = os.path.join('/home/lqin', 'zarr_datasets', 'franka_ruckig.zarr')
-    dataset_path = os.path.join(parent_dir, 'datasets', 'test.zarr')
+    dataset_path = os.path.join('/home/lqin', 'zarr_datasets', 'franka_ruckig_100hz_fixgoal.zarr')
+    # dataset_path = os.path.join(parent_dir, 'datasets', 'test.zarr')
     store = zarr.DirectoryStore(dataset_path)
     root = zarr.group(store=store)
     print('Current dataset created in:', dataset_path)
@@ -95,12 +94,11 @@ if __name__ == '__main__':
 
     # Initialize the world and robot
     base, robot, otg, inp, out = initialize(sampling_interval)
-    
+    goal_conf = robot.rand_conf()
     for id in tqdm(range(traj_num)):
         # Generate random start and goal configurations
         print('-' * 100)
         start_conf = robot.rand_conf()
-        goal_conf = robot.rand_conf()
         print('start configuration:', repr(start_conf))
         print('goal configuration:', repr(goal_conf))
 

@@ -208,16 +208,16 @@ def visualize_space():
     )
     space_box.attach_to(base)
 
+
 import zarr
 # Example usage
 if __name__ == '__main__':
     # Initialize 3D visualization environment
+    import wrs.robot_sim.robots.franka_research_3.franka_research_3 as franka
+    from wrs import wd, rm, mcm
     base = wd.World(cam_pos=[2, 2, 2], lookat_pos=[0, 0, 0.3])
     mgm.gen_frame().attach_to(base)  # Add reference frame
     visualize_space()
-
-    import wrs.robot_sim.robots.franka_research_3.franka_research_3 as franka
-    from wrs import wd, rm, mcm
     robot_s = franka.FrankaResearch3(enable_cc=True)
     jnt_values = robot_s.rand_conf()
     
@@ -244,7 +244,8 @@ if __name__ == '__main__':
     traj_end = int(np.sum(root['meta']['episode_ends'][:traj_id + 1]))
     jnt_pos_list = root['data']['jnt_pos'][traj_start:traj_start+64]
 
-    obstacles = generate_grid_obstacles(n_samples=6, generate_noise=False)
+
+    obstacles = generate_grid_obstacles(n_samples=15, generate_noise=False)
 
     for jnt in jnt_pos_list:
         robot_s.goto_given_conf(jnt_values=jnt)

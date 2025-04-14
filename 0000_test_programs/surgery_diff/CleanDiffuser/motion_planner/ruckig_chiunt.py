@@ -34,9 +34,10 @@ def set_seed(seed: int):
     random.seed(seed)
 
 '''load the config file'''
-# current_file_dir = os.path.dirname(__file__)
-current_file_dir = '0000_test_programs/surgery_diff/CleanDiffuser/motion_planner/results/0413_1256_64h_128b_norm'
+current_file_dir = os.path.dirname(__file__)
+# current_file_dir = '0000_test_programs/surgery_diff/CleanDiffuser/motion_planner/results/0413_1256_64h_128b_norm'
 # current_file_dir = '0000_test_programs/surgery_diff/CleanDiffuser/motion_planner/results/0413_1305_64h_128b_norm'
+# current_file_dir = '0000_test_programs/surgery_diff/CleanDiffuser/motion_planner/results/0413_2053_64h_128b_norm'
 # parent_dir = os.path.dirname(os.path.dirname(__file__))
 config_file = os.path.join(current_file_dir, 'ruckig_config.yaml')
 with open(config_file, "r") as file:
@@ -47,7 +48,7 @@ dataset_path = os.path.join('/home/lqin', 'zarr_datasets', config['dataset_name'
 
 dataset = MotionPlanningDataset(dataset_path, horizon=config['horizon'], obs_keys=config['obs_keys'], normalize=config['normalize'],
                                 pad_before=config['obs_steps']-1, pad_after=config['action_steps']-1, abs_action=config['abs_action'])
-
+print('dataset loaded in:', dataset_path)
 if config['mode'] == "train":
     train_loader = torch.utils.data.DataLoader(
         dataset,
@@ -73,7 +74,13 @@ from cleandiffuser.diffusion.diffusionsde import DiscreteDiffusionSDE
 nn_diffusion = ChiUNet1d(
     config['action_dim'], config['obs_dim'], config['obs_steps'], model_dim=256, emb_dim=256, dim_mult=config['dim_mult'],
     obs_as_global_cond=True, timestep_emb_type="positional").to(config['device'])
-nn_condition = IdentityCondition(dropout=0.0).to(config['device'])
+
+if config['condition'] == "identity":
+    nn_condition = IdentityCondition(dropout=0.0).to(config['device'])
+    print("Using Identity Condition")
+else:
+    nn_condition = None
+    print("Using No Condition")
 
 
 print(f"======================= Parameter Report of Diffusion Model =======================")
@@ -89,19 +96,19 @@ jnt_v_max = rm.np.asarray([rm.pi * 2 / 3] * robot_s.n_dof)
 jnt_a_max = rm.np.asarray([rm.pi] * robot_s.n_dof)
 jnt_config_range = robot_s.jnt_ranges
 
-x_max = torch.zeros((1, config['horizon'], config['action_dim']), device=config['device'])
-x_min = torch.zeros((1, config['horizon'], config['action_dim']), device=config['device'])
+x_max = torch.ones((1, config['horizon'], config['action_dim']), device=config['device'])
+x_min = -x_max.clone()
 
-x_max[:, :, :7] = torch.tensor(jnt_v_max, device=config['device']) 
-x_max[:, :, -7:] = torch.tensor(jnt_a_max, device=config['device']) 
-x_min[:, :, :7] = torch.tensor(-jnt_v_max, device=config['device'])
-x_min[:, :, -7:] = torch.tensor(-jnt_a_max, device=config['device'])
+# x_max[:, :, :7] = torch.tensor(jnt_v_max, device=config['device']) 
+# x_max[:, :, -7:] = torch.tensor(jnt_a_max, device=config['device']) 
+# x_min[:, :, :7] = torch.tensor(-jnt_v_max, device=config['device'])
+# x_min[:, :, -7:] = torch.tensor(-jnt_a_max, device=config['device'])
 fix_mask = torch.zeros((config['horizon'], config['action_dim']), device=config['device'])
 fix_mask[0, :] = 1.
 
 agent = DDPM(
     nn_diffusion=nn_diffusion, nn_condition=nn_condition, fix_mask = fix_mask,
-    device=config['device'], diffusion_steps=config['sample_steps'], x_max=x_max, x_min=x_min,
+    device=config['device'], diffusion_steps=config['diffusion_steps'], x_max=x_max, x_min=x_min,
     optim_params={"lr": config['lr']}, predict_noise=config['predict_noise'])
 
 lr_scheduler = CosineAnnealingLR(agent.optimizer, T_max=config['gradient_steps'])
@@ -110,7 +117,7 @@ if config['mode'] == "train":
     # --------------- Data Loading -----------------
     '''prepare the save path'''
     TimeCode = ((datetime.now()).strftime("%m%d_%H%M")).replace(" ", "")
-    rootpath = f"{TimeCode}_{config['horizon']}h_{config['batch_size']}b_norm"
+    rootpath = f"{TimeCode}_{config['horizon']}h_{config['batch_size']}b_norm_fg"
     current_file_dir = os.path.dirname(__file__)
     save_path = os.path.join(current_file_dir, 'results', rootpath)
     if not os.path.exists(save_path):
@@ -130,7 +137,10 @@ if config['mode'] == "train":
         condition = batch['cond'].to(config['device'])
         action = batch['action'].to(config['device']) # (batch,horizon,7)
 
-        condition = condition.flatten(start_dim=1) # (batch,14)
+        if config['condition'] == "identity":
+            condition = condition.flatten(start_dim=1) # (batch,14)
+        else:
+            condition = None
         
         # update diffusion
         diffusion_loss = agent.update(action, condition)['loss']
@@ -283,7 +293,7 @@ elif config['mode'] == "pos_inference":
 
 elif config['mode'] == "acc_inference":
     # ----------------- Inference ----------------------
-    model_path = os.path.join(current_file_dir, 'diffusion_ckpt_latest.pt')
+    model_path = os.path.join(current_file_dir, 'diffusion_ckpt_30000.pt')
     agent.load(model_path)
     agent.model.eval()
     agent.model_ema.eval()
@@ -306,14 +316,18 @@ elif config['mode'] == "acc_inference":
     visualization = config['visualization']
     
     success_num = 0
-    n_samples = 1
+    n_samples = 20
     for _ in tqdm(range(config['episode_num'])):
         jnt_pos_list = []
         jnt_vel_list = []
         jnt_acc_list = []
-        delta_t = 0.001
+        delta_t = 0.01
 
-        start_conf, goal_conf = mp_helper.gen_collision_free_start_goal(robot_s)
+        # start_conf, goal_conf = mp_helper.gen_collision_free_start_goal(robot_s)
+        start_conf = np.array([ 0.64485455,  1.6171564 , -2.5022438 , -2.5880923 ,  2.7545035 ,
+        2.566552  , -2.0781207 ])
+        goal_conf = np.array([ 2.1925116, -0.9085074,  1.5784886, -0.8039427, -1.6895423,
+        4.415185 , -3.026312 ])
         print(f"Start Conf: {start_conf}, Goal Conf: {goal_conf}")
 
         START_CONF = copy.deepcopy(start_conf)
@@ -350,10 +364,10 @@ elif config['mode'] == "acc_inference":
                 condition[:, :robot_s.n_dof] = torch.tensor(start_conf).to(config['device'])
             
             with torch.no_grad():
-                action, _ = agent.sample(prior=prior, n_samples=n_samples, sample_steps=config['sample_steps'], temperature=0.3,
-                                        solver=solver, condition_cfg=condition, w_cfg=7.0, use_ema=True)
                 # action, _ = agent.sample(prior=prior, n_samples=n_samples, sample_steps=config['sample_steps'], temperature=1.0,
-                #                         solver=solver, use_ema=True)
+                #                         solver=solver, condition_cfg=condition, w_cfg=7.0, use_ema=True)
+                action, _ = agent.sample(prior=prior, n_samples=n_samples, sample_steps=config['sample_steps'], temperature=1.0,
+                                        solver=solver, use_ema=True)
 
             if n_samples == 1:
                 # sample actions and unnorm
@@ -382,7 +396,7 @@ elif config['mode'] == "acc_inference":
                         # robot_s.gen_meshmodel(alpha=0.2).attach_to(base)
                         s_pos, _ = robot_s.fk(jnt_values=jnt_pos_list[-2])
                         e_pos, _ = robot_s.fk(jnt_values=jnt_pos_list[-1])
-                        mgm.gen_stick(spos=s_pos, epos=e_pos, rgb=[0,0,0]).attach_to(base)
+                        mgm.gen_stick(spos=s_pos, epos=e_pos, radius=.001, rgb=[0,0,0]).attach_to(base)
                     update_counter += 1
                     # print(f"Step: {update_counter}, distance: {np.linalg.norm(robot_s.get_jnt_values() - goal_conf)}")
 

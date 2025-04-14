@@ -1,7 +1,7 @@
 abs_action: false
 mode: train  # train or inference
 obs_keys: ['jnt_pos', 'jnt_vel', 'jnt_acc', 'goal_conf']
-dataset_name: franka_ruckig.zarr
+dataset_name: franka_ruckig_100hz_fixgoal.zarr
 action_dim: 21
 obs_dim: 28
 obs_steps: 1
@@ -17,22 +17,24 @@ batch_size: 128
 horizon: 64
 nn: chi_unet
 diffusion: ddpm
-sample_steps: 20
+diffusion_steps: 25
+condition: identity
+
 # optimizer
 lr: 0.0001
 dim_mult: [1, 4, 2]
 model_dim: 32
 normalize: True
 
-predict_noise: False
+predict_noise: True
 ema_rate: 0.9999
-diffusion_steps: 25
+sample_steps: 25
 action_loss_weight: 1.0
 val_freq: 1000
 
 # log and inference
 log_freq: 100
-save_freq: 1000
+save_freq: 10000
 inference_solver: ddpm
 inference_steps: 10000
 visualization: True

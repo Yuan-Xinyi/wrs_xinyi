@@ -35,7 +35,7 @@ def plot_details(robot_s, jnt_pos_list, jnt_vel_list, jnt_acc_list):
 
 
 # root = zarr.open('/home/lqin/zarr_datasets/franka_kinodyn_obstacles_3.zarr', mode='r')
-root = zarr.open('/home/lqin/zarr_datasets/franka_ruckig.zarr', mode='r')
+root = zarr.open('/home/lqin/zarr_datasets/franka_ruckig_100hz.zarr', mode='r')
 # total_length = root['meta']['episode_ends'][-1]
 # goal_conf = np.zeros((int(total_length), 7), dtype=np.float32)
 
@@ -46,7 +46,7 @@ root = zarr.open('/home/lqin/zarr_datasets/franka_ruckig.zarr', mode='r')
 #     current_start = end_idx + 1
 # root['data'].create_dataset('goal_conf', data=goal_conf, chunks=True)
 
-traj_id = 128
+traj_id = 120
 traj_start = int(np.sum(root['meta']['episode_ends'][:traj_id]))
 traj_end = int(np.sum(root['meta']['episode_ends'][:traj_id + 1]))
 jnt_pos_list = root['data']['jnt_pos'][traj_start:traj_end]
@@ -54,7 +54,7 @@ jnt_vel_list = root['data']['jnt_vel'][traj_start:traj_end]
 jnt_acc_list = root['data']['jnt_acc'][traj_start:traj_end]
 goal_conf = root['data']['goal_conf'][traj_start:traj_end]
 print('start:', repr(jnt_pos_list[0]))
-print('waypoint:', repr(jnt_pos_list[1000]))
+# print('waypoint:', repr(jnt_pos_list[1000]))
 print('goal:', repr(jnt_pos_list[-1]))
 
 robot_s.goto_given_conf(jnt_values=jnt_pos_list[-1])
