@@ -26,9 +26,13 @@ def plot_details(robot_s, jnt_pos_list, jnt_vel_list, jnt_acc_list, sampling_int
         vel = [v[i] for v in jnt_vel_list]
         acc = [a[i] for a in jnt_acc_list]
 
-        plt.plot(time_points, pos, label='Position')
-        plt.plot(time_points, vel, label='Velocity')
-        plt.plot(time_points, acc, label='Acceleration')
+        # plt.plot(time_points, pos, label='Position')
+        # plt.plot(time_points, vel, label='Velocity')
+        # plt.plot(time_points, acc, label='Acceleration')
+
+        plt.plot(pos, label='Position')
+        plt.plot(vel, label='Velocity')
+        plt.plot(acc, label='Acceleration')
 
         plt.ylabel(f'DoF {i}')
         plt.legend()
@@ -73,12 +77,12 @@ def initialize(sampling_interval):
 
 if __name__ == '__main__':
     traj_num = 500
-    sampling_interval = 0.01  # seconds
+    sampling_interval = 0.02  # seconds
 
     current_file_dir = os.path.dirname(__file__)
     parent_dir = os.path.dirname(os.path.dirname(__file__))
 
-    dataset_path = os.path.join('/home/lqin', 'zarr_datasets', 'franka_ruckig_100hz_fixgoal.zarr')
+    dataset_path = os.path.join('/home/lqin', 'zarr_datasets', 'franka_ruckig_100hz_fix.zarr')
     # dataset_path = os.path.join(parent_dir, 'datasets', 'test.zarr')
     store = zarr.DirectoryStore(dataset_path)
     root = zarr.group(store=store)

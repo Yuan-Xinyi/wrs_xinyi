@@ -136,7 +136,7 @@ class DDPM(DiffusionModel):
                     x.repeat(*repeat_dim), t.repeat(2), condition_vec_cfg)
                 pred = w_cfg * pred[:b] + (1. - w_cfg) * pred[b:]
             elif w_cfg == 0.0:
-                pred = model["diffusion"](x, t, None)
+                pred = model["diffusion"](x.float(), t, None)
             else:
                 pred = model["diffusion"](x, t, condition_vec_cfg)
 

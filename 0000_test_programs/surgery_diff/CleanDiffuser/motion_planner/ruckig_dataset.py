@@ -110,7 +110,8 @@ class PosPlanningDataset(BaseDataset):
             horizon=1,
             pad_before=0,
             pad_after=0,
-            abs_action=False
+            abs_action=False,
+            normalize=False
         ):
         
         super().__init__()
@@ -126,19 +127,22 @@ class PosPlanningDataset(BaseDataset):
         self.horizon = horizon
         self.pad_before = pad_before
         self.pad_after = pad_after
-        
-        # self.normalizer = self.get_normalizer()
+        if normalize:
+            self.normalizer = self.get_normalizer()
+
 
     def get_normalizer(self):
-        jnt_pos_normalizer = MinMaxNormalizer(self.replay_buffer['jnt_pos'])
-        jnt_vel_normalizer = MinMaxNormalizer(self.replay_buffer['jnt_vel'])
-        jnt_acc_normalizer = MinMaxNormalizer(self.replay_buffer['jnt_acc'])
+        jnt_pos_min_val = np.array([-2.8973, -1.8326, -2.8972, -3.0718, -2.8798,  0.4364, -3.0543])
+        jnt_pos_max_val = np.array([ 2.8973,  1.8326,  2.8972, -0.1222,  2.8798,  4.6251,  3.0543])
+        jnt_pos_normalizer = MinMaxNormalizer(np.array([jnt_pos_min_val, jnt_pos_max_val]))
 
+        print('*' * 100)
+        print('ATTENTION: Normalizer is used in the dataset.')
+        print('*' * 100)
+        
         return {
             "obs": {
-                "jnt_pos": jnt_pos_normalizer,
-                "jnt_vel": jnt_vel_normalizer,
-                "jnt_acc": jnt_acc_normalizer
+                "jnt_pos": jnt_pos_normalizer
             }
         }
 
@@ -150,7 +154,8 @@ class PosPlanningDataset(BaseDataset):
 
     def _sample_to_data(self, sample):
         jnt_pos = sample['jnt_pos']
-        action = np.concatenate([jnt_pos], axis=-1)
+        if self.normalizer:
+            jnt_pos = self.normalizer['obs']['jnt_pos'].normalize(sample['jnt_pos'])
 
         '''condition'''
         condition = np.concatenate([jnt_pos[0], jnt_pos[-1]], axis=-1)
@@ -158,7 +163,7 @@ class PosPlanningDataset(BaseDataset):
 
         data = {
             'cond': condition,
-            'action': action
+            'action': jnt_pos
         }
         return data
     
