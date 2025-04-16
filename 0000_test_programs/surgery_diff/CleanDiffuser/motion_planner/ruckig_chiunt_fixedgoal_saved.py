@@ -37,10 +37,7 @@ def set_seed(seed: int):
 '''load the config file'''
 current_file_dir = os.path.dirname(__file__)
 # current_file_dir = '0000_test_programs/surgery_diff/CleanDiffuser/motion_planner/results/0415_1854_128h_64b_norm_rand'
-# current_file_dir = '0000_test_programs/surgery_diff/CleanDiffuser/motion_planner/results/0414_1716_128h_64b_norm_fh'
-# current_file_dir = '0000_test_programs/surgery_diff/CleanDiffuser/motion_planner/results/0416_1630_128h_64b_norm_fixstartmask_goalcond'
-# current_file_dir = '0000_test_programs/surgery_diff/CleanDiffuser/motion_planner/results/0416_2035_128h_64b_norm_mask_horizoncond'
-# current_file_dir = '0000_test_programs/surgery_diff/CleanDiffuser/motion_planner/results/0416_2036_128h_64b_norm_mask_goalcond'
+current_file_dir = '0000_test_programs/surgery_diff/CleanDiffuser/motion_planner/results/0414_1716_128h_64b_norm_fh'
 
 
 # parent_dir = os.path.dirname(os.path.dirname(__file__))
@@ -126,7 +123,7 @@ if config['mode'] == "train":
     # --------------- Data Loading -----------------
     '''prepare the save path'''
     TimeCode = ((datetime.now()).strftime("%m%d_%H%M")).replace(" ", "")
-    rootpath = f"{TimeCode}_{config['horizon']}h_{config['batch_size']}b_norm_mask_horizcond"
+    rootpath = f"{TimeCode}_{config['horizon']}h_{config['batch_size']}b_norm_rand"
     # current_file_dir = os.path.dirname(__file__)
     save_path = os.path.join(current_file_dir, 'results', rootpath)
     if not os.path.exists(save_path):
@@ -180,7 +177,7 @@ if config['mode'] == "train":
 elif config['mode'] == "pos_inference":
     # ----------------- Inference ----------------------
     model_path = os.path.join(current_file_dir, 'diffusion_ckpt_latest.pt')
-    json_path = os.path.join('0000_test_programs/surgery_diff/CleanDiffuser/motion_planner', config['json_file'])
+    json_path = os.path.join(current_file_dir, config['json_file'])
     agent.load(model_path)
     agent.model.eval()
     agent.model_ema.eval()
@@ -210,21 +207,21 @@ elif config['mode'] == "pos_inference":
     goal_list = []
 
     '''if get the start and goal from the dataset'''
-    for id in tqdm(range(root['meta']['episode_ends'].shape[0]-1)):
-        traj_start = int(np.sum(root['meta']['episode_ends'][:id]))
-        traj_end = int(np.sum(root['meta']['episode_ends'][:id + 1]))
-        jnt_pos_list = root['data']['jnt_pos'][traj_start:traj_end]
-        # print(f"current traj start: {traj_start}, end: {traj_end}")
-        start_list.append(jnt_pos_list[0])
-        goal_list.append(jnt_pos_list[-1])
+    # for id in tqdm(range(root['meta']['episode_ends'].shape[0]-1)):
+    #     traj_start = int(np.sum(root['meta']['episode_ends'][:id]))
+    #     traj_end = int(np.sum(root['meta']['episode_ends'][:id + 1]))
+    #     jnt_pos_list = root['data']['jnt_pos'][traj_start:traj_end]
+    #     # print(f"current traj start: {traj_start}, end: {traj_end}")
+    #     start_list.append(jnt_pos_list[0])
+    #     goal_list.append(jnt_pos_list[-1])
 
     '''if randomly generate the start and goal'''
-    # for _ in tqdm(range(100)):
-    #     start_conf = robot_s.rand_conf()
-    #     # goal_conf = robot_s.rand_conf()
-    #     start_list.append(start_conf)
-    #     goal_list.append(np.array([ 0.6153231 ,  0.13956377,  2.0086024 , -2.9329627 ,  1.4677436 ,
-    #     1.3641189 , -2.990753  ]))
+    for _ in tqdm(range(100)):
+        start_conf = robot_s.rand_conf()
+        # goal_conf = robot_s.rand_conf()
+        start_list.append(start_conf)
+        goal_list.append(np.array([ 0.6153231 ,  0.13956377,  2.0086024 , -2.9329627 ,  1.4677436 ,
+        1.3641189 , -2.990753  ]))
 
     # for temperature in [0.1, 0.3, 0.5, 0.7, 1.0]:
     for temperature in [1.0]:
@@ -233,19 +230,19 @@ elif config['mode'] == "pos_inference":
         pos_err_list = []
         rot_err_list = []
 
-        for traj_id in tqdm(range(len(start_list))):
-        # for traj_id in tqdm(range(1)):
+        # for traj_id in tqdm(range(len(start_list))):
+        for traj_id in tqdm(range(1)):
             counter = 0
             assert len(start_list) == len(goal_list) 
             jnt_pos_list = []
 
-            start_conf, goal_conf = mp_helper.gen_collision_free_start_goal(robot_s)
+            # start_conf, goal_conf = mp_helper.gen_collision_free_start_goal(robot_s)
+            # start_conf = np.array([ 1.3719394,  1.1427622, -2.8717403, -2.6165798, -1.6352675,
+            # 4.4167447, -0.3406417])
+            # goal_conf = np.array([ 0.6153231 ,  0.13956377,  2.0086024 , -2.9329627 ,  1.4677436 ,
+            # 1.3641189 , -2.990753  ])
             start_conf = start_list[traj_id]
             goal_conf = goal_list[traj_id]
-            start_conf = np.array([ 2.6359859 ,  1.1578398 ,  0.4484939 , -0.14550991,  2.8707917 ,
-        3.517655  ,  1.4009492 ])
-            goal_conf = np.array([ 0.6153231 ,  0.13956377,  2.0086024 , -2.9329627 ,  1.4677436 ,
-            1.3641189 , -2.990753  ])
             print('**'*100)
             print(f"Start Conf: {start_conf}, Goal Conf: {goal_conf}")
 
@@ -256,15 +253,13 @@ elif config['mode'] == "pos_inference":
             robot_s.goto_given_conf(jnt_values=start_conf)
             robot_s.gen_meshmodel(alpha=0.2, rgb=[0,0,1]).attach_to(base)
             
-            for _ in range(20):
+            for _ in range(30):
                 if n_samples != 1:
                     start_conf = np.tile(start_conf, (n_samples, 1))
                     goal_conf = np.tile(goal_conf, (n_samples, 1))
 
-                if config['condition'] == None:
+                if config['normalize'] == None:
                     condition = None
-                else:
-                    condition = torch.zeros((n_samples, config['obs_dim']*config['obs_steps']), device=config['device'])
                 
                 if n_samples == 1:
                     start_conf = robot_s.get_jnt_values()
@@ -272,29 +267,15 @@ elif config['mode'] == "pos_inference":
                     raise NotImplementedError("Not implemented for multiple samples")
                 
                 prior = torch.zeros((n_samples, config['horizon'], config['action_dim']), device=config['device'])
-                if config['normalize']:
-                    normed_start_conf = dataset.normalizer['obs']['jnt_pos'].normalize(start_conf)
-                    normed_goal_conf = dataset.normalizer['obs']['jnt_pos'].normalize(goal_conf)
-                    prior[:, 0, :] = torch.tensor(normed_start_conf).to(config['device'])
-                    prior[:, -1, :] = torch.tensor(goal_conf).to(config['device'])
-                else:
-                    prior[:, 0, :] = torch.tensor(start_conf).to(config['device'])
-                    prior[:, -1, :] = torch.tensor(goal_conf).to(config['device'])
-                if config['condition'] == "identity":
-                    condition = torch.zeros((n_samples, config['obs_dim']*config['obs_steps']), device=config['device'])
-                    if config['normalize']:
-                        condition[:, :robot_s.n_dof] = torch.tensor(normed_start_conf).to(config['device'])
-                        condition[:, robot_s.n_dof:2*robot_s.n_dof] = torch.tensor(goal_conf).to(config['device'])
-                    else:
-                        condition[:, :robot_s.n_dof] = torch.tensor(start_conf).to(config['device'])
-                        condition[:, robot_s.n_dof:2*robot_s.n_dof] = torch.tensor(goal_conf).to(config['device'])
+                prior[:, 0, :] = torch.tensor(start_conf).to(config['device'])
+                prior[:, -1, :] = torch.tensor(goal_conf).to(config['device'])
 
 
                 with torch.no_grad():
-                    action, _ = agent.sample(prior=prior, n_samples=n_samples, sample_steps=config['sample_steps'], temperature=1.,
-                                            solver=solver, condition_cfg=condition, w_cfg=0.01, use_ema=True)
-                    # action, _ = agent.sample(prior=prior, n_samples=n_samples, sample_steps=config['sample_steps'], temperature=temperature,
-                    #                         solver=solver, use_ema=True)
+                    # action, _ = agent.sample(prior=prior, n_samples=n_samples, sample_steps=config['sample_steps'], temperature=1.0,
+                    #                         solver=solver, condition_cfg=condition, w_cfg=7.0, use_ema=True)
+                    action, _ = agent.sample(prior=prior, n_samples=n_samples, sample_steps=config['sample_steps'], temperature=0.1,
+                                            solver=solver, use_ema=True)
 
                 # plt.figure(figsize=(10, 3 * robot_s.n_dof))
                 # for i in range(robot_s.n_dof):
@@ -308,11 +289,9 @@ elif config['mode'] == "pos_inference":
                 # plt.tight_layout()
                 # plt.show()
                 # break
-                if config['normalize']:
-                    action = dataset.normalizer['obs']['jnt_pos'].unnormalize(np.array(action.to('cpu')))
-                
+
                 # for idx in range(config['horizon']-1):
-                for idx in range(32):
+                for idx in range(64):
                     if visualization:
                         for id in range(n_samples):
                             counter += 1
@@ -334,13 +313,13 @@ elif config['mode'] == "pos_inference":
 
                             s_pos, _ = robot_s.fk(jnt_values=action[id][idx])
                             e_pos, _ = robot_s.fk(jnt_values=action[id][idx+1])
-                            mgm.gen_stick(spos=s_pos, epos=e_pos, radius=.0005, rgb=[0,0,0]).attach_to(base)
+                            mgm.gen_stick(spos=s_pos, epos=e_pos, radius=.0015, rgb=[0,0,0]).attach_to(base)
                             # print(f"Time: {idx}, sample: {id}")
                     if pos_err < 0.01:
                         break
                 if pos_err < 0.01:
                     break
-            base.run()
+        base.run()
         print(f"Success rate: {success_num/(traj_id+1)*100}%")
         data = {
             "temperature": float(temperature),
@@ -360,6 +339,7 @@ elif config['mode'] == "pos_inference":
         }
         with open(json_path, "a") as f:
             f.write(json.dumps(data) + "\n")
+
         # plt.figure(figsize=(10, 3 * robot_s.n_dof))
         # for i in range(robot_s.n_dof):
         #     plt.subplot(robot_s.n_dof, 1, i + 1)

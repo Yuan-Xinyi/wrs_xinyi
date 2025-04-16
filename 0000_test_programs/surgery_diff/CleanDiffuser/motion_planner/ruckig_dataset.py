@@ -129,6 +129,8 @@ class PosPlanningDataset(BaseDataset):
         self.pad_after = pad_after
         if normalize:
             self.normalizer = self.get_normalizer()
+        else:
+            self.normalizer = None
 
 
     def get_normalizer(self):
@@ -154,11 +156,13 @@ class PosPlanningDataset(BaseDataset):
 
     def _sample_to_data(self, sample):
         jnt_pos = sample['jnt_pos']
+        goal_conf = sample['goal_conf'][0]
         if self.normalizer:
             jnt_pos = self.normalizer['obs']['jnt_pos'].normalize(sample['jnt_pos'])
 
         '''condition'''
         condition = np.concatenate([jnt_pos[0], jnt_pos[-1]], axis=-1)
+        # condition = np.concatenate([jnt_pos[0], jnt_pos[-1]], axis=-1)
         
 
         data = {

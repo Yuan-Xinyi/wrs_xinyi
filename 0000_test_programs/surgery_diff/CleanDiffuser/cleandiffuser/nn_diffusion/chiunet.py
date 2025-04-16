@@ -30,6 +30,7 @@ class ChiResidualBlock(nn.Module):
         self.residual_conv = nn.Conv1d(in_dim, out_dim, 1) if in_dim != out_dim else nn.Identity()
 
     def forward(self, x, emb):
+        x = x.float()
         out = self.conv1(x)
         embed = self.cond_encoder(emb)
         if self.cond_predict_scale:
