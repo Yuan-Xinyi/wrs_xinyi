@@ -68,7 +68,7 @@ root = zarr.open('/home/lqin/zarr_datasets/franka_ruckig_100hz_fixgoal.zarr', mo
 # base.run()
 
 
-traj_id = 120
+traj_id =18
 traj_start = int(np.sum(root['meta']['episode_ends'][:traj_id]))
 traj_end = int(np.sum(root['meta']['episode_ends'][:traj_id + 1]))
 jnt_pos_list = root['data']['jnt_pos'][traj_start:traj_end]

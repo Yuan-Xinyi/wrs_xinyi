@@ -34,11 +34,10 @@ def set_seed(seed: int):
     random.seed(seed)
 
 '''load the config file'''
-# current_file_dir = os.path.dirname(__file__)
-# current_file_dir = '0000_test_programs/surgery_diff/CleanDiffuser/motion_planner/results/0413_1256_64h_128b_norm'
-# current_file_dir = '0000_test_programs/surgery_diff/CleanDiffuser/motion_planner/results/0413_1305_64h_128b_norm'
-# current_file_dir = '0000_test_programs/surgery_diff/CleanDiffuser/motion_planner/results/0413_2053_64h_128b_norm'
+current_file_dir = os.path.dirname(__file__)
+# current_file_dir = '0000_test_programs/surgery_diff/CleanDiffuser/motion_planner/results/0415_1854_128h_64b_norm_rand'
 current_file_dir = '0000_test_programs/surgery_diff/CleanDiffuser/motion_planner/results/0414_1716_128h_64b_norm_fh'
+
 
 # parent_dir = os.path.dirname(os.path.dirname(__file__))
 config_file = os.path.join(current_file_dir, 'ruckig_config.yaml')
@@ -123,7 +122,7 @@ if config['mode'] == "train":
     # --------------- Data Loading -----------------
     '''prepare the save path'''
     TimeCode = ((datetime.now()).strftime("%m%d_%H%M")).replace(" ", "")
-    rootpath = f"{TimeCode}_{config['horizon']}h_{config['batch_size']}b_norm_fh"
+    rootpath = f"{TimeCode}_{config['horizon']}h_{config['batch_size']}b_norm_rand"
     # current_file_dir = os.path.dirname(__file__)
     save_path = os.path.join(current_file_dir, 'results', rootpath)
     if not os.path.exists(save_path):
@@ -207,24 +206,26 @@ elif config['mode'] == "pos_inference":
     for id in tqdm(range(root['meta']['episode_ends'].shape[0]-1)):
         traj_start = int(np.sum(root['meta']['episode_ends'][:id]))
         traj_end = int(np.sum(root['meta']['episode_ends'][:id + 1]))
+        jnt_pos_list = root['data']['jnt_pos'][traj_start:traj_end]
         # print(f"current traj start: {traj_start}, end: {traj_end}")
-        start_list.append(root['data']['jnt_pos'][traj_start])
-        goal_list.append(root['data']['jnt_pos'][traj_end])
+        start_list.append(jnt_pos_list[0])
+        goal_list.append(jnt_pos_list[-1])
 
     success_num = 0
     # for traj_id in tqdm(range(len(start_list))):
-    for traj_id in tqdm(range(1)):
+    for traj_id in tqdm(range(10)):
         counter = 0
         assert len(start_list) == len(goal_list) 
         jnt_pos_list = []
 
         # start_conf, goal_conf = mp_helper.gen_collision_free_start_goal(robot_s)
-        start_conf = np.array(start_list[traj_id])
-        goal_conf = np.array(goal_list[traj_id])
-        start_conf = np.array([-1.8307296, -1.575878 , -1.6512135, -1.0037161,  0.3407542,
-        2.7061534, -2.0410614])
-        goal_conf = np.array([ 0.6153231 ,  0.13956377,  2.0086024 , -2.9329627 ,  1.4677436 ,
-        1.3641189 , -2.990753  ])
+        # start_conf = np.array([ 1.3719394,  1.1427622, -2.8717403, -2.6165798, -1.6352675,
+        # 4.4167447, -0.3406417])
+        # goal_conf = np.array([ 0.6153231 ,  0.13956377,  2.0086024 , -2.9329627 ,  1.4677436 ,
+        # 1.3641189 , -2.990753  ])
+        start_conf = start_list[traj_id]
+        goal_conf = goal_list[traj_id]
+        print('**'*100)
         print(f"Start Conf: {start_conf}, Goal Conf: {goal_conf}")
 
         tgt_pos, tgt_rotmat = robot_s.fk(jnt_values=goal_conf)
@@ -255,7 +256,7 @@ elif config['mode'] == "pos_inference":
             with torch.no_grad():
                 # action, _ = agent.sample(prior=prior, n_samples=n_samples, sample_steps=config['sample_steps'], temperature=1.0,
                 #                         solver=solver, condition_cfg=condition, w_cfg=7.0, use_ema=True)
-                action, _ = agent.sample(prior=prior, n_samples=n_samples, sample_steps=config['sample_steps'], temperature=1.0,
+                action, _ = agent.sample(prior=prior, n_samples=n_samples, sample_steps=config['sample_steps'], temperature=0.3,
                                         solver=solver, use_ema=True)
 
             # plt.figure(figsize=(10, 3 * robot_s.n_dof))
@@ -297,7 +298,7 @@ elif config['mode'] == "pos_inference":
                     break
             if pos_err < 0.05:
                 break
-        print(f"Success rate: {success_num/(traj_id+1)*100}%")
+    print(f"Success rate: {success_num/(traj_id+1)*100}%")
         # plt.figure(figsize=(10, 3 * robot_s.n_dof))
         # for i in range(robot_s.n_dof):
         #     plt.subplot(robot_s.n_dof, 1, i + 1)
@@ -309,7 +310,7 @@ elif config['mode'] == "pos_inference":
         # plt.tight_layout()
         # plt.show()
         
-        base.run()
+        # base.run()
 
 
 elif config['mode'] == "acc_inference":

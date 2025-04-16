@@ -1,7 +1,7 @@
 abs_action: false
 mode: train  # train or inference
 obs_keys: ['jnt_pos', 'jnt_vel', 'jnt_acc', 'goal_conf']
-dataset_name: franka_ruckig_100hz_fixgoal.zarr
+dataset_name: franka_ruckig.zarr
 action_dim: 7
 obs_dim: 7
 obs_steps: 1
