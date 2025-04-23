@@ -41,6 +41,7 @@ current_file_dir = os.path.dirname(__file__)
 # current_file_dir = '0000_test_programs/surgery_diff/CleanDiffuser/motion_planner/results/0416_1630_128h_64b_norm_fixstartmask_goalcond'
 # current_file_dir = '0000_test_programs/surgery_diff/CleanDiffuser/motion_planner/results/0416_2035_128h_64b_norm_mask_horizoncond'
 # current_file_dir = '0000_test_programs/surgery_diff/CleanDiffuser/motion_planner/results/0416_2036_128h_64b_norm_mask_goalcond'
+current_file_dir = '0000_test_programs/surgery_diff/CleanDiffuser/motion_planner/results/0416_2151_128h_64b_norm_mask_horizcond'
 
 
 # parent_dir = os.path.dirname(os.path.dirname(__file__))
@@ -179,7 +180,7 @@ if config['mode'] == "train":
 
 elif config['mode'] == "pos_inference":
     # ----------------- Inference ----------------------
-    model_path = os.path.join(current_file_dir, 'diffusion_ckpt_latest.pt')
+    model_path = os.path.join(current_file_dir, 'diffusion_ckpt_5000.pt')
     json_path = os.path.join('0000_test_programs/surgery_diff/CleanDiffuser/motion_planner', config['json_file'])
     agent.load(model_path)
     agent.model.eval()
@@ -226,8 +227,9 @@ elif config['mode'] == "pos_inference":
     #     goal_list.append(np.array([ 0.6153231 ,  0.13956377,  2.0086024 , -2.9329627 ,  1.4677436 ,
     #     1.3641189 , -2.990753  ]))
 
-    # for temperature in [0.1, 0.3, 0.5, 0.7, 1.0]:
-    for temperature in [1.0]:
+    # for temperature in [0.0, 0.1, 0.3, 0.5, 0.7, 1.0]:
+    # for w_cfg in [1.0, 1.2, 1.4, 1.6, 1.8]:
+    for w_cfg in [1.4]:
         success_num = 0
         path_length_list = []
         pos_err_list = []
@@ -242,10 +244,10 @@ elif config['mode'] == "pos_inference":
             start_conf, goal_conf = mp_helper.gen_collision_free_start_goal(robot_s)
             start_conf = start_list[traj_id]
             goal_conf = goal_list[traj_id]
-            start_conf = np.array([ 2.6359859 ,  1.1578398 ,  0.4484939 , -0.14550991,  2.8707917 ,
-        3.517655  ,  1.4009492 ])
-            goal_conf = np.array([ 0.6153231 ,  0.13956377,  2.0086024 , -2.9329627 ,  1.4677436 ,
-            1.3641189 , -2.990753  ])
+        #     start_conf = np.array([ 0.9841525 ,  1.0927969 , -0.518409  , -2.6051824 ,  0.49599475,
+        # 3.1228268 , -2.2268312 ])
+        #     goal_conf = np.array([ 0.6153231 ,  0.13956377,  2.0086024 , -2.9329627 ,  1.4677436 ,
+        #     1.3641189 , -2.990753  ])
             print('**'*100)
             print(f"Start Conf: {start_conf}, Goal Conf: {goal_conf}")
 
@@ -256,7 +258,7 @@ elif config['mode'] == "pos_inference":
             robot_s.goto_given_conf(jnt_values=start_conf)
             robot_s.gen_meshmodel(alpha=0.2, rgb=[0,0,1]).attach_to(base)
             
-            for _ in range(20):
+            for _ in range(50):
                 if n_samples != 1:
                     start_conf = np.tile(start_conf, (n_samples, 1))
                     goal_conf = np.tile(goal_conf, (n_samples, 1))
@@ -291,8 +293,8 @@ elif config['mode'] == "pos_inference":
 
 
                 with torch.no_grad():
-                    action, _ = agent.sample(prior=prior, n_samples=n_samples, sample_steps=config['sample_steps'], temperature=1.,
-                                            solver=solver, condition_cfg=condition, w_cfg=0.01, use_ema=True)
+                    action, _ = agent.sample(prior=prior, n_samples=n_samples, sample_steps=config['sample_steps'], temperature=0.1,
+                                            solver=solver, condition_cfg=condition, w_cfg=w_cfg, use_ema=True)
                     # action, _ = agent.sample(prior=prior, n_samples=n_samples, sample_steps=config['sample_steps'], temperature=temperature,
                     #                         solver=solver, use_ema=True)
 
@@ -318,6 +320,7 @@ elif config['mode'] == "pos_inference":
                             counter += 1
                             jnt_pos_list.append(action[id][idx+1])
                             robot_s.goto_given_conf(jnt_values=action[id][idx])
+                            # print(f"Step: {idx}, action: {action[id][idx].tolist()}")
                             # robot_s.gen_meshmodel(alpha=0.2).attach_to(base)
 
                             pred_pos, pred_rotmat = robot_s.fk(jnt_values=action[id][idx])
@@ -340,23 +343,24 @@ elif config['mode'] == "pos_inference":
                         break
                 if pos_err < 0.01:
                     break
-            base.run()
-        print(f"Success rate: {success_num/(traj_id+1)*100}%")
+            # base.run()
+        print(f"Success rate: {success_num / (traj_id + 1) * 100:.2f}%")
         data = {
-            "temperature": float(temperature),
-            "Success rate": f"{success_num/(traj_id+1)*100}%",
-            "avg_pl": float(np.mean(path_length_list)),
-            "std_pl": float(np.std(path_length_list)),
-            "min_pl": float(np.min(path_length_list)),
-            "max_pl": float(np.max(path_length_list)),
-            "avg_pos_err": float(np.mean(pos_err_list)),
-            "std_pos_err": float(np.std(pos_err_list)),
-            "min_pos_err": float(np.min(pos_err_list)),
-            "max_pos_err": float(np.max(pos_err_list)),
-            "avg_rot_err": float(np.mean(rot_err_list)),
-            "std_rot_err": float(np.std(rot_err_list)),
-            "min_rot_err": float(np.min(rot_err_list)),
-            "max_rot_err": float(np.max(rot_err_list))
+            # "temperature": round(float(temperature), 1),
+            "w_cfg": round(float(w_cfg), 1),
+            "Success rate": f"{success_num / (traj_id + 1) * 100:.2f}%",
+            "avg_pl": round(float(np.mean(path_length_list)), 1),
+            "std_pl": round(float(np.std(path_length_list)), 1),
+            "min_pl": round(float(np.min(path_length_list)), 1),
+            "max_pl": round(float(np.max(path_length_list)), 1),
+            "avg_pos_err": round(float(np.mean(pos_err_list)), 4),
+            "std_pos_err": round(float(np.std(pos_err_list)), 4),
+            "min_pos_err": round(float(np.min(pos_err_list)), 4),
+            "max_pos_err": round(float(np.max(pos_err_list)), 4),
+            "avg_rot_err": round(float(np.mean(rot_err_list)), 4),
+            "std_rot_err": round(float(np.std(rot_err_list)), 4),
+            "min_rot_err": round(float(np.min(rot_err_list)), 4),
+            "max_rot_err": round(float(np.max(rot_err_list)), 4),
         }
         with open(json_path, "a") as f:
             f.write(json.dumps(data) + "\n")
