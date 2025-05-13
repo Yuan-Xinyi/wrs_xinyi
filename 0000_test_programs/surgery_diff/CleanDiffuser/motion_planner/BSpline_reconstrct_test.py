@@ -115,7 +115,7 @@ from scipy.interpolate import make_lsq_spline, BSpline
 # 使用 Zarr 读取数据
 import zarr
 root = zarr.open('/home/lqin/zarr_datasets/franka_ruckig_100hz_fixgoal.zarr', mode='r')
-traj_id = 12
+traj_id = 0
 traj_start = int(np.sum(root['meta']['episode_ends'][:traj_id]))
 traj_end = int(np.sum(root['meta']['episode_ends'][:traj_id + 1]))
 jnt_pos_list = root['data']['jnt_pos'][traj_start:traj_end]

@@ -1,5 +1,5 @@
 abs_action: false
-mode: train  # train or inference
+mode: inference  # train or inference
 obs_keys: ['control_points']
 dataset_name: franka_ruckig_100hz_bspline.zarr
 action_dim: 7
@@ -19,7 +19,7 @@ nn: chi_unet
 diffusion: ddpm
 diffusion_steps: 25
 condition: None  # identity, None
-normalize: True
+normalize: False
 
 # optimizer
 lr: 0.0001

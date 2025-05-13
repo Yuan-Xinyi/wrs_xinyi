@@ -160,6 +160,94 @@ if config['mode'] == "train":
             break
     wandb.finish()
 
+if config['mode'] == "inference":
+    from scipy.interpolate import make_lsq_spline, BSpline
+
+    model_path = '0000_test_programs/surgery_diff/CleanDiffuser/motion_planner/results/' \
+    '0512_2022_64h_64b_normFalse/diffusion_ckpt_latest.pt'
+    agent.load(model_path)
+    agent.model.eval()
+    agent.model_ema.eval()
+
+    '''capture the image'''
+    sys.path.append('/home/lqin/wrs_xinyi/wrs')
+    import wrs.visualization.panda.world as wd
+    from wrs import wd, rm, mcm
+    import wrs.modeling.geometric_model as mgm
+    import mp_datagen_ruckig_obstacle as mp_helper
+    import copy
+    
+    # init
+    base = wd.World(cam_pos=[2, 0, 1], lookat_pos=[0, 0, 0])
+    mgm.gen_frame().attach_to(base)
+
+    # init the b-spline parameter
+    degree = 4
+    num_ctrl_pts = 64
+    ctrl_points = np.linspace(0, 1, num_ctrl_pts)
+    knots = np.linspace(0, 1, num_ctrl_pts - degree + 1)
+    knots = np.concatenate(([0] * degree, knots, [1] * degree))
+
+    # inference
+    solver = config['inference_solver']
+    inference_steps = config['inference_steps']
+    visualization = config['visualization']
+    
+    success_num = 0
+    n_samples = 1
+
+    root = zarr.open(dataset_path, mode='r')
+    start_list = []
+    goal_list = []
+
+    '''if get the start and goal from the dataset'''
+    for id in tqdm(range(root['meta']['episode_ends'].shape[0]-1)):
+        traj_end = int(root['meta']['episode_ends'][id])
+        control_points = root['data']['control_points'][traj_end-64:traj_end]
+        # print(f"current traj start: {traj_start}, end: {traj_end}")
+        start_list.append(control_points[0])
+        goal_list.append(control_points[-1])
+    
+    # --------------- Inference -----------------
+    # for traj_id in tqdm(range(len(start_list))):
+    for traj_id in range(1,2):
+        '''prepare the start and goal config'''
+        start_conf, goal_conf = start_list[traj_id], goal_list[traj_id]
+        # start_conf = robot_s.rand_conf()
+        # goal_conf = robot_s.rand_conf()
+        print('**'*100)
+        print(f"Start Conf: {start_conf}, Goal Conf: {goal_conf}")
+        tgt_pos, tgt_rotmat = robot_s.fk(jnt_values=goal_conf)
+        
+        '''simulate the robot with the start and goal config'''
+        robot_s.goto_given_conf(jnt_values=goal_conf)
+        robot_s.gen_meshmodel(alpha=0.2, rgb=[0,1,0]).attach_to(base)
+        robot_s.goto_given_conf(jnt_values=start_conf)
+        robot_s.gen_meshmodel(alpha=0.2, rgb=[0,0,1]).attach_to(base)
+
+        '''inference the trajectory'''
+        condition = None
+        prior = torch.zeros((1, config['horizon'], config['action_dim']), device=config['device'])
+        prior[:, 0, :] = torch.tensor(start_conf).to(config['device'])
+        prior[:, -1, :] = torch.tensor(goal_conf).to(config['device'])
+        with torch.no_grad():
+            action, _ = agent.sample(prior=prior, n_samples=n_samples, sample_steps=config['sample_steps'], temperature=0.1,
+                                    solver=solver, condition_cfg=condition, use_ema=True)
+            
+        '''recons b-spline'''
+        spline = BSpline(knots, action[0].cpu().numpy().copy(), degree)
+        
+        fig, axs = plt.subplots(7, 1, figsize=(7, 20), sharex=True)
+        for j in range(7):
+            axs[j].plot(np.arange(64), root['data']['control_points'][64:128,j], 'o', 
+                        label='Original control_points', markersize=4)
+            axs[j].plot(np.arange(64), action[0,:,j].cpu().numpy(), '*', 
+                        label='B-Spline Fit Control_Points', markersize=4)
+            axs[j].set_title(f"Position $q_{j}(t)$")
+            axs[j].set_ylabel("Position")
+            axs[j].legend()
+        plt.tight_layout()
+        plt.show()
 
 else:
     raise ValueError("Illegal mode")
