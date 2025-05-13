@@ -92,9 +92,9 @@ class SequenceSampler:
         if keys is None:
             keys = list(replay_buffer.keys())
 
-        # episode_ends = replay_buffer.episode_ends[:]
-        from itertools import accumulate
-        episode_ends = list(accumulate(replay_buffer.episode_ends))
+        episode_ends = replay_buffer.episode_ends[:]
+        # from itertools import accumulate
+        # episode_ends = list(accumulate(replay_buffer.episode_ends))
 
         # create indices
         # indices (buffer_start_idx, buffer_end_idx, sample_start_idx, sample_end_idx)

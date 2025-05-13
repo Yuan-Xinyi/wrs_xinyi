@@ -1,33 +1,36 @@
 import numpy as np
 import matplotlib.pyplot as plt
-from scipy.interpolate import splprep, splev
+from scipy.interpolate import make_lsq_spline, BSpline
 
-# 生成带噪声的示例数据
-x = np.linspace(0, 4, 50)
-y = np.sin(x) + 0.3 * np.random.randn(50)
+# 生成示例轨迹：带噪声的正弦波
+t = np.linspace(0, 4 * np.pi, 1000)
+x = np.sin(t) + 0.05 * np.random.randn(1000)
 
-# 1. 完全插值 (s=0)
-tck_interp, _ = splprep([x, y], s=0)
-x_interp, y_interp = splev(np.linspace(0, 1, 500), tck_interp)
+# 参数化变量 s
+s = np.linspace(0, 1, len(x))
 
-# 2. 适度平滑 (s=5)
-tck_smooth, _ = splprep([x, y], s=5)
-x_smooth, y_smooth = splev(np.linspace(0, 1, 500), tck_smooth)
+# 选择控制点数量
+degree = 3
+num_ctrl_pts = 20
+knots = np.linspace(0, 1, num_ctrl_pts - degree + 1)
+knots = np.concatenate(([0] * degree, knots, [1] * degree))
 
-# 3. 高度平滑 (s=20)
-tck_high_smooth, _ = splprep([x, y], s=20)
-x_high_smooth, y_high_smooth = splev(np.linspace(0, 1, 500), tck_high_smooth)
+# 使用 make_lsq_spline 从轨迹中生成控制点
+spline = make_lsq_spline(s, x, knots, degree)
+control_points = spline.c  # 提取控制点
 
-# 绘制对比
+# 通过控制点重建轨迹
+s_fine = np.linspace(0, 1, 1000)
+reconstructed_trajectory = spline(s_fine)
+
+# 可视化：原始轨迹 vs 重建轨迹
 plt.figure(figsize=(12, 6))
-plt.plot(x, y, 'ro', label="Original Data (Noisy)", markersize=5)
-plt.plot(x_interp, y_interp, 'g--', label="Interpolating Spline (s=0)")
-plt.plot(x_smooth, y_smooth, 'b-', label="Smooth Spline (s=5)")
-plt.plot(x_high_smooth, y_high_smooth, 'purple', linestyle="--", label="Highly Smooth Spline (s=20)")
-
-plt.title("Comparison: Smoothing Effect of `s` in splprep")
-plt.xlabel("X")
-plt.ylabel("Y")
+plt.plot(s, x, 'gray', linestyle="--", label="Original Trajectory", alpha=0.5)
+plt.plot(s_fine, reconstructed_trajectory, 'b-', label="Reconstructed Trajectory")
+plt.plot(knots, control_points, 'ro', label="Control Points", markersize=6)
+plt.title("Trajectory Reconstruction using Control Points (B-Spline)")
+plt.xlabel("s (parameter)")
+plt.ylabel("x (value)")
 plt.legend()
 plt.grid(True)
 plt.show()

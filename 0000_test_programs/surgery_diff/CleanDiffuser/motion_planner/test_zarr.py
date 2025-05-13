@@ -35,7 +35,8 @@ def plot_details(robot_s, jnt_pos_list, jnt_vel_list, jnt_acc_list):
 
 
 # root = zarr.open('/home/lqin/zarr_datasets/franka_kinodyn_obstacles_3.zarr', mode='r')
-root = zarr.open('/home/lqin/zarr_datasets/franka_ruckig_100hz_fixgoal.zarr', mode='r')
+# root = zarr.open('/home/lqin/zarr_datasets/franka_ruckig_100hz.zarr', mode='r')
+root = zarr.open('/home/lqin/zarr_datasets/franka_ruckig_100hz_bspline.zarr', mode='r')
 # total_length = root['meta']['episode_ends'][-1]
 # goal_conf = np.zeros((int(total_length), 7), dtype=np.float32)
 
@@ -68,7 +69,7 @@ root = zarr.open('/home/lqin/zarr_datasets/franka_ruckig_100hz_fixgoal.zarr', mo
 # base.run()
 
 
-traj_id =290
+traj_id =1
 traj_start = int(np.sum(root['meta']['episode_ends'][:traj_id]))
 traj_end = int(np.sum(root['meta']['episode_ends'][:traj_id + 1]))
 jnt_pos_list = root['data']['jnt_pos'][traj_start:traj_end]
