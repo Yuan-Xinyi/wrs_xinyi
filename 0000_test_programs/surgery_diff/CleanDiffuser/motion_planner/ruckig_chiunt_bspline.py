@@ -34,6 +34,184 @@ def set_seed(seed: int):
     np.random.seed(seed)
     random.seed(seed)
 
+def update_bspline_with_new_time(spline, T_total_new):
+    """
+    根据新的 T_total 和 dt 更新 B-Spline 曲线及其导数。
+    """
+    s_fine = np.linspace(0, 1, 1000)
+    q_s = spline(s_fine)
+    dq_ds = spline.derivative(1)(s_fine)
+    d2q_ds2 = spline.derivative(2)(s_fine)
+    d3q_ds3 = spline.derivative(3)(s_fine)
+
+    # 时间映射
+    r_s = 1 / T_total_new
+    q_t = q_s
+    dq_dt = dq_ds * r_s
+    d2q_dt2 = d2q_ds2 * (r_s ** 2)
+    d3q_dt3 = d3q_ds3 * (r_s ** 3)
+    t_fine = s_fine * T_total_new
+
+    return t_fine, q_t, dq_dt, d2q_dt2, d3q_dt3
+
+def update_bspline_with_new_time(spline, T_total_new):
+    """
+    根据新的 T_total 和 dt 更新 B-Spline 曲线及其导数。
+    """
+    s_fine = np.linspace(0, 1, 1000)
+    q_s = spline(s_fine)
+    dq_ds = spline.derivative(1)(s_fine)
+    d2q_ds2 = spline.derivative(2)(s_fine)
+    d3q_ds3 = spline.derivative(3)(s_fine)
+
+    # 时间映射
+    r_s = 1 / T_total_new
+    q_t = q_s
+    dq_dt = dq_ds * r_s
+    d2q_dt2 = d2q_ds2 * (r_s ** 2)
+    d3q_dt3 = d3q_ds3 * (r_s ** 3)
+    t_fine = s_fine * T_total_new
+
+    return t_fine, q_t, dq_dt, d2q_dt2, d3q_dt3
+
+def plot_bspline(results, num_joints, overlay=True):
+    """
+    绘制 B-Spline 及其导数（无原始数据），比较不同 T_total。
+    """
+    if overlay:
+        fig, axs = plt.subplots(num_joints, 4, figsize=(16, 4 * num_joints), sharex=True)
+        colors = ['r', 'g', 'b', 'm', 'c']
+
+        for idx, (T_total, t_fine, q_t, dq_dt, d2q_dt2, d3q_dt3) in enumerate(results):
+            color = colors[idx % len(colors)]
+            for j in range(num_joints):
+                axs[j, 0].plot(t_fine, q_t[:, j], label=f'B-Spline (T={T_total}s)', color=color, linewidth=2)
+                axs[j, 0].set_title(f"Position $q_{j}(t)$")
+                axs[j, 0].set_ylabel("Position")
+                axs[j, 0].legend()
+
+                axs[j, 1].plot(t_fine, dq_dt[:, j], label=f'B-Spline Velocity (T={T_total}s)', color=color)
+                axs[j, 1].set_title(f"Velocity $\\dot{{q}}_{j}(t)$")
+                axs[j, 1].set_ylabel("Velocity")
+                axs[j, 1].legend()
+
+                axs[j, 2].plot(t_fine, d2q_dt2[:, j], label=f'B-Spline Acceleration (T={T_total}s)', color=color)
+                axs[j, 2].set_title(f"Acceleration $\\ddot{{q}}_{j}(t)$")
+                axs[j, 2].set_ylabel("Acceleration")
+                axs[j, 2].legend()
+
+                axs[j, 3].plot(t_fine, d3q_dt3[:, j], label=f'B-Spline Jerk (T={T_total}s)', color=color)
+                axs[j, 3].set_title(f"Jerk $\\dddot{{q}}_{j}(t)$")
+                axs[j, 3].set_ylabel("Jerk")
+                axs[j, 3].legend()
+
+    else:
+        for idx, (T_total, t_fine, q_t, dq_dt, d2q_dt2, d3q_dt3) in enumerate(results):
+            fig, axs = plt.subplots(num_joints, 4, figsize=(16, 4 * num_joints), sharex=True)
+            for j in range(num_joints):
+                axs[j, 0].plot(t_fine, q_t[:, j], label=f'B-Spline (T={T_total}s)', linewidth=2)
+                axs[j, 0].set_title(f"Position $q_{j}(t)$")
+                axs[j, 0].set_ylabel("Position")
+                axs[j, 0].legend()
+
+                axs[j, 1].plot(t_fine, dq_dt[:, j], label='B-Spline Velocity')
+                axs[j, 1].set_title(f"Velocity $\\dot{{q}}_{j}(t)$")
+                axs[j, 1].set_ylabel("Velocity")
+                axs[j, 1].legend()
+
+                axs[j, 2].plot(t_fine, d2q_dt2[:, j], label='B-Spline Acceleration')
+                axs[j, 2].set_title(f"Acceleration $\\ddot{{q}}_{j}(t)$")
+                axs[j, 2].set_ylabel("Acceleration")
+                axs[j, 2].legend()
+
+                axs[j, 3].plot(t_fine, d3q_dt3[:, j], label='B-Spline Jerk')
+                axs[j, 3].set_title(f"Jerk $\\dddot{{q}}_{j}(t)$")
+                axs[j, 3].set_ylabel("Jerk")
+                axs[j, 3].legend()
+
+    plt.tight_layout()
+    plt.show()
+
+def plot_control_points_comparison(control_points_original, control_points_generated, num_joints, title="Control Points Comparison"):
+    """
+    绘制原始控制点和生成控制点的比较。
+
+    Parameters:
+    - control_points_original: (numpy array) 原始控制点，形状为 (num_ctrl_pts, num_joints)。
+    - control_points_generated: (numpy array) 生成的控制点，形状为 (num_ctrl_pts, num_joints)。
+    - num_joints: (int) 关节数量。
+    - title: (str) 图表标题。
+    """
+    fig, axs = plt.subplots(num_joints, 1, figsize=(10, 3 * num_joints), sharex=True)
+
+    if num_joints == 1:
+        axs = [axs]  # 确保 axs 是列表
+
+    for j in range(num_joints):
+        axs[j].plot(control_points_original[:, j], 'o-', label='Original Control Points', color='blue', markersize=5)
+        axs[j].plot(control_points_generated[:, j], '*--', label='Generated Control Points', color='red', markersize=5)
+        axs[j].set_title(f"Joint {j+1} Control Points")
+        axs[j].set_ylabel("Control Point Value")
+        axs[j].legend(loc="best")
+
+    axs[-1].set_xlabel("Control Point Index")
+    fig.suptitle(title)
+    plt.tight_layout()
+    plt.show()
+
+def compare_bspline_two_methods(knots, control_points, action_points, degree, T_total_list, n_dof):
+    """
+    比较两种 B-Spline(基于 control_points 和 action_points)并绘制在一张图上
+    """
+    # 基于 control_points 构建的 B-Spline
+    spline_control = BSpline(knots, control_points, degree)
+    
+    # 基于 action_points 构建的 B-Spline
+    spline_action = BSpline(knots, action_points, degree)
+
+    results_control = []
+    results_action = []
+
+    # 测试不同 T_total
+    for T_total_new in T_total_list:
+        print(f"\nTesting with T_total = {T_total_new}s (Control Points)")
+        result_control = (T_total_new, *update_bspline_with_new_time(spline_control, T_total_new))
+        results_control.append(result_control)
+
+        print(f"\nTesting with T_total = {T_total_new}s (Action Points)")
+        result_action = (T_total_new, *update_bspline_with_new_time(spline_action, T_total_new))
+        results_action.append(result_action)
+
+    # 绘制对比
+    fig, axs = plt.subplots(n_dof, 4, figsize=(16, 4 * n_dof), sharex=True)
+    colors = ['r', 'b']
+
+    for idx, (T_total, t_fine, q_t, dq_dt, d2q_dt2, d3q_dt3) in enumerate(results_control):
+        for j in range(n_dof):
+            axs[j, 0].plot(t_fine, q_t[:, j], label=f'Control Points B-Spline (T={T_total}s)', color=colors[0], linewidth=2)
+            axs[j, 1].plot(t_fine, dq_dt[:, j], color=colors[0])
+            axs[j, 2].plot(t_fine, d2q_dt2[:, j], color=colors[0])
+            axs[j, 3].plot(t_fine, d3q_dt3[:, j], color=colors[0])
+
+    for idx, (T_total, t_fine, q_t, dq_dt, d2q_dt2, d3q_dt3) in enumerate(results_action):
+        for j in range(n_dof):
+            axs[j, 0].plot(t_fine, q_t[:, j], label=f'Action Points B-Spline (T={T_total}s)', color=colors[1], linewidth=2, linestyle='--')
+            axs[j, 1].plot(t_fine, dq_dt[:, j], color=colors[1], linestyle='--')
+            axs[j, 2].plot(t_fine, d2q_dt2[:, j], color=colors[1], linestyle='--')
+            axs[j, 3].plot(t_fine, d3q_dt3[:, j], color=colors[1], linestyle='--')
+
+    for ax in axs.flat:
+        ax.legend()
+        ax.set_xlabel("Time [s]")
+
+    axs[0, 0].set_ylabel("Position")
+    axs[0, 1].set_ylabel("Velocity")
+    axs[0, 2].set_ylabel("Acceleration")
+    axs[0, 3].set_ylabel("Jerk")
+
+    plt.tight_layout()
+    plt.show()
+
 '''load the config file'''
 current_file_dir = os.path.dirname(__file__)
 parent_dir = os.path.dirname(os.path.dirname(__file__))
@@ -201,20 +379,32 @@ if config['mode'] == "inference":
     goal_list = []
 
     '''if get the start and goal from the dataset'''
-    for id in tqdm(range(root['meta']['episode_ends'].shape[0]-1)):
-        traj_end = int(root['meta']['episode_ends'][id])
-        control_points = root['data']['control_points'][traj_end-64:traj_end]
-        # print(f"current traj start: {traj_start}, end: {traj_end}")
-        start_list.append(control_points[0])
-        goal_list.append(control_points[-1])
+    # for id in tqdm(range(root['meta']['episode_ends'].shape[0]-1)):
+    #     traj_end = int(root['meta']['episode_ends'][id])
+    #     control_points = root['data']['control_points'][traj_end-64:traj_end]
+    #     # print(f"current traj start: {traj_start}, end: {traj_end}")
+    #     start_list.append(control_points[0])
+    #     goal_list.append(control_points[-1])
+
+    '''single traj test'''
+    root = zarr.open('/home/lqin/zarr_datasets/franka_ruckig_100hz_bspline.zarr', mode='r')
+    traj_id = 0
+    traj_end = int(root['meta']['episode_ends'][traj_id])
+    control_points = root['data']['control_points'][traj_end-64:traj_end]
     
     # --------------- Inference -----------------
     # for traj_id in tqdm(range(len(start_list))):
-    for traj_id in range(1,2):
+    for traj_id in range(1):
         '''prepare the start and goal config'''
-        start_conf, goal_conf = start_list[traj_id], goal_list[traj_id]
+        # start_conf, goal_conf = start_list[traj_id], goal_list[traj_id]
+        start_conf = control_points[0]
+        goal_conf = control_points[-1]
         # start_conf = robot_s.rand_conf()
         # goal_conf = robot_s.rand_conf()
+        # start_conf = np.array([ 1.00625858,  0.15694599, -2.51097176, -1.60473395,  0.40952758,
+        # 3.05204021,  2.61735282])
+        # goal_conf = np.array([ 0.61532624,  0.1395668 ,  2.00860207, -2.93296071,  1.4677425 ,
+        # 1.3641184 , -2.99075278])
         print('**'*100)
         print(f"Start Conf: {start_conf}, Goal Conf: {goal_conf}")
         tgt_pos, tgt_rotmat = robot_s.fk(jnt_values=goal_conf)
@@ -233,21 +423,28 @@ if config['mode'] == "inference":
         with torch.no_grad():
             action, _ = agent.sample(prior=prior, n_samples=n_samples, sample_steps=config['sample_steps'], temperature=0.1,
                                     solver=solver, condition_cfg=condition, use_ema=True)
-            
-        '''recons b-spline'''
-        spline = BSpline(knots, action[0].cpu().numpy().copy(), degree)
         
-        fig, axs = plt.subplots(7, 1, figsize=(7, 20), sharex=True)
-        for j in range(7):
-            axs[j].plot(np.arange(64), root['data']['control_points'][64:128,j], 'o', 
-                        label='Original control_points', markersize=4)
-            axs[j].plot(np.arange(64), action[0,:,j].cpu().numpy(), '*', 
-                        label='B-Spline Fit Control_Points', markersize=4)
-            axs[j].set_title(f"Position $q_{j}(t)$")
-            axs[j].set_ylabel("Position")
-            axs[j].legend()
-        plt.tight_layout()
-        plt.show()
 
+        # '''recons b-spline'''
+        # # spline = BSpline(knots, control_points, degree)
+        # spline = BSpline(knots, action[0].cpu().numpy().copy(), degree)
+        # print(repr(action[0].cpu().numpy().copy()))
+        T_total_list = [5]
+        # results = []
+
+        # for T_total_new in T_total_list:
+        #     print(f"\nTesting with T_total = {T_total_new}s")
+        #     result = (T_total_new, *update_bspline_with_new_time(spline, T_total_new))
+        #     results.append(result)
+
+        # plot_bspline(results, robot_s.n_dof, overlay=True)
+        # plot_control_points_comparison(control_points, action[0].cpu().numpy().copy(), robot_s.n_dof)
+        
+        '''compare the action with the control points'''
+        generated_c = action[0].cpu().numpy().copy()
+        generated_c[:4] = control_points[:4]
+        generated_c[-4:] = control_points[-4:]
+        compare_bspline_two_methods(knots, control_points, generated_c, 
+                                    degree, T_total_list, robot_s.n_dof)
 else:
     raise ValueError("Illegal mode")
