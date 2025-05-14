@@ -138,6 +138,7 @@ class ChiUNet1d(BaseNNDiffusion):
             y:          (b, Ta, act_dim)
         """
         # check Ta dimension
+        # x = pad_to_power_of_two(x)
         assert x.shape[1] & (x.shape[1] - 1) == 0, "Ta dimension must be 2^n"
 
         x = x.permute(0, 2, 1)

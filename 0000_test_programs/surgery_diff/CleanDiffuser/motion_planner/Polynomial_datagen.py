@@ -24,6 +24,8 @@ meta_group = root.create_group("meta")
 data_group = root.create_group("data")
 episode_ends_ds = meta_group.create_dataset("episode_ends", shape=(0,), chunks=(1,), dtype=np.float32, append=True)
 poly_coef_ds = data_group.create_dataset("poly_coef", shape=(0, 9), chunks=(1, 9), dtype=np.float32, append=True)
+start_conf_ds = data_group.create_dataset("start_conf", shape=(0, 7), chunks=(1, 7), dtype=np.float32, append=True)
+goal_conf_ds = data_group.create_dataset("goal_conf", shape=(0, 7), chunks=(1, 7), dtype=np.float32, append=True)
 
 '''polynomial parameter'''
 degree = 8
@@ -89,5 +91,7 @@ for traj_id in range(len(ruckig_root['meta']['episode_ends'][:])):
         y = jnt_pos_list[:, j]
         poly_s = constrained_polynomial_fit(s, y, degree)
         poly_coef_ds.append((np.poly1d(poly_s).coefficients).reshape(1, 9))
+        start_conf_ds.append(np.array([jnt_pos_list[0]]).reshape(1, 7))
+        goal_conf_ds.append(np.array([jnt_pos_list[-1]]).reshape(1, 7))
     
     episode_ends_ds.append(np.array([episode_ends_counter], dtype=np.int32))
