@@ -91,9 +91,18 @@ if config['nn'] == "chi_unet":
         obs_as_global_cond=True, timestep_emb_type="positional").to(config['device'])
 elif config['nn'] == "chi_transformer":
     from cleandiffuser.nn_diffusion import ChiTransformer
+    '''for small model'''
+    # nn_diffusion = ChiTransformer(
+    #         config['action_dim'],config['obs_dim'], config['horizon'], config['obs_steps'], d_model=256, nhead=4, num_layers=4,
+    #         timestep_emb_type="positional").to(config['device'])
+    '''for large model'''
     nn_diffusion = ChiTransformer(
-            config['action_dim'],config['obs_dim'], config['horizon'], config['obs_steps'], d_model=256, nhead=4, num_layers=4,
+            config['action_dim'],config['obs_dim'], config['horizon'], config['obs_steps'], d_model=320, nhead=10, num_layers=8,
             timestep_emb_type="positional").to(config['device'])
+elif config['nn'] == "dit":
+    from cleandiffuser.nn_diffusion import DiT1d
+    nn_diffusion = DiT1d(
+                config['action_dim'], emb_dim=128, d_model=320, n_heads=10, depth=2, timestep_emb_type="fourier").to(config['device'])
 
 if config['condition'] == "identity":
     nn_condition = IdentityCondition(dropout=0.0).to(config['device'])
@@ -122,7 +131,7 @@ if config['mode'] == "train":
     # --------------- Data Loading -----------------
     '''prepare the save path'''
     TimeCode = ((datetime.now()).strftime("%m%d_%H%M")).replace(" ", "")
-    rootpath = f"{TimeCode}_{config['horizon']}h_norm{config['normalize']}_poly"
+    rootpath = f"{TimeCode}_{config['horizon']}h_norm{config['normalize']}_poly_{config['nn']}"
     save_path = os.path.join(current_file_dir, 'results', rootpath)
     if not os.path.exists(save_path):
         os.makedirs(save_path)
@@ -140,6 +149,8 @@ if config['mode'] == "train":
         # get condition
         if config['condition'] == "identity":
             condition = torch.stack([batch['start_conf'], batch['goal_conf']], dim=1)
+            if config['nn'] == 'chi_unet' or config['nn'] == 'dit':
+                condition = condition.flatten(start_dim=1)
         else:
             condition = None
         condition = condition.to(config['device'])
