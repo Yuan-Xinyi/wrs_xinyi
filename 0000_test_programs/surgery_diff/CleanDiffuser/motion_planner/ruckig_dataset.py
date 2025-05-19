@@ -450,6 +450,7 @@ class PolynomialDataset(BaseDataset):
     def __init__(self,
             zarr_path,
             obs_keys=[], 
+            poly_coef_range=[],
             horizon=1,
             pad_before=0,
             pad_after=0,
@@ -470,11 +471,33 @@ class PolynomialDataset(BaseDataset):
         self.horizon = horizon
         self.pad_before = pad_before
         self.pad_after = pad_after
+        self.poly_coef_range = poly_coef_range
         if normalize:
-            raise NotImplementedError('PolynomialDataset does not support normalization.')
+            # raise NotImplementedError('PolynomialDataset does not support normalization.')
+            self.normalizer = self.get_normalizer()
         else:
             self.normalizer = None
 
+    def get_normalizer(self):
+        jnt_pos_min_val = np.array([-2.8973, -1.8326, -2.8972, -3.0718, -2.8798,  0.4364, -3.0543])
+        jnt_pos_max_val = np.array([ 2.8973,  1.8326,  2.8972, -0.1222,  2.8798,  4.6251,  3.0543])
+        jnt_pos_normalizer = MinMaxNormalizer(np.array([jnt_pos_min_val, jnt_pos_max_val]))
+
+        poly_coef_range = self.poly_coef_range
+        poly_coef_normalizer = MinMaxNormalizer(np.array(poly_coef_range))
+
+        print('*' * 100)
+        print('ATTENTION: Normalizer is used in the dataset.')
+        print('*' * 100)
+        
+        return {
+            "obs": {
+                "jnt_pos": jnt_pos_normalizer
+            },
+            "action": {
+                "poly_coef": poly_coef_normalizer
+            }
+        }
 
     def __str__(self) -> str:
         return f"Keys: {self.replay_buffer.keys()} Steps: {self.replay_buffer.n_steps} Episodes: {self.replay_buffer.n_episodes}"
@@ -483,11 +506,19 @@ class PolynomialDataset(BaseDataset):
         return len(self.sampler)
 
     def _sample_to_data(self, sample):
-        poly_coef = sample['poly_coef']
+        poly_coef = np.concatenate([sample['poly_coef'][:, :4], sample['poly_coef'][:, 7:]], axis=1)
+        start_conf = sample['start_conf'][0]
+        goal_conf = sample['goal_conf'][0]
+
+        if self.normalizer:
+            poly_coef = self.normalizer['action']['poly_coef'].normalize(poly_coef)
+            start_conf = self.normalizer['obs']['jnt_pos'].normalize(start_conf)
+            goal_conf = self.normalizer['obs']['jnt_pos'].normalize(goal_conf)
+        
         data = {
-            'start_conf': sample['start_conf'][0],
-            'goal_conf': sample['goal_conf'][0],
-            'poly_coef': poly_coef
+            'start_conf': start_conf,
+            'goal_conf': goal_conf,
+            'poly_coef': poly_coef,
         }
         return data
     

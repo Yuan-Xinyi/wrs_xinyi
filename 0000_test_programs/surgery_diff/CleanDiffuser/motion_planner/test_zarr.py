@@ -68,6 +68,9 @@ root = zarr.open('/home/lqin/zarr_datasets/franka_ruckig_100hz_polynomial.zarr',
 #     mgm.gen_stick(spos=s_pos, epos=e_pos,radius=.0005, rgb=[0,0,0]).attach_to(base)
 # base.run()
 
+print(repr(np.min(root['data']['poly_coef'], axis=0)))
+print(repr(np.max(root['data']['poly_coef'], axis=0)))
+exit(0)
 
 traj_id =1
 traj_start = int(np.sum(root['meta']['episode_ends'][:traj_id]))

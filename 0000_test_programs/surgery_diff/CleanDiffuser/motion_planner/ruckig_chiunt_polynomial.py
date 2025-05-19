@@ -61,8 +61,8 @@ with open(config_file, "r") as file:
 '''dataset loading'''
 dataset_path = os.path.join('/home/lqin', 'zarr_datasets', config['dataset_name'])
 
-dataset = PolynomialDataset(dataset_path, horizon=config['horizon'], obs_keys=config['obs_keys'], 
-                         normalize=config['normalize'], abs_action=config['abs_action'])
+dataset = PolynomialDataset(dataset_path, horizon=config['horizon'], obs_keys=config['obs_keys'],
+                            poly_coef_range=config['poly_coef_range'], normalize=config['normalize'], abs_action=config['abs_action'])
 print('dataset loaded in:', dataset_path)
 if config['mode'] == "train":
     train_loader = torch.utils.data.DataLoader(
@@ -77,17 +77,23 @@ if config['mode'] == "train":
 # --------------- Create Diffusion Model -----------------
 if config['mode'] == "train":
     set_seed(config['seed'])
-assert config["nn"] == "chi_unet"
 assert config['diffusion'] == "ddpm"
 
 from cleandiffuser.nn_condition import IdentityCondition
-from cleandiffuser.nn_diffusion import ChiUNet1d
+from cleandiffuser.nn_diffusion import ChiUNet1d, ChiTransformer
 from cleandiffuser.diffusion.ddpm import DDPM
 
 # --------------- Network Architecture -----------------
-nn_diffusion = ChiUNet1d(
-    config['action_dim'], config['obs_dim'], config['obs_steps'], model_dim=256, emb_dim=256, dim_mult=config['dim_mult'],
-    obs_as_global_cond=True, timestep_emb_type="positional").to(config['device'])
+if config['nn'] == "chi_unet":
+    from cleandiffuser.nn_diffusion import ChiUNet1d
+    nn_diffusion = ChiUNet1d(
+        config['action_dim'], config['obs_dim'], config['obs_steps'], model_dim=256, emb_dim=256, dim_mult=config['dim_mult'],
+        obs_as_global_cond=True, timestep_emb_type="positional").to(config['device'])
+elif config['nn'] == "chi_transformer":
+    from cleandiffuser.nn_diffusion import ChiTransformer
+    nn_diffusion = ChiTransformer(
+            config['action_dim'],config['obs_dim'], config['horizon'], config['obs_steps'], d_model=256, nhead=4, num_layers=4,
+            timestep_emb_type="positional").to(config['device'])
 
 if config['condition'] == "identity":
     nn_condition = IdentityCondition(dropout=0.0).to(config['device'])
@@ -116,12 +122,12 @@ if config['mode'] == "train":
     # --------------- Data Loading -----------------
     '''prepare the save path'''
     TimeCode = ((datetime.now()).strftime("%m%d_%H%M")).replace(" ", "")
-    rootpath = f"{TimeCode}_{config['horizon']}h_{config['batch_size']}b_norm{config['normalize']}_poly"
+    rootpath = f"{TimeCode}_{config['horizon']}h_norm{config['normalize']}_poly"
     save_path = os.path.join(current_file_dir, 'results', rootpath)
     if not os.path.exists(save_path):
         os.makedirs(save_path)
 
-    wandb.init(project="ruckig_bspline", name=rootpath)
+    wandb.init(project="ruckig_poly", name=rootpath)
 
     # ----------------- Training ----------------------
     agent.train()
@@ -133,13 +139,11 @@ if config['mode'] == "train":
     for batch in loop_dataloader(train_loader):
         # get condition
         if config['condition'] == "identity":
-            condition = torch.cat((batch['start_conf'], batch['goal_conf']), dim=1)
-            condition = condition.flatten(start_dim=1) # (batch,14)
+            condition = torch.stack([batch['start_conf'], batch['goal_conf']], dim=1)
         else:
             condition = None
         condition = condition.to(config['device'])
         action = batch['poly_coef'].to(config['device']) # (batch,horizon,7)
-        action = pad_to_power_of_two(action)
         
         # update diffusion
         diffusion_loss = agent.update(action, condition)['loss']
@@ -168,6 +172,7 @@ if config['mode'] == "train":
     wandb.finish()
 
 if config['mode'] == "inference":
+    raise NotImplementedError("Inference mode is not implemented yet")
     from scipy.interpolate import make_lsq_spline, BSpline
 
     model_path = '0000_test_programs/surgery_diff/CleanDiffuser/motion_planner/results/' \

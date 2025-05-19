@@ -23,12 +23,12 @@ print('dataset created in:', dataset_name)
 meta_group = root.create_group("meta")
 data_group = root.create_group("data")
 episode_ends_ds = meta_group.create_dataset("episode_ends", shape=(0,), chunks=(1,), dtype=np.float32, append=True)
-poly_coef_ds = data_group.create_dataset("poly_coef", shape=(0, 9), chunks=(1, 9), dtype=np.float32, append=True)
+poly_coef_ds = data_group.create_dataset("poly_coef", shape=(0, 8), chunks=(1, 8), dtype=np.float32, append=True)
 start_conf_ds = data_group.create_dataset("start_conf", shape=(0, 7), chunks=(1, 7), dtype=np.float32, append=True)
 goal_conf_ds = data_group.create_dataset("goal_conf", shape=(0, 7), chunks=(1, 7), dtype=np.float32, append=True)
 
 '''polynomial parameter'''
-degree = 8
+degree = 7
 dt = 0.01
 
 def constrained_polynomial_fit(s, y, degree):
@@ -70,7 +70,7 @@ def constrained_polynomial_fit(s, y, degree):
     return np.poly1d(result.x)
 
 episode_ends_counter = 0
-for traj_id in range(len(ruckig_root['meta']['episode_ends'][:])):
+for traj_id in tqdm(range(len(ruckig_root['meta']['episode_ends'][:]))):
 # for traj_id in range(10):
     '''extract traj pos'''
     print('**' * 100)
@@ -90,7 +90,7 @@ for traj_id in range(len(ruckig_root['meta']['episode_ends'][:])):
         episode_ends_counter += 1
         y = jnt_pos_list[:, j]
         poly_s = constrained_polynomial_fit(s, y, degree)
-        poly_coef_ds.append((np.poly1d(poly_s).coefficients).reshape(1, 9))
+        poly_coef_ds.append((np.poly1d(poly_s).coefficients).reshape(1, 8))
         start_conf_ds.append(np.array([jnt_pos_list[0]]).reshape(1, 7))
         goal_conf_ds.append(np.array([jnt_pos_list[-1]]).reshape(1, 7))
     

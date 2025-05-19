@@ -2,12 +2,13 @@ abs_action: false
 mode: train  # train or inference
 obs_keys: ['poly_coef', 'start_conf', 'goal_conf']
 dataset_name: franka_ruckig_100hz_polynomial.zarr
-action_dim: 9
-obs_dim: 14
-obs_steps: 1
-action_steps: 64
+action_dim: 5
+obs_dim: 7
+obs_steps: 2
+action_steps: 7
 use_group_norm: true
 use_seq: true
+poly_coef_range: [[-115.53469, -411.20996, -485.2457, -205.60498, -3.0716226], [117.48856, 404.37143, 493.45197, 202.18571, 4.6185417]]
 
 # training settings
 device: cuda:0
@@ -15,11 +16,11 @@ seed: 0
 gradient_steps: 100000
 batch_size: 64
 horizon: 7
-nn: chi_unet
+nn: chi_transformer  # chi_unet, chi_transformer
 diffusion: ddpm
 diffusion_steps: 25
 condition: identity  # identity, None
-normalize: False
+normalize: True
 
 # optimizer
 lr: 0.0001
