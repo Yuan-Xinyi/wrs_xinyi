@@ -282,14 +282,14 @@ if config['mode'] == "inference":
     for traj_id in range(1):
         '''prepare the start and goal config'''
         # start_conf, goal_conf = start_list[traj_id], goal_list[traj_id]
-        start_conf = start_conf[0]
-        goal_conf = goal_conf[0]
+        # start_conf = start_conf[0]
+        # goal_conf = goal_conf[0]
         # start_conf = robot_s.rand_conf()
         # goal_conf = robot_s.rand_conf()
-        # start_conf = np.array([ 1.00625858,  0.15694599, -2.51097176, -1.60473395,  0.40952758,
-        # 3.05204021,  2.61735282])
-        # goal_conf = np.array([ 0.61532624,  0.1395668 ,  2.00860207, -2.93296071,  1.4677425 ,
-        # 1.3641184 , -2.99075278])
+        start_conf = np.array([ 1.3439155 ,  0.82059854, -1.9479222 , -0.5111975 , -1.6751388 ,
+        3.915955  , -2.7084982 ])
+        goal_conf = np.array([-1.0992064 ,  0.9246812 ,  2.2004817 , -3.0013993 , -0.23389705,
+        3.0962367 ,  2.175112  ])
         print('**'*100)
         print(f"Start Conf: {start_conf}, Goal Conf: {goal_conf}")
         tgt_pos, tgt_rotmat = robot_s.fk(jnt_values=goal_conf)
@@ -309,14 +309,15 @@ if config['mode'] == "inference":
         prior = torch.zeros((1, config['horizon'], config['action_dim']), device=config['device'])
         if config['condition'] == "identity":
             condition = np.stack([start_conf, goal_conf], axis=0)
+            condition = np.expand_dims(condition, axis=0)
             if config['nn'] == 'chi_unet' or config['nn'] == 'dit':
                 condition = condition.flatten(start_dim=1)
         else:
             condition = None
         condition = torch.from_numpy(condition).to(config['device'])
         with torch.no_grad():
-            action, _ = agent.sample(prior=prior, n_samples=n_samples, sample_steps=config['sample_steps'], temperature=0.1,
-                                    solver=solver, condition_cfg=condition, use_ema=True)
+            action, _ = agent.sample(prior=prior, n_samples=n_samples, sample_steps=config['sample_steps'], temperature=1.0,
+                                    solver=solver, condition_cfg=condition, w_cfg = 1.0, use_ema=True)
         
         '''post-process the action'''
         np.set_printoptions(precision=3, suppress=True, linewidth=120)
@@ -329,7 +330,8 @@ if config['mode'] == "inference":
         poly_coef[:, 7:] = action[:, 4:] 
         print(f"Coef from diffusion: \n{action}")
         print(f"Full Reconstructed Coef: \n{poly_coef}")
-        plot_polynomial_trajectories(poly_coef, robot_s_n_dof=robot_s.n_dof, plot_derivatives=True)
+        plot_polynomial_trajectories(poly_coef, robot_s_n_dof=robot_s.n_dof, 
+                                     T = 3, dt=0.01, plot_derivatives=True)
 
 else:
     raise ValueError("Illegal mode")

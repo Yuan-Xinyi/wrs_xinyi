@@ -56,10 +56,13 @@ if __name__ == "__main__":
     s = np.linspace(0, 1, T)  # 参数化变量 s
     num_joints = jnt_pos_list.shape[1]  # 多个关节
     degree = 7  # 多项式阶数
+    print('start conf:', repr(jnt_pos_list[0]))
+    print('goal conf:', repr(jnt_pos_list[-1]))
 
 
     # 绘制：每个关节单独绘制
     fig, axs = plt.subplots(num_joints, 4, figsize=(16, 4 * num_joints), sharex=True)
+    np.set_printoptions(precision=3, suppress=True, linewidth=120)
 
     for j in range(num_joints):
         # 数据
@@ -68,7 +71,7 @@ if __name__ == "__main__":
         # 在 s 上拟合多项式
         poly_s = constrained_polynomial_fit(s, y, degree)
         poly_s = np.poly1d(np.poly1d(poly_s).coefficients)
-        # print('coefficients:', f"{np.poly1d(poly_s).coefficients:.5f}")
+        # print('coefficients:', f"{np.poly1d(poly_s).coefficients}")
         print('coefficients:', ', '.join([f"{coef:.5f}" for coef in np.poly1d(poly_s).coefficients]))
 
         
