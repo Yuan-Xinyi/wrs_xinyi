@@ -14,6 +14,15 @@ from cleandiffuser.utils import (
 from .basic import DiffusionModel
 
 
+def fix_sum_correction(tensor, target_sum):
+    """
+    对 (64, 7, 4) 的 numpy 数组进行修正，使最后一维的和等于 target_sum。
+    """
+    current_sum = tensor.sum(dim=-1)  # (B, T)
+    diff = (target_sum - current_sum) / tensor.size(-1)  # (B, T)
+    corrected = tensor + diff.unsqueeze(-1)  # 广播加回 (B, T, C)
+    return corrected
+
 class DDPM(DiffusionModel):
 
     def __init__(
@@ -22,6 +31,10 @@ class DDPM(DiffusionModel):
             # ----------------- Neural Networks ----------------- #
             nn_diffusion: BaseNNDiffusion,
             nn_condition: Optional[BaseNNCondition] = None,
+
+            # ----------------- Data ----------------- #
+            dataset: Optional[torch.utils.data.Dataset] = None,
+            condition_info: Optional[dict] = None,
 
             # ----------------- Masks ----------------- #
             # Fix some portion of the input data, and only allow the diffusion model to complete the rest part.
@@ -53,6 +66,8 @@ class DDPM(DiffusionModel):
             diffusion_steps, ema_rate, optim_params, device)
 
         self.predict_noise = predict_noise
+        self.dataset = dataset
+        self.condition_info = condition_info
 
         if beta_schedule_params is None:
             beta_schedule_params = {}
@@ -85,15 +100,27 @@ class DDPM(DiffusionModel):
         xt = xt * (1. - self.fix_mask) + x0 * self.fix_mask
         return xt, t, eps
 
+
     def loss(self, x0, condition=None):
         xt, t, eps = self.add_noise(x0)
         condition = self.model["condition"](condition) if condition is not None else None
+
         if self.predict_noise:
             loss = (self.model["diffusion"](xt, t, condition) - eps) ** 2
         else:
-            loss = (self.model["diffusion"](xt, t, condition) - x0) ** 2
+            raw_pred = self.model["diffusion"](xt, t, condition)  # has grad
+            pos_diff = self.condition_info[:, 1, :] - self.condition_info[:, 0, :]  # (B, 7)
+
+            # Fully differentiable fix_sum + normalize pipeline
+            normalizer = self.dataset.normalizer['action']['poly_coef']
+            unnormed_pred = normalizer.unnormalize(raw_pred)
+            corrected_pred = fix_sum_correction(unnormed_pred, pos_diff.to(device=self.device))
+            x_pred = normalizer.normalize(corrected_pred)
+
+            loss = (x_pred - x0) ** 2
 
         return (loss * self.loss_weight * (1 - self.fix_mask)).mean()
+
 
     def update(self, x0, condition=None, update_ema=True, **kwargs):
         loss = self.loss(x0, condition)

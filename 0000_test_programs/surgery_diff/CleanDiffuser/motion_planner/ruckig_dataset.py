@@ -506,14 +506,14 @@ class PolynomialDataset(BaseDataset):
         return len(self.sampler)
 
     def _sample_to_data(self, sample):
-        poly_coef = np.concatenate([sample['poly_coef'][:, :4], sample['poly_coef'][:, 7:]], axis=1)
+        poly_coef = np.concatenate([sample['poly_coef'][:, :4]], axis=1)
         start_conf = sample['start_conf'][0]
         goal_conf = sample['goal_conf'][0]
 
         if self.normalizer:
             poly_coef = self.normalizer['action']['poly_coef'].normalize(poly_coef)
-            start_conf = self.normalizer['obs']['jnt_pos'].normalize(start_conf)
-            goal_conf = self.normalizer['obs']['jnt_pos'].normalize(goal_conf)
+            # start_conf = self.normalizer['obs']['jnt_pos'].normalize(start_conf)
+            # goal_conf = self.normalizer['obs']['jnt_pos'].normalize(goal_conf)
         
         data = {
             'start_conf': start_conf,

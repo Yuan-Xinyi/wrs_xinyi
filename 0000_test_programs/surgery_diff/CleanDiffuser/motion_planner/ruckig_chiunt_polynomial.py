@@ -163,7 +163,7 @@ x_min = torch.ones((1, config['horizon'], config['action_dim']), device=config['
 
 agent = DDPM(
     nn_diffusion=nn_diffusion, nn_condition=nn_condition,
-    x_max=x_max, x_min=x_min,
+    x_max=x_max, x_min=x_min, dataset=dataset, condition_info=[],
     device=config['device'], diffusion_steps=config['diffusion_steps'],
     optim_params={"lr": config['lr']}, predict_noise=config['predict_noise'])
 
@@ -173,7 +173,7 @@ if config['mode'] == "train":
     # --------------- Data Loading -----------------
     '''prepare the save path'''
     TimeCode = ((datetime.now()).strftime("%m%d_%H%M")).replace(" ", "")
-    rootpath = f"{TimeCode}_{config['horizon']}h_norm{config['normalize']}_poly_{config['nn']}s"
+    rootpath = f"{TimeCode}_{config['horizon']}h_norm{config['normalize']}_poly_{config['nn']}"
     save_path = os.path.join(current_file_dir, 'results', rootpath)
     if not os.path.exists(save_path):
         os.makedirs(save_path)
@@ -193,12 +193,13 @@ if config['mode'] == "train":
             condition = torch.stack([batch['start_conf'], batch['goal_conf']], dim=1)
             if config['nn'] == 'chi_unet' or config['nn'] == 'dit':
                 condition = condition.flatten(start_dim=1)
+                condition = condition.to(config['device'])
         else:
             condition = None
-        condition = condition.to(config['device'])
         action = batch['poly_coef'].to(config['device']) # (batch,horizon,7)
         
         # update diffusion
+        agent.condition_info = torch.stack([batch['start_conf'], batch['goal_conf']], dim=1)
         diffusion_loss = agent.update(action, condition)['loss']
         log["avg_loss_diffusion"] += diffusion_loss
         lr_scheduler.step()

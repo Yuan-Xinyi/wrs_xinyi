@@ -349,35 +349,86 @@ class ImageNormalizer:
         return (x + 1.0) / 2.0
 
 
-class MinMaxNormalizer:
-    """Normalizes data to [-1, 1] range using min/max scaling."""
+# class MinMaxNormalizer:
+#     """Normalizes data to [-1, 1] range using min/max scaling."""
     
+#     def __init__(self, X=None, min=None, max=None):
+#         if X is not None:
+#             # Compute min/max from data
+#             X = X.reshape(-1, X.shape[-1]).astype(np.float32)
+#             self.min, self.max = np.min(X, axis=0), np.max(X, axis=0)
+#         else:
+#             # Use provided min/max
+#             assert min is not None and max is not None, "Must provide either X or (min, max)"
+#             self.min, self.max = np.array(min, dtype=np.float32), np.array(max, dtype=np.float32)
+
+#         self.range = self.max - self.min
+#         if np.any(self.range == 0):
+#             print("Warning: Constant features detected. Setting range=1 to avoid division by zero.")
+#             self.range[self.range == 0] = 1
+
+#     def normalize(self, x):
+#         """Scale input to [-1, 1] range."""
+#         x = x.astype(np.float32)
+#         nx = (x - self.min) / self.range  # [0, 1]
+#         return nx * 2 - 1  # [-1, 1]
+
+#     def unnormalize(self, x):
+#         """Reverse scaling from [-1, 1] to original range."""
+#         x = x.astype(np.float32)
+#         nx = (x + 1) / 2  # [0, 1]
+#         return nx * self.range + self.min
+
+class MinMaxNormalizer:
+    """Normalizes data to [-1, 1] range using min/max scaling, supports NumPy and PyTorch."""
+
     def __init__(self, X=None, min=None, max=None):
         if X is not None:
-            # Compute min/max from data
+            if isinstance(X, torch.Tensor):
+                X = X.detach().cpu().numpy()
             X = X.reshape(-1, X.shape[-1]).astype(np.float32)
-            self.min, self.max = np.min(X, axis=0), np.max(X, axis=0)
+            self.min = np.min(X, axis=0)
+            self.max = np.max(X, axis=0)
         else:
-            # Use provided min/max
             assert min is not None and max is not None, "Must provide either X or (min, max)"
-            self.min, self.max = np.array(min, dtype=np.float32), np.array(max, dtype=np.float32)
+            self.min = np.array(min, dtype=np.float32)
+            self.max = np.array(max, dtype=np.float32)
 
         self.range = self.max - self.min
-        if np.any(self.range == 0):
-            print("Warning: Constant features detected. Setting range=1 to avoid division by zero.")
-            self.range[self.range == 0] = 1
+        self.range[self.range == 0] = 1.0  # avoid division by zero
+
+        # cache torch tensors
+        self._min_tensor = torch.tensor(self.min, dtype=torch.float32)
+        self._max_tensor = torch.tensor(self.max, dtype=torch.float32)
+        self._range_tensor = torch.tensor(self.range, dtype=torch.float32)
 
     def normalize(self, x):
-        """Scale input to [-1, 1] range."""
-        x = x.astype(np.float32)
-        nx = (x - self.min) / self.range  # [0, 1]
-        return nx * 2 - 1  # [-1, 1]
+        """Normalize to [-1, 1]"""
+        if isinstance(x, np.ndarray):
+            nx = (x - self.min) / self.range
+            return nx * 2 - 1
+        elif isinstance(x, torch.Tensor):
+            device = x.device
+            min_ = self._min_tensor.to(device)
+            range_ = self._range_tensor.to(device)
+            nx = (x - min_) / range_
+            return nx * 2 - 1
+        else:
+            raise TypeError("Input must be np.ndarray or torch.Tensor")
 
     def unnormalize(self, x):
-        """Reverse scaling from [-1, 1] to original range."""
-        x = x.astype(np.float32)
-        nx = (x + 1) / 2  # [0, 1]
-        return nx * self.range + self.min
+        """Unnormalize from [-1, 1] to original scale"""
+        if isinstance(x, np.ndarray):
+            nx = (x + 1) / 2
+            return nx * self.range + self.min
+        elif isinstance(x, torch.Tensor):
+            device = x.device
+            min_ = self._min_tensor.to(device)
+            range_ = self._range_tensor.to(device)
+            nx = (x + 1) / 2
+            return nx * range_ + min_
+        else:
+            raise TypeError("Input must be np.ndarray or torch.Tensor")
 
 
 class EmptyNormalizer:
