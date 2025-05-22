@@ -135,8 +135,11 @@ if config['nn'] == "chi_unet":
         obs_as_global_cond=True, timestep_emb_type="positional").to(config['device'])
 elif config['nn'] == "chi_transformer":
     from cleandiffuser.nn_diffusion import ChiTransformer
+    # nn_diffusion = ChiTransformer(
+    #         config['action_dim'],config['obs_dim'], config['horizon'], config['obs_steps'], d_model=320, nhead=10, num_layers=8,
+    #         timestep_emb_type="positional").to(config['device'])
     nn_diffusion = ChiTransformer(
-            config['action_dim'],config['obs_dim'], config['horizon'], config['obs_steps'], d_model=320, nhead=10, num_layers=8,
+            config['action_dim'],config['obs_dim'], config['horizon'], config['obs_steps'], d_model=360, nhead=12, num_layers=16,
             timestep_emb_type="positional").to(config['device'])
 elif config['nn'] == "dit":
     from cleandiffuser.nn_diffusion import DiT1d

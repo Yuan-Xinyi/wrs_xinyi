@@ -19,6 +19,24 @@ import os
 from tqdm import tqdm
 MAX_TRY_TIME = 5.0
 
+def generate_ground_plane(size_x=2.0, size_y=2.0, thickness=0.001, z_level=0.0, color=[0.8, 0.8, 0.8], alpha=1.0):
+    """
+    在 z=0 添加一个灰色地面平面（非常薄的立方体）。
+    """
+    pos = np.array([0.0, 0.0, z_level - thickness / 2.0])  # 中心在 z=0
+    size = np.array([size_x, size_y, thickness])
+    rotmat = np.eye(3)
+
+    ground = mcm.gen_box(
+        xyz_lengths=size,
+        pos=pos,
+        rotmat=rotmat,
+        rgb=color,
+        alpha=alpha
+    )
+    ground.attach_to(base)
+    return ground
+
 def visualize_start_goal_waypoints(robot, rrt, start_conf, goal_conf, obstacle_list=[]):
     robot.goto_given_conf(jnt_values=start_conf)
     robot.gen_meshmodel(rgb=rm.const.steel_blue, alpha=.3).attach_to(base)
@@ -150,31 +168,6 @@ def visualize_anime_diffusion(robot, path, start_conf, goal_conf):
                         appendTask=True)
 
 
-def gen_toppra_traj(rrt, start_conf, goal_conf):
-    
-    '''generate the dataset'''
-    motion_data = rrt.plan(start_conf=start_conf,
-                    goal_conf=goal_conf,
-                    ext_dist=.1,
-                    max_time=45,
-                    animation=True)
-
-    '''interpolate the path'''
-    if motion_data is None:
-        return None, None, None, None
-    else:
-        jv_array = rm.np.asarray(motion_data.jv_list)
-        interp_x = rm.np.linspace(0, len(jv_array) - 1, 100)
-        cs = QuinticSpline(range(len(motion_data.jv_list)), motion_data.jv_list)
-        interp_confs = cs(interp_x)
-
-        '''generate the time-optimal trajectory'''
-        interp_time, interp_confs, interp_spds, interp_accs = toppra.generate_time_optimal_trajectory(interp_confs,
-                                                                                                ctrl_freq=.01)
-
-        return interp_time, interp_confs, interp_spds, interp_accs
-
-
 def gen_collision_free_start_goal(robot, obstacle_list=[]):
     '''generate the start and goal conf'''
     MAX_ITER = 100  
@@ -189,37 +182,104 @@ def gen_collision_free_start_goal(robot, obstacle_list=[]):
             return start_conf, goal_conf
     return None, None
 
+def draw_edges_of_cube(center, size=0.05, rotmat=np.eye(3), color=[0, 0, 0]):
+    """
+    用 stick 画出一个 cube 的 12 条边。
+    """
+    r = size / 2.0
+    local_corners = np.array([
+        [-r, -r, -r], [ r, -r, -r], [ r,  r, -r], [-r,  r, -r],
+        [-r, -r,  r], [ r, -r,  r], [ r,  r,  r], [-r,  r,  r]
+    ])
+    global_corners = np.dot(local_corners, rotmat.T) + center
+
+    edge_pairs = [
+        (0, 1), (1, 2), (2, 3), (3, 0),
+        (4, 5), (5, 6), (6, 7), (7, 4),
+        (0, 4), (1, 5), (2, 6), (3, 7)
+    ]
+
+    for i, j in edge_pairs:
+        spos = global_corners[i]
+        epos = global_corners[j]
+        stick = mcm.gen_stick(spos=spos, epos=epos, radius=0.0005, rgb=color, alpha=1.0)
+        stick.attach_to(base)
+
 def generate_obstacle(xyz_lengths, pos, rotmat, rgb=None, alpha=None):
-    # generate a single obstacle
+    """生成一个立方体障碍物并显示在 base 中"""
     obj_cmodel = mcm.gen_box(xyz_lengths=xyz_lengths,
-                             pos=pos, rotmat=rotmat)
-    obj_cmodel.show_local_frame()
-    obj_cmodel.show_cdmesh()
+                             pos=pos,
+                             rotmat=rotmat,
+                             rgb=rgb if rgb is not None else [0.7, 0.7, 0.7],
+                             alpha=alpha if alpha is not None else 0.5)
+    # obj_cmodel.show_local_frame()
+    # obj_cmodel.show_cdmesh()
     obj_cmodel.attach_to(base)
     return obj_cmodel
 
-def generate_multiple_obstacles(obstacle_num):
-    # generate multiple obstacles
+def generate_multiple_obstacles(cube_size=0.05, offset_x=0.0, offset_y=0.0, offset_z=0.0):
+    """
+    在 4x4 网格上生成四层塔状结构障碍物，整体绕 Z 轴旋转 -135°。
+    """
+    layers = [
+        "1111111011001000",  # 第 0 层：底层几乎填满
+        "1110110010000000",  # 第 1 层：缩小范围
+        "1100100000000000",  # 第 2 层：仅左上和中心
+        "1000000000000000"   # 第 3 层：仅左上角
+    ]
+
+    grid_size = 4  # 4x4 网格
     obstacle_list = []
-    obstacle_info_shape = 3*obstacle_num
-    obstacle_info = np.zeros(obstacle_info_shape, dtype=np.float32)
-    for i in range(obstacle_num):
-        xyz_lengths = rm.np.array([.05, .05, .05])
-        pos = np.array([
-            np.random.uniform(low=-.6, high=.6),
-            np.random.uniform(low=-.2, high=.6),
-            np.random.uniform(low=.0, high=.8)
-        ])
-        obstacle_info[i*3:i*3+3] = pos
-        rotmat = np.eye(3)
-        obj_cmodel = generate_obstacle(xyz_lengths=xyz_lengths, pos=pos, rotmat=rotmat)
-        obstacle_list.append(obj_cmodel)
+    obstacle_positions = []
+
+    # Z轴旋转 -135 度
+    theta = np.radians(-135)
+    rot_z = np.array([
+        [np.cos(theta), -np.sin(theta)],
+        [np.sin(theta),  np.cos(theta)]
+    ])
+
+    for z, layer in enumerate(layers):
+        for i, char in enumerate(layer):
+            if char == '1':
+                x = i % grid_size
+                y = grid_size - 1 - (i // grid_size)
+
+                # 原始位置
+                x_raw = x * cube_size
+                y_raw = y * cube_size
+
+                # 旋转后的坐标
+                xy_rotated = np.dot(rot_z, np.array([x_raw, y_raw]))
+
+                pos = np.array([
+                    xy_rotated[0] + offset_x,
+                    xy_rotated[1] + offset_y,
+                    z * cube_size + cube_size / 2.0 + offset_z
+                ])
+
+                # 旋转后的朝向
+                rotmat = np.eye(3)
+                rotmat[:2, :2] = rot_z
+
+                box = generate_obstacle(
+                    xyz_lengths=np.array([cube_size] * 3),
+                    pos=pos,
+                    rotmat=rotmat
+                )
+                draw_edges_of_cube(center=pos, size=cube_size, rotmat=rotmat, color=[0, 0, 0])
+                obstacle_list.append(box)
+                obstacle_positions.extend(pos)
+
+    obstacle_info = np.array(obstacle_positions, dtype=np.float32)
     return obstacle_list, obstacle_info
 
-def generate_obstacle_confs(robot, obstacle_num=3):
-    while True:
-        obstacle_list, obstacle_info = generate_multiple_obstacles(obstacle_num)
 
+def generate_obstacle_confs(robot, obstacle_list, obstacle_info):
+    """
+    尝试生成一组无碰撞起始-目标姿态与障碍物集合（自带可视化）。
+    """
+    while True:
         start_time = time.time()
         while time.time() - start_time < MAX_TRY_TIME:
             try:
@@ -228,7 +288,6 @@ def generate_obstacle_confs(robot, obstacle_num=3):
                     return start_conf, goal_conf, obstacle_list, obstacle_info
             except Exception as e:
                 break
-
 
 if __name__ == '__main__':
     '''init the parameters'''
@@ -239,8 +298,10 @@ if __name__ == '__main__':
 
     '''path planning'''
     base = wd.World(cam_pos=[2, 0, 1], lookat_pos=[0, 0, 0])
+    generate_ground_plane(size_x=2, size_y=2, color=[0.9, 0.9, 0.9])
     mgm.gen_frame().attach_to(base)
     robot = franka.FrankaResearch3(enable_cc=True)
+    robot.gen_meshmodel(alpha=1).attach_to(base)
     rrt = rrtc.RRTConnect(robot)
 
     '''motion planning'''
@@ -262,9 +323,17 @@ if __name__ == '__main__':
     inp.min_acceleration = [-value for value in inp.max_acceleration]
 
     '''visualization'''
-    # start_conf, goal_conf, obstacle_list = generate_obstacle_confs(robot, obstacle_num=6)  
-    # visualize_start_goal_waypoints(robot, rrt, start_conf, goal_conf, obstacle_list=obstacle_list)
-    # visualize_anime(robot, rrt, start_conf, goal_conf)
+    obstacle_list, obstacle_info = generate_multiple_obstacles(
+        cube_size=0.15,
+        offset_x=0.5,
+        offset_y=0.35,
+        offset_z=0.0
+    )
+    
+    base.run()
+    start_conf, goal_conf = generate_obstacle_confs(robot, obstacle_list, obstacle_info)
+    visualize_start_goal_waypoints(robot, rrt, start_conf, goal_conf, obstacle_list=obstacle_list)
+    visualize_anime(robot, rrt, start_conf, goal_conf)
 
 
     '''initialize the dataset'''
