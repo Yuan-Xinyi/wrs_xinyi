@@ -75,42 +75,51 @@ def visualize_anime_path(robot, path, start_conf, goal_conf):
                         appendTask=True)
     base.run()
 
-def generate_obstacle(xyz_lengths, pos, rotmat, rgb=None, alpha=None):
-    """生成一个立方体障碍物并显示在 base 中"""
-    obj_cmodel = mcm.gen_box(xyz_lengths=xyz_lengths,
-                             pos=pos,
-                             rotmat=rotmat,
-                             rgb=rgb if rgb is not None else [0.3, 0.2, 0.1],
-                             alpha=alpha if alpha is not None else 1.0)
-    # obj_cmodel.show_local_frame()
-    # obj_cmodel.show_cdmesh()
-    obj_cmodel.attach_to(base)
-    return obj_cmodel
 
-def generate_multiple_obstacles(cube_size=0.05, offset_x=0.0, offset_y=0.0, offset_z=0.0):
-    layers = [
-        "111110100",  # 第 0 层
-        "110100000",  # 第 1 层
-        "100000000"   # 第 2 层
-    ]
-    grid_size = 3
-    theta = np.radians(180)
-    rot_z = np.array([[np.cos(theta), -np.sin(theta)], [np.sin(theta), np.cos(theta)]])
+def generate_shelf(base, width=0.6, depth=0.4, layer_height=0.3, layers=4, thickness=0.02,
+                     rgb=[0.4, 0.3, 0.2], pos_offset=np.zeros(3), rot_theta_deg=0.0):
+    """
+    生成一个多层柜子（按每层高度构建），支持整体旋转和平移。
+    :param base: 可视化 base
+    :param width: 柜体宽度 沿 x
+    :param depth: 柜体深度 沿 y
+    :param layer_height: 每层高度
+    :param layers: 层数
+    :param thickness: 板材厚度
+    :param rgb: 颜色
+    :param pos_offset: 位置偏移 np.array([x, y, z])
+    :param rot_theta_deg: 绕 Z 轴的旋转角度（单位：度）
+    """
     obstacle_list, obstacle_info = [], []
+    height = layer_height * layers
+    theta = np.radians(rot_theta_deg)
+    rot_z = np.array([
+        [np.cos(theta), -np.sin(theta), 0],
+        [np.sin(theta),  np.cos(theta), 0],
+        [0,              0,             1]
+    ])
 
-    for z, layer in enumerate(layers):
-        for i, char in enumerate(layer):
-            if char == '1':
-                x, y = i % grid_size, grid_size - 1 - (i // grid_size)
-                xy = np.dot(rot_z, [x * cube_size, y * cube_size])
-                pos = np.array([xy[0] + offset_x, xy[1] + offset_y, z * cube_size + cube_size / 2 + offset_z])
-                rotmat = np.eye(3); rotmat[:2, :2] = rot_z
-                quat = rm.rotmat_to_quaternion(rotmat)
-                obstacle_list.append(generate_obstacle(np.full(3, cube_size), pos, rotmat))
-                obstacle_info.append(np.concatenate([pos, quat]))
+    def transform(pos_local):
+        return np.dot(rot_z, pos_local) + pos_offset
 
+    def attach_box(size, local_pos):
+        box = mcm.gen_box(size, pos=transform(local_pos), rotmat=rot_z, rgb=rgb)
+        obstacle_list.append(box)
+        obstacle_info.append(np.concatenate([transform(local_pos), rm.rotmat_to_quaternion(rot_z)]))
+        box.attach_to(base)
+
+    # 各部分组件
+    attach_box([width, depth, thickness], [0, 0, thickness / 2])                     # bottom
+    attach_box([width, depth, thickness], [0, 0, height - thickness / 2])            # top
+    attach_box([thickness, depth, height], [-width / 2 + thickness / 2, 0, height / 2])  # left
+    attach_box([thickness, depth, height], [ width / 2 - thickness / 2, 0, height / 2])  # right
+    attach_box([width - 2 * thickness, thickness, height],
+               [0, -depth / 2 + thickness / 2, height / 2])                          # back
+
+    for i in range(1, layers):
+        z = i * layer_height
+        attach_box([width - 2 * thickness, depth - thickness, thickness], [0, 0, z])  # shelves
     return obstacle_list, np.array(obstacle_info, dtype=np.float32)
-
 
 # ruckig function
 def initialize(sampling_interval, waypoint_num=10):
@@ -190,6 +199,21 @@ def plot_joint_trajectories(jnt_list):
     plt.tight_layout(rect=[0, 0.03, 1, 0.97])
     plt.show()
 
+def get_local_corner_of_upper_second_layer(width, depth, thickness, layer_height, layers):
+    """
+    返回从上数第二层层板的右前上角的局部坐标。
+    """
+    z = (layers - 2) * layer_height  # 层板中心高度（第 layers-2 层）
+    width_eff = width - 2 * thickness
+    depth_eff = depth - thickness
+    thickness_z = thickness
+
+    local_corner = np.array([+width_eff / 2,
+                             +depth_eff / 2,
+                             z + thickness_z / 2])
+    local_corner += np.array([0.0, -0.5, layer_height / 2])  # 局部坐标系的偏移
+    return local_corner
+
 if __name__ == '__main__':
     cube_size = 0.3
     offset = 0.02
@@ -215,14 +239,28 @@ if __name__ == '__main__':
     inp.max_jerk = rm.np.asarray([rm.pi * 2] * robot.n_dof)
 
     '''generate the obstacles'''
-    obstacle_list, cube_info = generate_multiple_obstacles(
-        cube_size=cube_size,
-        offset_x=0.55,
-        offset_y=-.15,
-        offset_z=0.0
+    obstacle_list, cube_info = generate_shelf(
+        base,
+        width=1.0,
+        depth=0.4,
+        layer_height=0.2,
+        layers=5,
+        pos_offset=np.array([0.8, 0.2, 0.0]),
+        rot_theta_deg=90
     )
+    start_pos = get_local_corner_of_upper_second_layer(
+        width=1.0, depth=0.4, thickness=0.02, layer_height=0.2, layers=5
+    )
+    rotmat = rm.rotmat_from_euler(0,0,0)
+    mcm.mgm.gen_frame(pos=start_pos, rotmat=rotmat).attach_to(base)
     ground = generate_ground_plane(size_x=2.5, size_y=2.5, color=[0.95, 0.95, 1.0])
     obstacle_list.append(ground)
+    jnt = robot.ik(
+        tgt_pos=start_pos, 
+        tgt_rotmat=rotmat, 
+        seed_jnt_values=None
+    )
+    robot.goto_given_conf(jnt)
     robot.gen_meshmodel(alpha=1.0).attach_to(base)
     base.run()
 
