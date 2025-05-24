@@ -154,7 +154,7 @@ def gen_jnt_list_from_pos_list(pos_list, robot, obstacle_list, base,
         while jnt is None and time.time() - start_time < max_try_time:
             try:
                 rotmat = rm.rotmat_from_euler(np.pi/2,0,0)
-                j = robot.ik(tgt_pos=pos, tgt_rotmat=rotmat)
+                j = robot.ik(tgt_pos=pos, tgt_rotmat=rotmat, seed_jnt_values = jnt_list[-1] if jnt_list else None)
                 if j is None:
                     continue
                 robot.goto_given_conf(j)
@@ -170,15 +170,32 @@ def gen_jnt_list_from_pos_list(pos_list, robot, obstacle_list, base,
                 break
         jnt_list.append(jnt)
 
-    print(f"{'='*40}\nSuccessfully solved IK for {success_count} / {len(pos_list)} positions.\n{'='*40}")
+    print(f"{'-'*40}\nSuccessfully solved IK for {success_count} / {len(pos_list)} positions.\n{'-'*40}")
     return [j for j in jnt_list if j is not None], success_count
 
+def plot_joint_trajectories(jnt_list):
+    jnt_array = np.array(jnt_list)
+    if jnt_array.ndim != 2 or jnt_array.shape[1] != 7:
+        raise ValueError("Expected jnt_list to be of shape (n, 7)")
+
+    fig, axes = plt.subplots(7, 1, figsize=(10, 14), sharex=True)
+    fig.suptitle("Joint Value Trajectories (Scatter)", fontsize=16)
+
+    for i in range(7):
+        axes[i].scatter(range(len(jnt_array)), jnt_array[:, i], s=20)
+        axes[i].set_ylabel(f"Joint {i+1}")
+        axes[i].grid(True)
+
+    axes[-1].set_xlabel("Index")
+    plt.tight_layout(rect=[0, 0.03, 1, 0.97])
+    plt.show()
 
 if __name__ == '__main__':
     cube_size = 0.3
     offset = 0.02
-    waypoint_num = 30
+    max_waypoint_num = 30
     MAX_TRY_TIME = 5.0
+    traj_num = 2
 
     '''init the parameters'''
     from copy import copy
@@ -188,7 +205,7 @@ if __name__ == '__main__':
     '''Initialize the world and robot'''
     from ruckig import InputParameter, OutputParameter, Result, Ruckig
     sampling_interval = 0.01  # seconds
-    base, robot, otg, inp, out = initialize(sampling_interval, waypoint_num=waypoint_num)
+    base, robot, otg, inp, out = initialize(sampling_interval, waypoint_num=max_waypoint_num)
     inp.target_velocity = rm.np.zeros(robot.n_dof)
     inp.target_acceleration = rm.np.zeros(robot.n_dof)
     inp.min_position = robot.jnt_ranges[:, 0]
@@ -200,76 +217,81 @@ if __name__ == '__main__':
     '''generate the obstacles'''
     obstacle_list, cube_info = generate_multiple_obstacles(
         cube_size=cube_size,
-        offset_x=0.75,
+        offset_x=0.55,
         offset_y=-.15,
         offset_z=0.0
     )
     ground = generate_ground_plane(size_x=2.5, size_y=2.5, color=[0.95, 0.95, 1.0])
     obstacle_list.append(ground)
 
-    '''generate the waypoints jnt configurations'''
-    pos_list = intrerp_pos_path(
-        cube_center=cube_info[7][:3],
-        cube_size=cube_size,
-        offset=offset,
-        interp_axis='x',
-        interp_num=waypoint_num
-        )
-    jnt_list, scc_count = gen_jnt_list_from_pos_list(
-        pos_list, robot, 
-        obstacle_list, base, 
-        max_try_time=MAX_TRY_TIME,
-        check_collision=True,
-        visualize=True
-        )
-    def plot_joint_trajectories(jnt_list):
-        jnt_array = np.array(jnt_list)
-        if jnt_array.ndim != 2 or jnt_array.shape[1] != 7:
-            raise ValueError("Expected jnt_list to be of shape (n, 7)")
+    '''dataset generation'''
+    dataset_name = os.path.join('/home/lqin/zarr_datasets', f'fixed_traj.zarr')
+    store = zarr.DirectoryStore(dataset_name)
+    root = zarr.group(store=store)
+    print('dataset created in:', dataset_name)    
+    meta_group = root.create_group("meta")
+    data_group = root.create_group("data")
+    dof = robot.n_dof
+    episode_ends_ds = meta_group.create_dataset("episode_ends", shape=(0,), chunks=(1,), dtype=np.float32, append=True)
+    jnt_p = data_group.create_dataset("jnt_pos", shape=(0, dof), chunks=(1, dof), dtype=np.float32, append=True)
+    jnt_v = data_group.create_dataset("jnt_vel", shape=(0, dof), chunks=(1, dof), dtype=np.float32, append=True)
+    jnt_a = data_group.create_dataset("jnt_acc", shape=(0, dof), chunks=(1, dof), dtype=np.float32, append=True)
+    episode_ends_counter = 0
 
-        fig, axes = plt.subplots(7, 1, figsize=(10, 14), sharex=True)
-        fig.suptitle("Joint Value Trajectories (Scatter)", fontsize=16)
+    for traj_id in range(traj_num):
+        '''generate the waypoints jnt configurations'''
+        print('='*100)
+        waypoint_num = np.random.randint(5, 30)
+        pos_list = intrerp_pos_path(
+            cube_center=cube_info[7][:3],
+            cube_size=cube_size,
+            offset=offset,
+            interp_axis='x',
+            interp_num=waypoint_num
+            )
+        jnt_list, scc_count = gen_jnt_list_from_pos_list(
+            pos_list, robot, 
+            obstacle_list, base, 
+            max_try_time=MAX_TRY_TIME,
+            check_collision=True,
+            visualize=False
+            )
+        # plot_joint_trajectories(jnt_list)
+        # visualize_anime_path(robot, jnt_list, jnt_list[0], jnt_list[-1])
+        # base.run()
 
-        for i in range(7):
-            axes[i].scatter(range(len(jnt_array)), jnt_array[:, i], s=20)
-            axes[i].set_ylabel(f"Joint {i+1}")
-            axes[i].grid(True)
+        '''generate the trajectory'''
+        inp.current_position, inp.target_position = jnt_list[0], jnt_list[-1]
+        inp.intermediate_positions = jnt_list
 
-        axes[-1].set_xlabel("Index")
-        plt.tight_layout(rect=[0, 0.03, 1, 0.97])
-        plt.show()
-    plot_joint_trajectories(jnt_list)
+        # Generate the trajectory within the control loop
+        first_output, out_list, jnt_path = None, [], []
+        res = Result.Working
+        while res == Result.Working:
+            res = otg.update(inp, out)
+    
+            # print('\t'.join([f'{out.time:0.3f}'] + [f'{p:0.3f}' for p in out.new_position]))
+            out_list.append(copy(out))
+            jnt_path.append(np.array((out.new_position)))
+    
+            out.pass_to_input(inp)
+            jnt_p.append(np.array((out.new_position)).reshape(1, dof))
+            jnt_v.append(np.array((out.new_velocity)).reshape(1, dof))
+            jnt_a.append(np.array((out.new_acceleration)).reshape(1, dof))
+            episode_ends_counter += 1
 
-    # visualize_anime_path(robot, jnt_list, jnt_list[0], jnt_list[-1])
-    base.run()
-
-    '''generate the trajectory'''
-    inp.current_position, inp.target_position = jnt_list[0], jnt_list[-1]
-    inp.intermediate_positions = jnt_list
-
-    # Generate the trajectory within the control loop
-    first_output, out_list, jnt_path = None, [], []
-    res = Result.Working
-    while res == Result.Working:
-        res = otg.update(inp, out)
- 
-        # print('\t'.join([f'{out.time:0.3f}'] + [f'{p:0.3f}' for p in out.new_position]))
-        out_list.append(copy(out))
-        jnt_path.append(np.array((out.new_position)))
- 
-        out.pass_to_input(inp)
- 
-        if not first_output:
-            first_output = copy(out)
- 
-    print(f'Calculation duration: {first_output.calculation_duration:0.1f} [µs]')
-    print(f'Trajectory duration: {first_output.trajectory.duration:0.4f} [s]')
- 
-    # Plot the trajectory
-    from pathlib import Path
-    from plotter import Plotter
-    pdf_path = os.path.join(current_file_dir, 'tmp', '03_trajectory.pdf')
-    if not os.path.exists(os.path.dirname(pdf_path)):
-        os.makedirs(os.path.dirname(pdf_path))
-    Plotter.plot_trajectory(pdf_path, otg, inp, out_list, plot_jerk=False)
-    visualize_anime_path(robot, jnt_path, jnt_path[0], jnt_path[-1])
+            if not first_output:
+                first_output = copy(out)
+        episode_ends_ds.append(np.array([episode_ends_counter], dtype=np.int32))
+        print(f'Trajectory {traj_id+1}/{traj_num} generated with {len(jnt_path)} waypoints.')
+        print(f'episode_ends_counter: {episode_ends_counter}')
+        print(f'Trajectory duration: {first_output.trajectory.duration:0.4f} [s]')
+    
+        # visualize the trajectory
+        from pathlib import Path
+        from plotter import Plotter
+        pdf_path = os.path.join('/home/lqin/zarr_datasets/log_0524', f'waypos{waypoint_num}_trajid{traj_id}.pdf')
+        if not os.path.exists(os.path.dirname(pdf_path)):
+            os.makedirs(os.path.dirname(pdf_path))
+        Plotter.plot_trajectory(pdf_path, otg, inp, out_list, plot_jerk=False)
+        # visualize_anime_path(robot, jnt_path, jnt_path[0], jnt_path[-1])
