@@ -1,5 +1,5 @@
 abs_action: false
-mode: train  # train or inference
+mode: inference  # train or inference
 obs_keys: ['jnt_pos', 'position', 'rotation', 'axis']
 dataset_name: straight_line_joint_path.zarr
 action_dim: 7

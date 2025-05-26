@@ -164,7 +164,7 @@ if config['mode'] == "inference":
     from scipy.interpolate import make_lsq_spline, BSpline
 
     model_path = '0000_test_programs/surgery_diff/CleanDiffuser/motion_planner/results/' \
-    '0512_2022_64h_64b_normFalse/diffusion_ckpt_latest.pt'
+    '0525_1950gostraight_h16_b64_normTrue/diffusion_ckpt_latest.pt'
     agent.load(model_path)
     agent.model.eval()
     agent.model_ema.eval()
@@ -180,13 +180,6 @@ if config['mode'] == "inference":
     # init
     base = wd.World(cam_pos=[2, 0, 1], lookat_pos=[0, 0, 0])
     mgm.gen_frame().attach_to(base)
-
-    # init the b-spline parameter
-    degree = 4
-    num_ctrl_pts = 64
-    ctrl_points = np.linspace(0, 1, num_ctrl_pts)
-    knots = np.linspace(0, 1, num_ctrl_pts - degree + 1)
-    knots = np.concatenate(([0] * degree, knots, [1] * degree))
 
     # inference
     solver = config['inference_solver']

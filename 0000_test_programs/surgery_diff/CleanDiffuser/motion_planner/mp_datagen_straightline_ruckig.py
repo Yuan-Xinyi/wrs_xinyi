@@ -17,57 +17,52 @@ import zarr
 import os
 from tqdm import tqdm
 
-
-def visualize_anime_path(robot, path, start_conf, goal_conf):
+def visualize_anime_path(robot, path):
     class Data(object):
         def __init__(self):
             self.counter = 0
-            self.path = None
-            self.current_model = None  # 当前帧的模型
+            self.path = path
+            self.current_model = None
+            self.current_frame = None  # 用于记录并移除上一帧的末端坐标系
 
-    # robot.goto_given_conf(jnt_values=start_conf)
-    # robot.gen_meshmodel(rgb=[0, 0, 1], alpha=.3).attach_to(base)
-    # robot.goto_given_conf(jnt_values=goal_conf)
-    # robot.gen_meshmodel(rgb=[0, 1, 0], alpha=.3).attach_to(base)
     anime_data = Data()
-    anime_data.path = path
 
     def update(robot, anime_data, task):
         if anime_data.counter >= len(anime_data.path):
             if anime_data.current_model:
-                anime_data.current_model.detach()  # 移除最后一帧的模型
+                anime_data.current_model.detach()
+            if anime_data.current_frame:
+                anime_data.current_frame.detach()
             anime_data.counter = 0
-            return task.done
+            return task.again
 
-        # 移除上一帧的模型
         if anime_data.current_model:
             anime_data.current_model.detach()
+        if anime_data.current_frame:
+            anime_data.current_frame.detach()
 
-        # 更新机器人位置并生成当前帧的模型
         conf = anime_data.path[anime_data.counter]
         robot.goto_given_conf(conf)
         anime_data.current_model = robot.gen_meshmodel(alpha=1.0)
         anime_data.current_model.attach_to(base)
 
+        ee_pos, ee_rotmat = robot.fk(conf)
+        anime_data.current_frame = mcm.mgm.gen_frame(pos=ee_pos, rotmat=ee_rotmat)
+        anime_data.current_frame.attach_to(base)
+
         anime_data.counter += 1
         return task.again
 
-    taskMgr.doMethodLater(0.01, update, "update",
-                        extraArgs=[robot, anime_data],
-                        appendTask=True)
+    def start_animation(task):
+        taskMgr.doMethodLater(0.08, update, "update",
+                              extraArgs=[robot, anime_data],
+                              appendTask=True)
+        return task.done
+
+    taskMgr.doMethodLater(1.0, start_animation, "start_animation_delay")
     base.run()
 
-# ruckig function
-def initialize(sampling_interval, waypoint_num=10):
-    '''init the robot and world'''
-    base = wd.World(cam_pos=[2, 0, 1], lookat_pos=[0, 0, 0])
-    mgm.gen_frame().attach_to(base)
-    robot = franka.FrankaResearch3(enable_cc=True)
-    inp = InputParameter(robot.n_dof)
-    out = OutputParameter(robot.n_dof, waypoint_num)
-    otg = Ruckig(robot.n_dof, sampling_interval, waypoint_num)
-    
-    return base, robot, otg, inp, out
+
 
 def intrerp_pos_path(cube_center, cube_size, offset, interp_axis, interp_num):
     pos_list = []
@@ -172,31 +167,37 @@ if __name__ == '__main__':
     print('--' * 100)
 
     '''simple visualization of the straight line path'''
-    # # for _ in tqdm(range(len(jnt_samples))):
-    # for _ in tqdm(range(1)):
-    #     pos_init, rotmat_init = robot.fk(jnt_values=jnt_samples[_])
+    # for _ in tqdm(range(len(jnt_samples))):
+    for _ in tqdm(range(1)):
+        pos_init, rotmat_init = robot.fk(jnt_values=jnt_samples[_])
 
-    #     jnt_tracks = {}
-    #     for axis in ['x', 'y', 'z']:
-    #         axis_idx = {'x': 0, 'y': 1, 'z': 2}[axis]
-    #         jnt_list, pos = [jnt_samples[_]], pos_init.copy()
+        jnt_tracks = {}
+        for axis in ['x', 'y', 'z']:
+            axis_idx = {'x': 0, 'y': 1, 'z': 2}[axis]
+            jnt_list, pos = [jnt_samples[_]], pos_init.copy()
 
-    #         for _ in range(MAX_WAYPOINT):
-    #             pos_try = pos.copy(); pos_try[axis_idx] += waypoint_interval
-    #             print(f"Trying to solve IK for position {pos_try} on axis {axis}...")
-    #             jnt = robot.ik(tgt_pos=pos_try, tgt_rotmat=rotmat_init, seed_jnt_values=jnt_list[-1])
+            for _ in range(MAX_WAYPOINT):
+                pos_try = pos.copy(); pos_try[axis_idx] += waypoint_interval
+                # print(f"Trying to solve IK for position {pos_try} on axis {axis}...")
+                jnt = robot.ik(tgt_pos=pos_try, tgt_rotmat=rotmat_init, seed_jnt_values=jnt_list[-1])
 
-    #             if jnt is None:
-    #                 print(f"IK failed for position {pos_try} on axis {axis}.")
-    #                 break
-    #             pos = pos_try
-    #             jnt_list.append(jnt)
-    #             mcm.mgm.gen_frame(pos=pos, rotmat=rotmat_init).attach_to(base)
-    #             robot.goto_given_conf(jnt)
-    #             robot.gen_meshmodel(alpha=0.3).attach_to(base)
+                if jnt is None:
+                    print(f"IK failed for position {pos_try} on axis {axis}.")
+                    break
+                pos = pos_try
+                jnt_list.append(jnt)
+                # mcm.mgm.gen_frame(pos=pos, rotmat=rotmat_init).attach_to(base)
+                # robot.goto_given_conf(jnt)
+                # robot.gen_meshmodel(alpha=0.3).attach_to(base)
 
-    #         jnt_tracks[axis] = jnt_list
-    #         print(f"Generated {len(jnt_list)} waypoints for axis {axis}.")
+            jnt_tracks[axis] = jnt_list
+            print(f"Generated {len(jnt_list)} waypoints for axis {axis}.")
+    
+    # visualize the generated joint paths
+    path = []
+    for axis in ['x', 'z']:
+        path.extend(jnt_tracks[axis])
+    visualize_anime_path(robot, path)
     # base.run()
 
     '''dataset generation'''
