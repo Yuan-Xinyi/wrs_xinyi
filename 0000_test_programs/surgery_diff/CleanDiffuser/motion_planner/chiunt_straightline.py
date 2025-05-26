@@ -91,12 +91,10 @@ robot_s = franka.FrankaResearch3(enable_cc=True)
 
 '''define the robot joint limits'''
 jnt_config_range = torch.tensor(robot_s.jnt_ranges, device=config['device'])
-if config['normalize']:
-    x_max = torch.ones((1, config['horizon'], config['action_dim']), device=config['device']) * +1.0
-    x_min = torch.ones((1, config['horizon'], config['action_dim']), device=config['device']) * -1.0
-else:
-    x_max = (jnt_config_range[:,1]).repeat(1, config['horizon'], 1)
-    x_min = (jnt_config_range[:,0]).repeat(1, config['horizon'], 1)
+
+x_max = (jnt_config_range[:,1]).repeat(1, config['horizon'], 1)
+x_min = (jnt_config_range[:,0]).repeat(1, config['horizon'], 1)
+
 loss_weight = torch.ones((config['horizon'], config['action_dim']))
 loss_weight[0, :] = config['action_loss_weight']
 
@@ -119,6 +117,8 @@ if config['mode'] == "train":
     wandb.init(project="straight_line", name=rootpath)
 
     # ----------------- Training ----------------------
+    agent.load('0000_test_programs/surgery_diff/CleanDiffuser/motion_planner/results/' \
+    '0525_1950gostraight_h16_b64_normTrue/diffusion_ckpt_latest.pt')
     agent.train()
     n_gradient_step = 0
     diffusion_loss_list = []
@@ -174,7 +174,6 @@ if config['mode'] == "inference":
     import wrs.visualization.panda.world as wd
     from wrs import wd, rm, mcm
     import wrs.modeling.geometric_model as mgm
-    import mp_datagen_ruckig_obstacle as mp_helper
     import copy
     
     # init
@@ -184,7 +183,6 @@ if config['mode'] == "inference":
     # inference
     solver = config['inference_solver']
     inference_steps = config['inference_steps']
-    visualization = config['visualization']
     
     success_num = 0
     n_samples = 1
@@ -193,73 +191,51 @@ if config['mode'] == "inference":
     start_list = []
     goal_list = []
 
-    '''if get the start and goal from the dataset'''
-    # for id in tqdm(range(root['meta']['episode_ends'].shape[0]-1)):
-    #     traj_end = int(root['meta']['episode_ends'][id])
-    #     control_points = root['data']['control_points'][traj_end-64:traj_end]
-    #     # print(f"current traj start: {traj_start}, end: {traj_end}")
-    #     start_list.append(control_points[0])
-    #     goal_list.append(control_points[-1])
-
-    '''single traj test'''
-    root = zarr.open('/home/lqin/zarr_datasets/franka_ruckig_100hz_bspline.zarr', mode='r')
-    traj_id = 0
+    '''single traj test from the dataset'''
+    traj_id = 22
     traj_end = int(root['meta']['episode_ends'][traj_id])
-    control_points = root['data']['control_points'][traj_end-64:traj_end]
+    workspc_pos = root['data']['position'][:traj_end]
+    jnt_pos = root['data']['jnt_pos'][:traj_end]
+    jnt_seed = jnt_pos[0]
+    pos_start = workspc_pos[0]
+    pos_goal = workspc_pos[-1]
     
     # --------------- Inference -----------------
     # for traj_id in tqdm(range(len(start_list))):
     for traj_id in range(1):
         '''prepare the start and goal config'''
-        # start_conf, goal_conf = start_list[traj_id], goal_list[traj_id]
-        start_conf = control_points[0]
-        goal_conf = control_points[-1]
-        # start_conf = robot_s.rand_conf()
-        # goal_conf = robot_s.rand_conf()
-        # start_conf = np.array([ 1.00625858,  0.15694599, -2.51097176, -1.60473395,  0.40952758,
-        # 3.05204021,  2.61735282])
-        # goal_conf = np.array([ 0.61532624,  0.1395668 ,  2.00860207, -2.93296071,  1.4677425 ,
-        # 1.3641184 , -2.99075278])
+        condition = np.concatenate([pos_start, pos_goal], axis=-1)
+        condition = torch.tensor(condition, device=config['device']).unsqueeze(0).float()  # (1, 6)
+        condition = torch.tensor([-0.2569, -0.1540,  0.7276, -0.1069, -0.1540,  0.7276], device=config['device']).unsqueeze(0).float()  # (1, 6)
+        # print(f"Groundtruth joint seed: {repr([-1.7201, -1.4743, -0.4602, -2.5136, -0.5191, 2.5270, 0.3964])}")
+
         print('**'*100)
-        print(f"Start Conf: {start_conf}, Goal Conf: {goal_conf}")
-        tgt_pos, tgt_rotmat = robot_s.fk(jnt_values=goal_conf)
+        print(f"Condition: {condition}")
+        print(f"Groundtruth joint seed: {repr(jnt_pos[0])}")
+
+        robot_s.goto_given_conf([-1.7201, -1.4743, -0.4602, -2.5136, -0.5191, 2.5270, 0.3964])
+        robot_s.gen_meshmodel(rgb = [0,1,0], alpha=0.3).attach_to(base)
+        # robot_s.goto_given_conf(jnt_seed)
+        pos, rot = robot_s.fk(jnt_seed, toggle_jacobian=True, update=True)
+    
+        # mgm.gen_arrow(spos=workspc_pos[0], epos=workspc_pos[-1], stick_radius=.0025, rgb=[0,0,0]).attach_to(base)
+        mgm.gen_arrow(spos=np.array([-0.2569, -0.1540,  0.7276]), 
+                      epos=np.array([-0.1069, -0.1540,  0.7276]), stick_radius=.005, rgb=[1,0,0]).attach_to(base)
         
-        '''simulate the robot with the start and goal config'''
-        robot_s.goto_given_conf(jnt_values=goal_conf)
-        robot_s.gen_meshmodel(alpha=0.2, rgb=[0,1,0]).attach_to(base)
-        robot_s.goto_given_conf(jnt_values=start_conf)
-        robot_s.gen_meshmodel(alpha=0.2, rgb=[0,0,1]).attach_to(base)
+        # robot_s.gen_meshmodel(rgb = [0,1,0], alpha=0.3).attach_to(base)
+
 
         '''inference the trajectory'''
-        condition = None
-        prior = torch.zeros((1, config['horizon'], config['action_dim']), device=config['device'])
-        prior[:, 0, :] = torch.tensor(start_conf).to(config['device'])
-        prior[:, -1, :] = torch.tensor(goal_conf).to(config['device'])
+        prior = torch.zeros((n_samples, config['horizon'], config['action_dim']), device=config['device'])
         with torch.no_grad():
-            action, _ = agent.sample(prior=prior, n_samples=n_samples, sample_steps=config['sample_steps'], temperature=0.1,
-                                    solver=solver, condition_cfg=condition, use_ema=True)
+            action, _ = agent.sample(prior=prior, n_samples=n_samples, sample_steps=config['sample_steps'], temperature=1.0,
+                                    solver=solver, condition_cfg=condition, w_cfg = 1.0, use_ema=True)
         
-
-        # '''recons b-spline'''
-        # # spline = BSpline(knots, control_points, degree)
-        # spline = BSpline(knots, action[0].cpu().numpy().copy(), degree)
-        # print(repr(action[0].cpu().numpy().copy()))
-        T_total_list = [5]
-        # results = []
-
-        # for T_total_new in T_total_list:
-        #     print(f"\nTesting with T_total = {T_total_new}s")
-        #     result = (T_total_new, *update_bspline_with_new_time(spline, T_total_new))
-        #     results.append(result)
-
-        # plot_bspline(results, robot_s.n_dof, overlay=True)
-        # plot_control_points_comparison(control_points, action[0].cpu().numpy().copy(), robot_s.n_dof)
-        
-        '''compare the action with the control points'''
-        generated_c = action[0].cpu().numpy().copy()
-        generated_c[:4] = control_points[:4]
-        generated_c[-4:] = control_points[-4:]
-        compare_bspline_two_methods(knots, control_points, generated_c, 
-                                    degree, T_total_list, robot_s.n_dof)
+        # pred_jnt_seed = dataset.normalizer['obs']['jnt_pos'].unnormalize(action[0,0,:].cpu().numpy())
+        pred_jnt_seed = action[0,0,:].cpu().numpy()
+        print(f"Predicted joint seed: {repr(pred_jnt_seed)}")
+        robot_s.goto_given_conf(pred_jnt_seed)
+        robot_s.gen_meshmodel(rgb = [0,0,1], alpha=0.3).attach_to(base)
+        base.run()
 else:
     raise ValueError("Illegal mode")

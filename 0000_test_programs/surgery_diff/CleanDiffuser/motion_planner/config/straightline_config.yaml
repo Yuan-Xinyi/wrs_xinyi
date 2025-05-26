@@ -28,7 +28,7 @@ model_dim: 32
 
 predict_noise: True
 ema_rate: 0.9999
-sample_steps: 25
+sample_steps: 10
 val_freq: 1000
 
 # log and inference
