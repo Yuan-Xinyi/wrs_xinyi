@@ -34,6 +34,34 @@ def set_seed(seed: int):
     np.random.seed(seed)
     random.seed(seed)
 
+def initjnt2jntpath(robot, base, jnt_seed, pos_s, pos,g, waypoint_interval=0.1, max_try_time=5,
+                   check_collision=True, obstacle_list=None, visualize=False):
+    """
+    Initialize a joint path from jnt_seed to jnt_goal.
+    """
+    jnt_path = []
+    jnt_path.append(jnt_seed)
+
+    start_time = time.time()
+    while jnt is None and time.time() - start_time < max_try_time:
+        try:
+            rotmat = rm.rotmat_from_euler(np.pi/2,0,0)
+            j = robot.ik(tgt_pos=pos, tgt_rotmat=rotmat, seed_jnt_values = jnt_list[-1] if jnt_list else None)
+            if j is None:
+                continue
+            robot.goto_given_conf(j)
+            if check_collision and robot.cc.is_collided(obstacle_list=obstacle_list):
+                continue
+            jnt = j
+            success_count += 1
+            if visualize:
+                mcm.mgm.gen_frame(pos=pos, rotmat=rotmat).attach_to(base)
+                robot.gen_meshmodel(alpha=.2).attach_to(base)
+            break
+        except:
+            break
+
+    return jnt_path
 
 '''load the config file'''
 current_file_dir = os.path.dirname(__file__)
@@ -215,9 +243,11 @@ if config['mode'] == "inference":
 
         robot_s.goto_given_conf([-1.7201, -1.4743, -0.4602, -2.5136, -0.5191, 2.5270, 0.3964])
         robot_s.gen_meshmodel(rgb = [0,1,0], alpha=0.3).attach_to(base)
+        
         # robot_s.goto_given_conf(jnt_seed)
-        pos, rot = robot_s.fk(jnt_seed, toggle_jacobian=True, update=True)
-    
+        pos, rot = robot_s.fk([-1.7201, -1.4743, -0.4602, -2.5136, -0.5191, 2.5270, 0.3964], toggle_jacobian=True, update=True)
+        mcm.mgm.gen_frame(pos=pos, rotmat=rot).attach_to(base)
+        
         # mgm.gen_arrow(spos=workspc_pos[0], epos=workspc_pos[-1], stick_radius=.0025, rgb=[0,0,0]).attach_to(base)
         mgm.gen_arrow(spos=np.array([-0.2569, -0.1540,  0.7276]), 
                       epos=np.array([-0.1069, -0.1540,  0.7276]), stick_radius=.005, rgb=[1,0,0]).attach_to(base)
@@ -236,6 +266,8 @@ if config['mode'] == "inference":
         print(f"Predicted joint seed: {repr(pred_jnt_seed)}")
         robot_s.goto_given_conf(pred_jnt_seed)
         robot_s.gen_meshmodel(rgb = [0,0,1], alpha=0.3).attach_to(base)
+        pos, rot = robot_s.fk(pred_jnt_seed, toggle_jacobian=True, update=True)
+        mcm.mgm.gen_frame(pos=pos, rotmat=rot).attach_to(base)
         base.run()
 else:
     raise ValueError("Illegal mode")
