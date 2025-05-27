@@ -229,45 +229,90 @@ if config['mode'] == "inference":
     pos_goal = workspc_pos[-1]
     
     # --------------- Inference -----------------
+    '''fixed sample used in the mid-term presentation'''
     # for traj_id in tqdm(range(len(start_list))):
     for traj_id in range(1):
         '''prepare the start and goal config'''
-        condition = np.concatenate([pos_start, pos_goal], axis=-1)
-        condition = torch.tensor(condition, device=config['device']).unsqueeze(0).float()  # (1, 6)
         condition = torch.tensor([-0.2569, -0.1540,  0.7276, -0.1069, -0.1540,  0.7276], device=config['device']).unsqueeze(0).float()  # (1, 6)
-        # print(f"Groundtruth joint seed: {repr([-1.7201, -1.4743, -0.4602, -2.5136, -0.5191, 2.5270, 0.3964])}")
-
-        print('**'*100)
-        print(f"Condition: {condition}")
-        print(f"Groundtruth joint seed: {repr(jnt_pos[0])}")
-
         robot_s.goto_given_conf([-1.7201, -1.4743, -0.4602, -2.5136, -0.5191, 2.5270, 0.3964])
         robot_s.gen_meshmodel(rgb = [0,1,0], alpha=0.3).attach_to(base)
         
-        # robot_s.goto_given_conf(jnt_seed)
-        pos, rot = robot_s.fk([-1.7201, -1.4743, -0.4602, -2.5136, -0.5191, 2.5270, 0.3964], toggle_jacobian=True, update=True)
-        mcm.mgm.gen_frame(pos=pos, rotmat=rot).attach_to(base)
-        
-        # mgm.gen_arrow(spos=workspc_pos[0], epos=workspc_pos[-1], stick_radius=.0025, rgb=[0,0,0]).attach_to(base)
+        pos, rot = robot_s.fk(jnt_values=[-1.7201, -1.4743, -0.4602, -2.5136, -0.5191, 2.5270, 0.3964], toggle_jacobian=True, update=True)
         mgm.gen_arrow(spos=np.array([-0.2569, -0.1540,  0.7276]), 
                       epos=np.array([-0.1069, -0.1540,  0.7276]), stick_radius=.005, rgb=[1,0,0]).attach_to(base)
-        
-        # robot_s.gen_meshmodel(rgb = [0,1,0], alpha=0.3).attach_to(base)
-
 
         '''inference the trajectory'''
         prior = torch.zeros((n_samples, config['horizon'], config['action_dim']), device=config['device'])
+        if n_samples != 1:
+            condition = condition.repeat(n_samples, 1)
         with torch.no_grad():
             action, _ = agent.sample(prior=prior, n_samples=n_samples, sample_steps=config['sample_steps'], temperature=1.0,
                                     solver=solver, condition_cfg=condition, w_cfg = 1.0, use_ema=True)
-        
-        # pred_jnt_seed = dataset.normalizer['obs']['jnt_pos'].unnormalize(action[0,0,:].cpu().numpy())
-        pred_jnt_seed = action[0,0,:].cpu().numpy()
-        print(f"Predicted joint seed: {repr(pred_jnt_seed)}")
-        robot_s.goto_given_conf(pred_jnt_seed)
-        robot_s.gen_meshmodel(rgb = [0,0,1], alpha=0.3).attach_to(base)
-        pos, rot = robot_s.fk(pred_jnt_seed, toggle_jacobian=True, update=True)
-        mcm.mgm.gen_frame(pos=pos, rotmat=rot).attach_to(base)
+        for i in range(n_samples):
+            pred_jnt_seed = action[i,0,:].cpu().numpy()
+            # pred_jnt_seed = [-1.7201, -1.4743, -0.4602, -2.5136, -0.5191, 2.5270, 0.3964]
+            print(f"Predicted joint seed: {repr(pred_jnt_seed)}")
+            robot_s.goto_given_conf(pred_jnt_seed)
+            if n_samples != 1:
+                robot_s.gen_meshmodel(rgb = None, alpha=0.2).attach_to(base)
+            else:
+                jnt_list = [pred_jnt_seed]
+                pos = [-0.2569, -0.1540,  0.7276]
+                _, rot = robot_s.fk(jnt_values=pred_jnt_seed, toggle_jacobian=True, update=True)
+                for _ in range(30):
+                    pos[0] += 0.01*(_+1)
+                    jnt_list.append(robot_s.ik(tgt_pos=pos, tgt_rotmat=rot, seed_jnt_values=jnt_list[-1]))
+                for jnt in jnt_list:
+                    if jnt is not None:
+                        robot_s.goto_given_conf(jnt)
+                        robot_s.gen_meshmodel(rgb = [0,0,1], alpha=0.1).attach_to(base)
+                    else:
+                        print(f"IK failed at sample {_},...")
+                        break
         base.run()
+
+    '''random traj test'''
+    # # for traj_id in tqdm(range(len(start_list))):
+    # for traj_id in range(1):
+    #     '''prepare the start and goal config'''
+    #     condition = np.concatenate([pos_start, pos_goal], axis=-1)
+    #     condition = torch.tensor(condition, device=config['device']).unsqueeze(0).float()  # (1, 6)
+    #     condition = torch.tensor([-0.2569, -0.1540,  0.7276, -0.1069, -0.1540,  0.7276], device=config['device']).unsqueeze(0).float()  # (1, 6)
+    #     # print(f"Groundtruth joint seed: {repr([-1.7201, -1.4743, -0.4602, -2.5136, -0.5191, 2.5270, 0.3964])}")
+
+    #     print('**'*100)
+    #     print(f"Condition: {condition}")
+    #     print(f"Groundtruth joint seed: {repr(jnt_pos[0])}")
+
+    #     robot_s.goto_given_conf([-1.7201, -1.4743, -0.4602, -2.5136, -0.5191, 2.5270, 0.3964])
+    #     robot_s.gen_meshmodel(rgb = [0,1,0], alpha=0.3).attach_to(base)
+        
+    #     # robot_s.goto_given_conf(jnt_seed)
+    #     pos, rot = robot_s.fk([-1.7201, -1.4743, -0.4602, -2.5136, -0.5191, 2.5270, 0.3964], toggle_jacobian=True, update=True)
+    #     # mcm.mgm.gen_frame(pos=pos, rotmat=rot).attach_to(base)
+        
+    #     # mgm.gen_arrow(spos=workspc_pos[0], epos=workspc_pos[-1], stick_radius=.0025, rgb=[0,0,0]).attach_to(base)
+    #     mgm.gen_arrow(spos=np.array([-0.2569, -0.1540,  0.7276]), 
+    #                   epos=np.array([-0.1069, -0.1540,  0.7276]), stick_radius=.005, rgb=[1,0,0]).attach_to(base)
+        
+    #     # robot_s.gen_meshmodel(rgb = [0,1,0], alpha=0.3).attach_to(base)
+
+
+    #     '''inference the trajectory'''
+    #     prior = torch.zeros((n_samples, config['horizon'], config['action_dim']), device=config['device'])
+    #     if n_samples != 1:
+    #         condition = condition.repeat(n_samples, 1)
+    #     with torch.no_grad():
+    #         action, _ = agent.sample(prior=prior, n_samples=n_samples, sample_steps=config['sample_steps'], temperature=1.0,
+    #                                 solver=solver, condition_cfg=condition, w_cfg = 1.0, use_ema=True)
+    #     for i in range(n_samples):
+    #         # pred_jnt_seed = dataset.normalizer['obs']['jnt_pos'].unnormalize(action[0,0,:].cpu().numpy())
+    #         pred_jnt_seed = action[i,0,:].cpu().numpy()
+    #         print(f"Predicted joint seed: {repr(pred_jnt_seed)}")
+    #         robot_s.goto_given_conf(pred_jnt_seed)
+    #         robot_s.gen_meshmodel(rgb = None, alpha=0.2).attach_to(base)
+    #         # pos, rot = robot_s.fk(pred_jnt_seed, toggle_jacobian=True, update=True)
+    #         # mcm.mgm.gen_frame(pos=pos, rotmat=rot).attach_to(base)
+    #     base.run()
 else:
     raise ValueError("Illegal mode")
