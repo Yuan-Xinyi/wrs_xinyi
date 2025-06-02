@@ -28,40 +28,42 @@ from cleandiffuser.dataset.dataset_utils import loop_dataloader
 from cleandiffuser.utils import report_parameters
 from ruckig_dataset import StraightLineDataset
 from torch.utils.data import random_split
-
+'''if want to test the directory'''
+# import os
+# print(os.getcwd())
 def set_seed(seed: int):
     torch.manual_seed(seed)
     np.random.seed(seed)
     random.seed(seed)
 
-def initjnt2jntpath(robot, base, jnt_seed, pos_s, pos,g, waypoint_interval=0.1, max_try_time=5,
-                   check_collision=True, obstacle_list=None, visualize=False):
-    """
-    Initialize a joint path from jnt_seed to jnt_goal.
-    """
-    jnt_path = []
-    jnt_path.append(jnt_seed)
-
-    start_time = time.time()
-    while jnt is None and time.time() - start_time < max_try_time:
-        try:
-            rotmat = rm.rotmat_from_euler(np.pi/2,0,0)
-            j = robot.ik(tgt_pos=pos, tgt_rotmat=rotmat, seed_jnt_values = jnt_list[-1] if jnt_list else None)
-            if j is None:
-                continue
-            robot.goto_given_conf(j)
-            if check_collision and robot.cc.is_collided(obstacle_list=obstacle_list):
-                continue
-            jnt = j
-            success_count += 1
-            if visualize:
-                mcm.mgm.gen_frame(pos=pos, rotmat=rotmat).attach_to(base)
-                robot.gen_meshmodel(alpha=.2).attach_to(base)
-            break
-        except:
-            break
-
-    return jnt_path
+# def initjnt2jntpath(robot, base, jnt_seed, pos_s, pos,g, waypoint_interval=0.1, max_try_time=5,
+#                    check_collision=True, obstacle_list=None, visualize=False):
+#     """
+#     Initialize a joint path from jnt_seed to jnt_goal.
+#     """
+#     jnt_path = []
+#     jnt_path.append(jnt_seed)
+#
+#     start_time = time.time()
+#     while jnt is None and time.time() - start_time < max_try_time:
+#         try:
+#             rotmat = rm.rotmat_from_euler(np.pi/2,0,0)
+#             j = robot.ik(tgt_pos=pos, tgt_rotmat=rotmat, seed_jnt_values = jnt_list[-1] if jnt_list else None)
+#             if j is None:
+#                 continue
+#             robot.goto_given_conf(j)
+#             if check_collision and robot.cc.is_collided(obstacle_list=obstacle_list):
+#                 continue
+#             jnt = j
+#             success_count += 1
+#             if visualize:
+#                 mcm.mgm.gen_frame(pos=pos, rotmat=rotmat).attach_to(base)
+#                 robot.gen_meshmodel(alpha=.2).attach_to(base)
+#             break
+#         except:
+#             break
+#
+#     return jnt_path
 
 '''load the config file'''
 current_file_dir = os.path.dirname(__file__)
@@ -190,9 +192,7 @@ if config['mode'] == "train":
 
 if config['mode'] == "inference":
     from scipy.interpolate import make_lsq_spline, BSpline
-
-    model_path = '0000_test_programs/surgery_diff/CleanDiffuser/motion_planner/results/' \
-    '0525_1950gostraight_h16_b64_normTrue/diffusion_ckpt_latest.pt'
+    model_path = 'results/0525_1950gostraight_h16_b64_normTrue/diffusion_ckpt_latest.pt'
     agent.load(model_path)
     agent.model.eval()
     agent.model_ema.eval()
@@ -227,133 +227,133 @@ if config['mode'] == "inference":
     
     # --------------- Inference -----------------
     '''fixed sample used in the mid-term presentation'''
-    # for traj_id in tqdm(range(len(start_list))):
-    for traj_id in range(1):
-        '''prepare the start and goal config'''
-        condition = torch.tensor([-0.2569, -0.1540,  0.7276, -0.1069, -0.1540,  0.7276], device=config['device']).unsqueeze(0).float()  # (1, 6)
-        robot_s.goto_given_conf([-1.7201, -1.4743, -0.4602, -2.5136, -0.5191, 2.5270, 0.3964])
-        robot_s.gen_meshmodel(rgb = [0,1,0], alpha=0.3).attach_to(base)
-        
-        pos, rot = robot_s.fk(jnt_values=[-1.7201, -1.4743, -0.4602, -2.5136, -0.5191, 2.5270, 0.3964], toggle_jacobian=True, update=True)
-        mgm.gen_arrow(spos=np.array([-0.2569, -0.1540,  0.7276]), 
-                      epos=np.array([-0.1069, -0.1540,  0.7276]), stick_radius=.005, rgb=[1,0,0]).attach_to(base)
-
-        '''inference the trajectory'''
-        prior = torch.zeros((n_samples, config['horizon'], config['action_dim']), device=config['device'])
-        if n_samples != 1:
-            condition = condition.repeat(n_samples, 1)
-        with torch.no_grad():
-            action, _ = agent.sample(prior=prior, n_samples=n_samples, sample_steps=config['sample_steps'], temperature=1.0,
-                                    solver=solver, condition_cfg=condition, w_cfg = 1.0, use_ema=True)
-        for i in range(n_samples):
-            pred_jnt_seed = action[i,0,:].cpu().numpy()
-            # pred_jnt_seed = [-1.7201, -1.4743, -0.4602, -2.5136, -0.5191, 2.5270, 0.3964]
-            print(f"Predicted joint seed: {repr(pred_jnt_seed)}")
-            robot_s.goto_given_conf(pred_jnt_seed)
-            if n_samples != 1:
-                robot_s.gen_meshmodel(rgb = None, alpha=0.2).attach_to(base)
-            else:
-                jnt_list = [pred_jnt_seed]
-                pos = [-0.2569, -0.1540,  0.7276]
-                _, rot = robot_s.fk(jnt_values=pred_jnt_seed, toggle_jacobian=True, update=True)
-                for _ in range(200):
-                    pos[0] += 0.01
-                    res = robot_s.ik(tgt_pos=pos, tgt_rotmat=rot, seed_jnt_values=jnt_list[-1])
-                    if res is None:
-                        print(f"IK failed at sample {_},...")
-                        break
-                    else:
-                        jnt_list.append(res)
-                for idx in [1,-1]:
-                    robot_s.goto_given_conf(jnt_list[idx])
-                    robot_s.gen_meshmodel(rgb = [0,0,1], alpha=0.2).attach_to(base)
-                
-                pos,_ = robot_s.fk(jnt_values=jnt_list[-1])
-                print(f'Predicted joint length: {len(jnt_list)}, last position: {pos}')
-                print(f'distance ')
-        base.run()
+    # # for traj_id in tqdm(range(len(start_list))):
+    # for traj_id in range(1):
+    #     '''prepare the start and goal config'''
+    #     condition = torch.tensor([-0.2569, -0.1540,  0.7276, -0.1069, -0.1540,  0.7276], device=config['device']).unsqueeze(0).float()  # (1, 6)
+    #     robot_s.goto_given_conf([-1.7201, -1.4743, -0.4602, -2.5136, -0.5191, 2.5270, 0.3964])
+    #     robot_s.gen_meshmodel(rgb = [0,1,0], alpha=0.3).attach_to(base)
+    #
+    #     pos, rot = robot_s.fk(jnt_values=[-1.7201, -1.4743, -0.4602, -2.5136, -0.5191, 2.5270, 0.3964], toggle_jacobian=True, update=True)
+    #     mgm.gen_arrow(spos=np.array([-0.2569, -0.1540,  0.7276]),
+    #                   epos=np.array([-0.1069, -0.1540,  0.7276]), stick_radius=.005, rgb=[1,0,0]).attach_to(base)
+    #
+    #     '''inference the trajectory'''
+    #     prior = torch.zeros((n_samples, config['horizon'], config['action_dim']), device=config['device'])
+    #     if n_samples != 1:
+    #         condition = condition.repeat(n_samples, 1)
+    #     with torch.no_grad():
+    #         action, _ = agent.sample(prior=prior, n_samples=n_samples, sample_steps=config['sample_steps'], temperature=1.0,
+    #                                 solver=solver, condition_cfg=condition, w_cfg = 1.0, use_ema=True)
+    #     for i in range(n_samples):
+    #         pred_jnt_seed = action[i,0,:].cpu().numpy()
+    #         # pred_jnt_seed = [-1.7201, -1.4743, -0.4602, -2.5136, -0.5191, 2.5270, 0.3964]
+    #         print(f"Predicted joint seed: {repr(pred_jnt_seed)}")
+    #         robot_s.goto_given_conf(pred_jnt_seed)
+    #         if n_samples != 1:
+    #             robot_s.gen_meshmodel(rgb = None, alpha=0.2).attach_to(base)
+    #         else:
+    #             jnt_list = [pred_jnt_seed]
+    #             pos = [-0.2569, -0.1540,  0.7276]
+    #             _, rot = robot_s.fk(jnt_values=pred_jnt_seed, toggle_jacobian=True, update=True)
+    #             for _ in range(200):
+    #                 pos[0] += 0.01
+    #                 res = robot_s.ik(tgt_pos=pos, tgt_rotmat=rot, seed_jnt_values=jnt_list[-1])
+    #                 if res is None:
+    #                     print(f"IK failed at sample {_},...")
+    #                     break
+    #                 else:
+    #                     jnt_list.append(res)
+    #             for idx in [1,-1]:
+    #                 robot_s.goto_given_conf(jnt_list[idx])
+    #                 robot_s.gen_meshmodel(rgb = [0,0,1], alpha=0.2).attach_to(base)
+    #
+    #             pos,_ = robot_s.fk(jnt_values=jnt_list[-1])
+    #             print(f'Predicted joint length: {len(jnt_list)}, last position: {pos}')
+    #             print(f'distance ')
+    #     base.run()
 
     '''random traj test'''
-    # # generate the random condition
-    # gth_jnt_seed = robot_s.rand_conf()
-    # pos, rot = robot_s.fk(jnt_values=gth_jnt_seed)
-    # pos_start = copy.deepcopy(pos)  # start position
-    # jnt_list = [gth_jnt_seed]
+    # generate the random condition
+    gth_jnt_seed = robot_s.rand_conf()
+    pos, rot = robot_s.fk(jnt_values=gth_jnt_seed)
+    pos_start = copy.deepcopy(pos)  # start position
+    jnt_list = [gth_jnt_seed]
     
-    # axis = random.choice(['x', 'y', 'z'])
-    # axis_map = {'x': 0, 'y': 1, 'z': 2}
-    # axis_idx = axis_map[axis]
+    axis = random.choice(['x', 'y', 'z'])
+    axis_map = {'x': 0, 'y': 1, 'z': 2}
+    axis_idx = axis_map[axis]
     
-    # for _ in range(200):
-    #     pos[axis_idx] += 0.01
-    #     jnt = robot_s.ik(tgt_pos=pos, tgt_rotmat=rot, seed_jnt_values=jnt_list[-1])
-    #     if jnt is not None:
-    #         jnt_list.append(jnt)
-    #     else:
-    #         print('-' * 40)
-    #         print(f"IK failed at sample {_},...")
-    #         break
-    # print(f"Generated {len(jnt_list)} joint configurations.")
-    # pos_goal = copy.deepcopy(robot_s.fk(jnt_values=jnt_list[-1])[0])
+    for _ in range(200):
+        pos[axis_idx] += 0.01
+        jnt = robot_s.ik(tgt_pos=pos, tgt_rotmat=rot, seed_jnt_values=jnt_list[-1])
+        if jnt is not None:
+            jnt_list.append(jnt)
+        else:
+            print('-' * 40)
+            print(f"IK failed at sample {_},...")
+            break
+    print(f"Generated {len(jnt_list)} joint configurations.")
+    pos_goal = copy.deepcopy(robot_s.fk(jnt_values=jnt_list[-1])[0])
 
-    # '''report the parameters'''
-    # print('=' * 80)
-    # print(f"Start position: {pos_start}, Goal position: {pos_goal}")
-    # print(f"Move axis: {axis}, Move distance: {pos[axis_idx] - pos_start[axis_idx]}m")
-    # print(f"Total {len(jnt_list)} joint configurations sampled.")
-    # print('=' * 80)
+    '''report the parameters'''
+    print('=' * 80)
+    print(f"Start position: {pos_start}, Goal position: {pos_goal}")
+    print(f"Move axis: {axis}, Move distance: {pos[axis_idx] - pos_start[axis_idx]}m")
+    print(f"Total {len(jnt_list)} joint configurations sampled.")
+    print('=' * 80)
 
 
-    # '''prepare the start and goal config'''
-    # condition = np.concatenate([pos_start, pos_goal], axis=0)  # (6,)
-    # condition = torch.tensor(condition, device=config['device']).unsqueeze(0).float()  # (1, 6)
-    # robot_s.goto_given_conf(gth_jnt_seed)
-    # robot_s.gen_meshmodel(rgb = [0,1,0], alpha=0.3).attach_to(base)
+    '''prepare the start and goal config'''
+    condition = np.concatenate([pos_start, pos_goal], axis=0)  # (6,)
+    condition = torch.tensor(condition, device=config['device']).unsqueeze(0).float()  # (1, 6)
+    robot_s.goto_given_conf(gth_jnt_seed)
+    robot_s.gen_meshmodel(rgb = [0,1,0], alpha=0.3).attach_to(base)
 
-    # if axis == 'x':
-    #     rgb = [1, 0, 0]
-    # elif axis == 'y':
-    #     rgb = [0, 1, 0]
-    # elif axis == 'z':
-    #     rgb = [0, 0, 1]
-    # else:
-    #     raise ValueError("Illegal axis, should be one of ['x', 'y', 'z']")
-    # mgm.gen_arrow(spos=np.array(pos_start), 
-    #                 epos=np.array(pos_goal), stick_radius=.005, rgb=rgb).attach_to(base)
+    if axis == 'x':
+        rgb = [1, 0, 0]
+    elif axis == 'y':
+        rgb = [0, 1, 0]
+    elif axis == 'z':
+        rgb = [0, 0, 1]
+    else:
+        raise ValueError("Illegal axis, should be one of ['x', 'y', 'z']")
+    mgm.gen_arrow(spos=np.array(pos_start),
+                    epos=np.array(pos_goal), stick_radius=.005, rgb=rgb).attach_to(base)
 
-    # '''inference the trajectory'''
-    # prior = torch.zeros((n_samples, config['horizon'], config['action_dim']), device=config['device'])
-    # if n_samples != 1:
-    #     condition = condition.repeat(n_samples, 1)
-    # with torch.no_grad():
-    #     action, _ = agent.sample(prior=prior, n_samples=n_samples, sample_steps=config['sample_steps'], temperature=1.0,
-    #                             solver=solver, condition_cfg=condition, w_cfg = 1.0, use_ema=True)
-    # for i in range(n_samples):
-    #     pred_jnt_seed = action[i,0,:].cpu().numpy()
-    #     print(f"Predicted joint seed: {repr(pred_jnt_seed)}")
-    #     robot_s.goto_given_conf(pred_jnt_seed)
-    #     if n_samples != 1:
-    #         robot_s.gen_meshmodel(rgb = None, alpha=0.2).attach_to(base)
-    #     else:
-    #         jnt_list = [pred_jnt_seed]
-    #         robot_s.goto_given_conf(pred_jnt_seed)
-    #         robot_s.gen_meshmodel(rgb = [1,0,0], alpha=0.1).attach_to(base)
-    #         pos = copy.deepcopy(pos_start)
-    #         _, rot = robot_s.fk(jnt_values=pred_jnt_seed, toggle_jacobian=True, update=True)
-    #         for _ in range(200):
-    #             pos[axis_idx] += 0.01
-    #             res = robot_s.ik(tgt_pos=pos, tgt_rotmat=rot, seed_jnt_values=jnt_list[-1])
-    #             if res is None:
-    #                 print(f"IK failed at sample {_},...")
-    #                 break
-    #             else:
-    #                 jnt_list.append(res)
-    #         for idx in [1,-1]:
-    #             robot_s.goto_given_conf(jnt_list[idx])
-    #             robot_s.gen_meshmodel(rgb = [0,0,1], alpha=0.2).attach_to(base)
+    '''inference the trajectory'''
+    prior = torch.zeros((n_samples, config['horizon'], config['action_dim']), device=config['device'])
+    if n_samples != 1:
+        condition = condition.repeat(n_samples, 1)
+    with torch.no_grad():
+        action, _ = agent.sample(prior=prior, n_samples=n_samples, sample_steps=config['sample_steps'], temperature=1.0,
+                                solver=solver, condition_cfg=condition, w_cfg = 1.0, use_ema=True)
+    for i in range(n_samples):
+        pred_jnt_seed = action[i,0,:].cpu().numpy()
+        print(f"Predicted joint seed: {repr(pred_jnt_seed)}")
+        robot_s.goto_given_conf(pred_jnt_seed)
+        if n_samples != 1:
+            robot_s.gen_meshmodel(rgb = None, alpha=0.2).attach_to(base)
+        else:
+            jnt_list = [pred_jnt_seed]
+            robot_s.goto_given_conf(pred_jnt_seed)
+            robot_s.gen_meshmodel(rgb = [1,0,0], alpha=0.1).attach_to(base)
+            pos = copy.deepcopy(pos_start)
+            _, rot = robot_s.fk(jnt_values=pred_jnt_seed, toggle_jacobian=True, update=True)
+            for _ in range(200):
+                pos[axis_idx] += 0.01
+                res = robot_s.ik(tgt_pos=pos, tgt_rotmat=rot, seed_jnt_values=jnt_list[-1])
+                if res is None:
+                    print(f"IK failed at sample {_},...")
+                    break
+                else:
+                    jnt_list.append(res)
+            for idx in [1,-1]:
+                robot_s.goto_given_conf(jnt_list[idx])
+                robot_s.gen_meshmodel(rgb = [0,0,1], alpha=0.2).attach_to(base)
 
-    #         pos,_ = robot_s.fk(jnt_values=jnt_list[-1])
-    #         print(f'Predicted joint length: {len(jnt_list)}, last position: {pos}')
-    # base.run()
+            pos,_ = robot_s.fk(jnt_values=jnt_list[-1])
+            print(f'Predicted joint length: {len(jnt_list)}, last position: {pos}')
+    base.run()
 else:
     raise ValueError("Illegal mode")
