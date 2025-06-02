@@ -126,6 +126,8 @@ def generate_grid_obstacles(n_samples=10, generate_noise=True):
             all_noise_points.extend(noise_points)
 
             return obstacle_list + all_noise_points
+        else:
+            return obstacle_list
     
     return obstacle_list
 
@@ -222,38 +224,38 @@ if __name__ == '__main__':
     jnt_values = robot_s.rand_conf()
     
     '''generate obstacles'''
-    # robot_s.goto_given_conf(jnt_values)
-    # robot_s.gen_meshmodel().attach_to(base)
-    # # 1. Generate random obstacles with noise points
-    # obstacles = generate_grid_obstacles(n_samples=6, generate_noise=False)
+    robot_s.goto_given_conf(jnt_values)
+    robot_s.gen_meshmodel().attach_to(base)
+    # 1. Generate random obstacles with noise points
+    obstacles = generate_grid_obstacles(n_samples=6, generate_noise=False)
     
-    # # 2. Voxelize the scene
-    # obstacle_voxels, voxel_origin = voxelize_scene()
+    # 2. Voxelize the scene
+    obstacle_voxels, voxel_origin = voxelize_scene()
     
-    # # 3. Visualize voxels
-    # visualize_voxels(obstacle_voxels, voxel_origin, GRID_SIZE)
+    # 3. Visualize voxels
+    visualize_voxels(obstacle_voxels, voxel_origin, GRID_SIZE)
     
-    # # Run visualization
-    # base.run()
+    # Run visualization
+    base.run()
 
     '''traj obstacle'''
-    root = zarr.open('/home/lqin/zarr_datasets/franka_ruckig.zarr', mode='r')
-
-    traj_id = 1
-    traj_start = int(np.sum(root['meta']['episode_ends'][:traj_id]))
-    traj_end = int(np.sum(root['meta']['episode_ends'][:traj_id + 1]))
-    jnt_pos_list = root['data']['jnt_pos'][traj_start:traj_start+64]
-
-
-    obstacles = generate_grid_obstacles(n_samples=15, generate_noise=False)
-
-    for jnt in jnt_pos_list:
-        robot_s.goto_given_conf(jnt_values=jnt)
-        for obstacle in obstacles:
-            if robot_s.cc.is_collided(obstacle_list=[obstacle]):
-                obstacles.remove(obstacle)
-        robot_s.gen_meshmodel(alpha=0.1).attach_to(base)
-    print('obstacles:', len(obstacles))
-    
-    base.run()
+    # root = zarr.open('/home/lqin/zarr_datasets/franka_ruckig.zarr', mode='r')
+    #
+    # traj_id = 1
+    # traj_start = int(np.sum(root['meta']['episode_ends'][:traj_id]))
+    # traj_end = int(np.sum(root['meta']['episode_ends'][:traj_id + 1]))
+    # jnt_pos_list = root['data']['jnt_pos'][traj_start:traj_start+64]
+    #
+    #
+    # obstacles = generate_grid_obstacles(n_samples=15, generate_noise=False)
+    #
+    # for jnt in jnt_pos_list:
+    #     robot_s.goto_given_conf(jnt_values=jnt)
+    #     for obstacle in obstacles:
+    #         if robot_s.cc.is_collided(obstacle_list=[obstacle]):
+    #             obstacles.remove(obstacle)
+    #     robot_s.gen_meshmodel(alpha=0.1).attach_to(base)
+    # print('obstacles:', len(obstacles))
+    #
+    # base.run()
 
