@@ -70,7 +70,7 @@ def visualize_anime_path(robot, path, start_conf, goal_conf):
         anime_data.counter += 1
         return task.again
 
-    taskMgr.doMethodLater(0.01, update, "update",
+    taskMgr.doMethodLater(0.5, update, "update",
                         extraArgs=[robot, anime_data],
                         appendTask=True)
     base.run()
@@ -223,11 +223,11 @@ if __name__ == '__main__':
     )
     ground = generate_ground_plane(size_x=2.5, size_y=2.5, color=[0.95, 0.95, 1.0])
     obstacle_list.append(ground)
-    robot.gen_meshmodel(alpha=1.0).attach_to(base)
-    base.run()
+    # robot.gen_meshmodel(alpha=1.0).attach_to(base)
+    # base.run()
 
     '''dataset generation'''
-    dataset_name = os.path.join('/home/lqin/zarr_datasets', f'fixed_traj.zarr')
+    dataset_name = os.path.join('/home/lqin/zarr_datasets', f'test.zarr')
     store = zarr.DirectoryStore(dataset_name)
     root = zarr.group(store=store)
     print('dataset created in:', dataset_name)    
@@ -257,9 +257,9 @@ if __name__ == '__main__':
             check_collision=True,
             visualize=False
             )
-        # plot_joint_trajectories(jnt_list)
-        # visualize_anime_path(robot, jnt_list, jnt_list[0], jnt_list[-1])
-        # base.run()
+        plot_joint_trajectories(jnt_list)
+        visualize_anime_path(robot, jnt_list, jnt_list[0], jnt_list[-1])
+        base.run()
 
         '''generate the trajectory'''
         inp.current_position, inp.target_position = jnt_list[0], jnt_list[-1]
@@ -273,12 +273,12 @@ if __name__ == '__main__':
     
             # print('\t'.join([f'{out.time:0.3f}'] + [f'{p:0.3f}' for p in out.new_position]))
             out_list.append(copy(out))
-            jnt_path.append(np.array((out.new_position)))
+            jnt_path.append(np.array(out.new_position))
     
             out.pass_to_input(inp)
-            jnt_p.append(np.array((out.new_position)).reshape(1, dof))
-            jnt_v.append(np.array((out.new_velocity)).reshape(1, dof))
-            jnt_a.append(np.array((out.new_acceleration)).reshape(1, dof))
+            jnt_p.append(np.array(out.new_position).reshape(1, dof))
+            jnt_v.append(np.array(out.new_velocity).reshape(1, dof))
+            jnt_a.append(np.array(out.new_acceleration).reshape(1, dof))
             episode_ends_counter += 1
 
             if not first_output:

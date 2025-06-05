@@ -180,7 +180,7 @@ if config['mode'] == "train":
 
 elif config['mode'] == "pos_inference":
     # ----------------- Inference ----------------------
-    model_path = os.path.join(current_file_dir, 'diffusion_ckpt_5000.pt')
+    model_path = os.path.join(current_file_dir, 'diffusion_ckpt_latest.pt')
     json_path = os.path.join('0000_test_programs/surgery_diff/CleanDiffuser/motion_planner', config['json_file'])
     agent.load(model_path)
     agent.model.eval()

@@ -130,12 +130,11 @@ def plot_joint_trajectories(jnt_list):
     plt.tight_layout(rect=[0, 0.03, 1, 0.97])
     plt.show()
 
-import numpy as np
 
 def discretize_joint_space(robot, n_intervals=None):
     sampled_jnts = []
     if n_intervals is None:
-        n_intervals = np.linspace(6, 3, robot.n_dof, endpoint=False)
+        n_intervals = np.linspace(6, 4, robot.n_dof, endpoint=False)
     print(f"Sampling Joint Space using the following joint granularity: {n_intervals.astype(int)}...")
     for i in range(robot.n_dof):
         sampled_jnts.append(
@@ -167,41 +166,41 @@ if __name__ == '__main__':
     print('--' * 100)
 
     '''simple visualization of the straight line path'''
-    # for _ in tqdm(range(len(jnt_samples))):
-    for _ in tqdm(range(1)):
-        pos_init, rotmat_init = robot.fk(jnt_values=jnt_samples[_])
-
-        jnt_tracks = {}
-        for axis in ['x', 'y', 'z']:
-            axis_idx = {'x': 0, 'y': 1, 'z': 2}[axis]
-            jnt_list, pos = [jnt_samples[_]], pos_init.copy()
-
-            for _ in range(MAX_WAYPOINT):
-                pos_try = pos.copy(); pos_try[axis_idx] += waypoint_interval
-                # print(f"Trying to solve IK for position {pos_try} on axis {axis}...")
-                jnt = robot.ik(tgt_pos=pos_try, tgt_rotmat=rotmat_init, seed_jnt_values=jnt_list[-1])
-
-                if jnt is None:
-                    print(f"IK failed for position {pos_try} on axis {axis}.")
-                    break
-                pos = pos_try
-                jnt_list.append(jnt)
-                # mcm.mgm.gen_frame(pos=pos, rotmat=rotmat_init).attach_to(base)
-                # robot.goto_given_conf(jnt)
-                # robot.gen_meshmodel(alpha=0.3).attach_to(base)
-
-            jnt_tracks[axis] = jnt_list
-            print(f"Generated {len(jnt_list)} waypoints for axis {axis}.")
-    
-    # visualize the generated joint paths
-    path = []
-    for axis in ['x', 'z']:
-        path.extend(jnt_tracks[axis])
-    visualize_anime_path(robot, path)
-    # base.run()
+    # # for _ in tqdm(range(len(jnt_samples))):
+    # for _ in tqdm(range(1)):
+    #     pos_init, rotmat_init = robot.fk(jnt_values=jnt_samples[_])
+    #
+    #     jnt_tracks = {}
+    #     for axis in ['x', 'y', 'z']:
+    #         axis_idx = {'x': 0, 'y': 1, 'z': 2}[axis]
+    #         jnt_list, pos = [jnt_samples[_]], pos_init.copy()
+    #
+    #         for _ in range(MAX_WAYPOINT):
+    #             pos_try = pos.copy(); pos_try[axis_idx] += waypoint_interval
+    #             # print(f"Trying to solve IK for position {pos_try} on axis {axis}...")
+    #             jnt = robot.ik(tgt_pos=pos_try, tgt_rotmat=rotmat_init, seed_jnt_values=jnt_list[-1])
+    #
+    #             if jnt is None:
+    #                 print(f"IK failed for position {pos_try} on axis {axis}.")
+    #                 break
+    #             pos = pos_try
+    #             jnt_list.append(jnt)
+    #             # mcm.mgm.gen_frame(pos=pos, rotmat=rotmat_init).attach_to(base)
+    #             # robot.goto_given_conf(jnt)
+    #             # robot.gen_meshmodel(alpha=0.3).attach_to(base)
+    #
+    #         jnt_tracks[axis] = jnt_list
+    #         print(f"Generated {len(jnt_list)} waypoints for axis {axis}.")
+    #
+    # # visualize the generated joint paths
+    # path = []
+    # for axis in ['x', 'z']:
+    #     path.extend(jnt_tracks[axis])
+    # visualize_anime_path(robot, path)
+    # # base.run()
 
     '''dataset generation'''
-    dataset_name = os.path.join('/home/lqin/zarr_datasets', f'straight_line_joint_path.zarr')
+    dataset_name = os.path.join('/home/lqin/zarr_datasets', f'straight_line_joint_path_finegrained.zarr')
     store = zarr.DirectoryStore(dataset_name)
     root = zarr.group(store=store)
     print('dataset created in:', dataset_name)    
