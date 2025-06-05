@@ -147,7 +147,7 @@ def plot_bspline_only(results, num_joints, overlay=True):
 
 if __name__ == "__main__":
 
-    mode = 'bspline_from_control_points'  # 'bspline_from_control_points' or 'bspline_from_traj'
+    mode = 'bspline_from_traj'  # 'bspline_from_control_points' or 'bspline_from_traj'
     if mode == 'bspline_from_traj':
         # 测试：加载数据并测试不同的 T_total 和 dt
         root = zarr.open('/home/lqin/zarr_datasets/franka_ruckig_100hz_fixgoal.zarr', mode='r')
@@ -186,7 +186,7 @@ if __name__ == "__main__":
             results.append(result)
 
         # 绘制（叠加或独立绘制）
-        # plot_bspline(jnt_pos_list, jnt_vel_list, jnt_acc_list, t, results, overlay=True)
+        plot_bspline(jnt_pos_list, jnt_vel_list, jnt_acc_list, t, results, overlay=True)
         plot_bspline_only(results, 7, overlay=True)
     elif mode == 'bspline_from_control_points':
         # 测试：加载数据并测试不同的 T_total 和 dt
