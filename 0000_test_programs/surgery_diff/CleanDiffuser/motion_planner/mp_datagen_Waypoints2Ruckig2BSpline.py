@@ -5,41 +5,73 @@ import zarr
 import helper_functions as helper
 from scipy.interpolate import BSpline
 import os
+import sys
 from ruckig import InputParameter, OutputParameter, Result, Ruckig
 from copy import copy
 import wrs.robot_sim.robots.franka_research_3.franka_research_3 as franka
 from wrs import wd, rm, mcm
 import wrs.modeling.geometric_model as mgm
 
+# Get the parameters passed to the script
+if len(sys.argv) < 3:
+    print("Please provide both 'id_start' and 'id_end' parameters.")
+    sys.exit(1)
+
+# Read the parameters (in this case, traj_start and traj_end)
+id_start = int(sys.argv[1])  # The first parameter: trajectory start position
+id_end = int(sys.argv[2])    # The second parameter: trajectory end position
+
+print(f"Processing trajectory from {id_start} to {id_end}.")
+
 ruckig_root = zarr.open('/home/lqin/zarr_datasets/straight_jntpath_finegrained.zarr', mode='r')
 # ruckig_root = zarr.open('/home/lqin/zarr_datasets/straight_line_ruckig_jntpath.zarr', mode='r')
 
 '''ruckig time optimal trajectory generation'''
 dt = 0.01  # seconds
-waypoints_num = 8  # number of waypoints for ruckig
+waypoints_num = 16  # number of waypoints for ruckig
 base, robot, otg, inp, out = helper.initialize_ruckig(dt, waypoint_num=waypoints_num)
 
 '''new the dataset'''
 dataset_name = '/home/lqin/zarr_datasets/straight_jntpath_finegrained_paras.zarr'
-store = zarr.DirectoryStore(dataset_name)
-root = zarr.group(store=store)
-print('dataset created in:', dataset_name)
-meta_group = root.create_group("meta")
-data_group = root.create_group("data")
 dof = robot.n_dof
-ruckig_episode_ends_ds = meta_group.create_dataset("ruckig_episode_ends", shape=(0,), chunks=(1,), dtype=np.float32, append=True)
-bspline_episode_ends_ds = meta_group.create_dataset("bspline_episode_ends", shape=(0,), chunks=(1,), dtype=np.float32, append=True)
-jnt_p = data_group.create_dataset("jnt_pos", shape=(0, dof), chunks=(1, dof), dtype=np.float32, append=True)
-jnt_v = data_group.create_dataset("jnt_vel", shape=(0, dof), chunks=(1, dof), dtype=np.float32, append=True)
-jnt_a = data_group.create_dataset("jnt_acc", shape=(0, dof), chunks=(1, dof), dtype=np.float32, append=True)
-control_points_ds = data_group.create_dataset("control_points", shape=(0, dof), chunks=(1, dof), dtype=np.float32, append=True)
-ruckig_episode_ends_counter = 0
-bspline_episode_ends_counter = 0
+# Check if the dataset exists
+if os.path.exists(dataset_name):
+    root = zarr.open(dataset_name, mode='a')  # Open the dataset in append mode
+    jnt_p, jnt_v, jnt_a = root['data']["jnt_pos"], root['data']["jnt_vel"], root['data']["jnt_acc"]
+    control_points_ds = root['data']["control_points"]
+    ruckig_episode_ends_ds = root['meta']["ruckig_episode_ends"]
+    bspline_episode_ends_ds = root['meta']["bspline_episode_ends"]
+    ruckig_episode_ends_counter = root['meta']['ruckig_episode_ends'][-1]
+    bspline_episode_ends_counter = root['meta']['bspline_episode_ends'][-1]
 
-# for traj_id in range(len(ruckig_root['meta']['episode_ends'][:])):
-for traj_id in range(1):
+else:
+    store = zarr.DirectoryStore(dataset_name)
+    root = zarr.group(store=store)  # Create a new dataset
+    print('Dataset created in:', dataset_name)
+
+    # Create meta and data groups if they don't exist
+    meta_group = root.create_group("meta", overwrite=False)  # Ensure it won't overwrite existing group
+    data_group = root.create_group("data", overwrite=False)
+
+    # Create datasets, use append=True to allow adding data
+    ruckig_episode_ends_ds = meta_group.create_dataset("ruckig_episode_ends", shape=(0,), chunks=(1,), dtype=np.float32, append=True)
+    bspline_episode_ends_ds = meta_group.create_dataset("bspline_episode_ends", shape=(0,), chunks=(1,), dtype=np.float32, append=True)
+
+    # Create datasets for joint positions, velocities, accelerations, and control points
+    jnt_p = data_group.create_dataset("jnt_pos", shape=(0, dof), chunks=(1, dof), dtype=np.float32, append=True)
+    jnt_v = data_group.create_dataset("jnt_vel", shape=(0, dof), chunks=(1, dof), dtype=np.float32, append=True)
+    jnt_a = data_group.create_dataset("jnt_acc", shape=(0, dof), chunks=(1, dof), dtype=np.float32, append=True)
+    control_points_ds = data_group.create_dataset("control_points", shape=(0, dof), chunks=(1, dof), dtype=np.float32, append=True)
+
+    # Initialize counters
+    ruckig_episode_ends_counter = 0
+    bspline_episode_ends_counter = 0
+
+
+for traj_id in range(id_start, id_end):
+# for traj_id in range(3):
     '''extract traj pos'''
-    print('**' * 100)
+    print('-' * 100)
     print(f'traj id: {traj_id}')
 
     # id
@@ -87,16 +119,15 @@ for traj_id in range(1):
     print(f'Trajectory duration: {first_output.trajectory.duration:0.4f} [s]')
 
     '''visualize the trajectory'''
-    from pathlib import Path
-    from plotter import Plotter
+    # from pathlib import Path
+    # from plotter import Plotter
     
-    pdf_path = os.path.join('/home/lqin/zarr_datasets/log_0604', f'test.pdf')
-    if not os.path.exists(os.path.dirname(pdf_path)):
-        os.makedirs(os.path.dirname(pdf_path))
-    Plotter.plot_trajectory(pdf_path, otg, inp, out_list, plot_jerk=False)
-    helper.workspace_plot(robot, jnt_path)
-    helper.visualize_anime_path(base, robot, jnt_path)
-
+    # pdf_path = os.path.join('/home/lqin/zarr_datasets/log_0604', f'test.pdf')
+    # if not os.path.exists(os.path.dirname(pdf_path)):
+    #     os.makedirs(os.path.dirname(pdf_path))
+    # Plotter.plot_trajectory(pdf_path, otg, inp, out_list, plot_jerk=False)
+    # helper.workspace_plot(robot, jnt_path)
+    # helper.visualize_anime_path(base, robot, jnt_path)
 
     '''construct b-spline'''
     jnt_path_array = np.array(jnt_path)
@@ -113,25 +144,26 @@ for traj_id in range(1):
 
     '''print parameters and save into zarr'''
     print(f'c shape: {org_c.shape}')
+    print('-' * 100)
     control_points_ds.append(np.array(org_c))
     bspline_episode_ends_counter += len(org_c)
     bspline_episode_ends_ds.append(np.array([bspline_episode_ends_counter], dtype=np.int32))
 
     '''test the b-spline reconstruction'''
-    ctrl_points = np.linspace(0, 1, num_ctrl_pts)
-    knots = np.linspace(0, 1, num_ctrl_pts - degree + 1)
-    knots = np.concatenate(([0] * degree, knots, [1] * degree))
-    spline = BSpline(knots, org_c, degree)
+    # ctrl_points = np.linspace(0, 1, num_ctrl_pts)
+    # knots = np.linspace(0, 1, num_ctrl_pts - degree + 1)
+    # knots = np.concatenate(([0] * degree, knots, [1] * degree))
+    # spline = BSpline(knots, org_c, degree)
 
-    T_total_list = [3.3, 4, 5]
-    results = []
-    for T_total_new in T_total_list:
-        print(f"\nTesting with T_total = {T_total_new}s")
-        result = (T_total_new, *helper.calculate_BSpline_wrt_T(spline, T_total_new))
-        results.append(result)
+    # T_total_list = [3.3, 4, 5]
+    # results = []
+    # for T_total_new in T_total_list:
+    #     print(f"\nTesting with T_total = {T_total_new}s")
+    #     result = (T_total_new, *helper.calculate_BSpline_wrt_T(spline, T_total_new))
+    #     results.append(result)
 
-    jnt_velpath_array = np.array(jnt_velpath)
-    jnt_accpath_array = np.array(jnt_accpath)
-    helper.plot_BSpline_wrt_org(jnt_path_array, jnt_velpath_array, jnt_accpath_array, t, results, overlay=True)
+    # jnt_velpath_array = np.array(jnt_velpath)
+    # jnt_accpath_array = np.array(jnt_accpath)
+    # helper.plot_BSpline_wrt_org(jnt_path_array, jnt_velpath_array, jnt_accpath_array, t, results, overlay=True)
 
 
