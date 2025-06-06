@@ -12,6 +12,26 @@ import wrs.robot_sim.robots.franka_research_3.franka_research_3 as franka
 from wrs import wd, rm, mcm
 import wrs.modeling.geometric_model as mgm
 
+def extend_path_for_bspline(joint_path: np.ndarray, repeat: int = 2) -> np.ndarray:
+    """
+    Extend the joint path by repeating the first and last points to improve B-spline boundary smoothness.
+
+    Parameters:
+        joint_path (np.ndarray): Original joint path of shape (T, D), where T is the number of points and D is DoF.
+        repeat (int): Number of times to repeat the start and end points.
+
+    Returns:
+        np.ndarray: Extended joint path of shape (T + 2 * repeat, D).
+    """
+    if joint_path.shape[0] < 2:
+        raise ValueError("joint_path must have at least 2 points.")
+    
+    start_repeats = np.repeat(joint_path[0:1], repeat, axis=0)
+    end_repeats = np.repeat(joint_path[-1:], repeat, axis=0)
+    
+    extended = np.concatenate([start_repeats, joint_path, end_repeats], axis=0)
+    return extended
+
 # Get the parameters passed to the script
 if len(sys.argv) < 3:
     print("Please provide both 'id_start' and 'id_end' parameters.")
@@ -23,7 +43,7 @@ id_end = int(sys.argv[2])    # The second parameter: trajectory end position
 
 print(f"Processing trajectory from {id_start} to {id_end}.")
 
-ruckig_root = zarr.open('/home/lqin/zarr_datasets/straight_jntpath_finegrained.zarr', mode='r')
+ruckig_root = zarr.open('/home/lqin/zarr_datasets/straight_jntpath_partially.zarr', mode='r')
 # ruckig_root = zarr.open('/home/lqin/zarr_datasets/straight_line_ruckig_jntpath.zarr', mode='r')
 
 '''ruckig time optimal trajectory generation'''
@@ -32,7 +52,7 @@ waypoints_num = 16  # number of waypoints for ruckig
 base, robot, otg, inp, out = helper.initialize_ruckig(dt, waypoint_num=waypoints_num)
 
 '''new the dataset'''
-dataset_name = '/home/lqin/zarr_datasets/straight_jntpath_finegrained_paras.zarr'
+dataset_name = '/home/lqin/zarr_datasets/straight_jntpath_partially_paras.zarr'
 dof = robot.n_dof
 # Check if the dataset exists
 if os.path.exists(dataset_name):
@@ -130,7 +150,8 @@ for traj_id in range(id_start, id_end):
     # helper.visualize_anime_path(base, robot, jnt_path)
 
     '''construct b-spline'''
-    jnt_path_array = np.array(jnt_path)
+    jnt_array_org = np.array(jnt_path)
+    jnt_path_array = extend_path_for_bspline(jnt_array_org, repeat=2)  # Extend the path for better B-spline fitting
     T = len(jnt_path_array)
     t = np.linspace(0, (T - 1) * dt, T)
     num_joints = jnt_path_array.shape[1]  # reconstruct multiple joints
@@ -150,20 +171,21 @@ for traj_id in range(id_start, id_end):
     bspline_episode_ends_ds.append(np.array([bspline_episode_ends_counter], dtype=np.int32))
 
     '''test the b-spline reconstruction'''
-    # ctrl_points = np.linspace(0, 1, num_ctrl_pts)
-    # knots = np.linspace(0, 1, num_ctrl_pts - degree + 1)
-    # knots = np.concatenate(([0] * degree, knots, [1] * degree))
-    # spline = BSpline(knots, org_c, degree)
+    ctrl_points = np.linspace(0, 1, num_ctrl_pts)
+    knots = np.linspace(0, 1, num_ctrl_pts - degree + 1)
+    knots = np.concatenate(([0] * degree, knots, [1] * degree))
+    spline = BSpline(knots, org_c, degree)
 
-    # T_total_list = [3.3, 4, 5]
-    # results = []
-    # for T_total_new in T_total_list:
-    #     print(f"\nTesting with T_total = {T_total_new}s")
-    #     result = (T_total_new, *helper.calculate_BSpline_wrt_T(spline, T_total_new))
-    #     results.append(result)
+    T_total_list = [3.3, 4, 5]
+    results = []
+    for T_total_new in T_total_list:
+        print(f"\nTesting with T_total = {T_total_new}s")
+        result = (T_total_new, *helper.calculate_BSpline_wrt_T(spline, T_total_new))
+        results.append(result)
 
-    # jnt_velpath_array = np.array(jnt_velpath)
-    # jnt_accpath_array = np.array(jnt_accpath)
-    # helper.plot_BSpline_wrt_org(jnt_path_array, jnt_velpath_array, jnt_accpath_array, t, results, overlay=True)
+    jnt_velpath_array = extend_path_for_bspline(np.array(jnt_velpath), repeat=2)
+    jnt_accpath_array = extend_path_for_bspline(np.array(jnt_accpath), repeat=2)
+    
+    helper.plot_BSpline_wrt_org(jnt_path_array, jnt_velpath_array, jnt_accpath_array, t, results, overlay=True)
 
 

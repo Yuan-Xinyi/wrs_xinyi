@@ -4,7 +4,7 @@ from scipy.interpolate import make_lsq_spline, BSpline
 
 from wrs import wd, rm, mcm
 import wrs.modeling.geometric_model as mgm
-import wrs.robot_sim.manipulators.franka_research_3_arm.franka_research_3_arm as franka
+import wrs.robot_sim.robots.franka_research_3.franka_research_3 as franka
 from ruckig import InputParameter, OutputParameter, Result, Ruckig
 
 '''B-Spline related functions'''
@@ -178,7 +178,7 @@ def initialize_ruckig(sampling_interval, waypoint_num=10):
     '''init the robot and world'''
     base = wd.World(cam_pos=[2, 0, 1], lookat_pos=[0, 0, 0])
     mgm.gen_frame().attach_to(base)
-    robot = franka.FrankaResearch3Arm(enable_cc=True)
+    robot = franka.FrankaResearch3(enable_cc=True)
     inp = InputParameter(robot.n_dof)
     out = OutputParameter(robot.n_dof, waypoint_num)
     otg = Ruckig(robot.n_dof, sampling_interval, waypoint_num)

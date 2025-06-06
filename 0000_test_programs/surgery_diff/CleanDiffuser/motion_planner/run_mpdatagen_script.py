@@ -20,7 +20,7 @@ def run_target_script(traj_start, traj_end):
     else:
         print(f"Error in script execution: {result.stderr}")
 
-ruckig_root = zarr.open('/home/lqin/zarr_datasets/straight_jntpath_finegrained.zarr', mode='r')
+ruckig_root = zarr.open('/home/lqin/zarr_datasets/straight_jntpath_partially.zarr', mode='r')
 # ruckig_root = zarr.open('/home/lqin/zarr_datasets/straight_jntpath.zarr', mode='r')
 total_trajectories = len(ruckig_root['meta']['episode_ends'][:])
 print(f"Total trajectories in the dataset: {total_trajectories}")

@@ -1,6 +1,8 @@
 import zarr
 import numpy as np
 import matplotlib.pyplot as plt
+from copy import copy
+from ruckig import InputParameter, OutputParameter, Result, Ruckig
 
 import wrs.robot_sim.robots.franka_research_3.franka_research_3 as franka
 from wrs import wd, rm, mcm
@@ -33,6 +35,18 @@ def plot_details(robot_s, jnt_pos_list, jnt_vel_list, jnt_acc_list):
     plt.tight_layout()
     plt.show()
 
+'''test the joint configuration'''
+jnt = robot_s.rand_conf()
+print('random joint configuration:', repr(jnt))
+robot_s.goto_given_conf(jnt_values=jnt)
+robot_s.gen_meshmodel(alpha=0.2).attach_to(base)
+
+for i in np.linspace(-0.5, 1.5, 10):
+    tmp = copy(jnt)
+    tmp[6] += i
+    robot_s.goto_given_conf(jnt_values=tmp)
+    robot_s.gen_meshmodel(alpha=0.2, rgb=[1, 0, 0]).attach_to(base)
+base.run()
 
 # root = zarr.open('/home/lqin/zarr_datasets/franka_kinodyn_obstacles_3.zarr', mode='r')
 # root = zarr.open('/home/lqin/zarr_datasets/franka_ruckig_100hz.zarr', mode='r')

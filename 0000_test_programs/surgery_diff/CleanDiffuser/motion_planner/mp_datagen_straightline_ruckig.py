@@ -144,7 +144,27 @@ def discretize_joint_space(robot, n_intervals=None):
     
     return sampled_qs
 
+def partiallydiscretize_joint_space(robot, n_intervals=None):
+    sampled_jnts = []
+    if n_intervals is None:
+        n_intervals = np.linspace(6, 4, robot.n_dof - 1, endpoint=False)
+    print(f"Sampling Joint Space using the following joint granularity (excluding last DOF): {n_intervals.astype(int)}...")
 
+    # 对前 n-1 个关节离散采样
+    for i in range(robot.n_dof - 1):
+        sampled_jnts.append(
+            np.linspace(robot.jnt_ranges[i][0], robot.jnt_ranges[i][1], int(n_intervals[i] + 2))[1:-1]
+        )
+
+    # 构造网格
+    grid = np.meshgrid(*sampled_jnts)
+    base_qs = np.vstack([x.ravel() for x in grid]).T
+
+    # 最后一维填 0.0 或 np.nan
+    last_column = np.zeros((base_qs.shape[0], 1))  # 或 np.full((..., 1), np.nan)
+    sampled_qs = np.hstack((base_qs, last_column))
+
+    return sampled_qs
 
 if __name__ == '__main__':
     MAX_WAYPOINT = 200
@@ -161,7 +181,8 @@ if __name__ == '__main__':
     mgm.gen_frame().attach_to(base)
     robot = franka.FrankaResearch3(enable_cc=True)
 
-    jnt_samples = discretize_joint_space(robot)
+    # jnt_samples = discretize_joint_space(robot)
+    jnt_samples = partiallydiscretize_joint_space(robot)
     print(f"Total {len(jnt_samples)} joint configurations sampled.")
     print('--' * 100)
 
@@ -200,7 +221,7 @@ if __name__ == '__main__':
     # # base.run()
 
     '''dataset generation'''
-    dataset_name = os.path.join('/home/lqin/zarr_datasets', f'straight_line_joint_path_finegrained.zarr')
+    dataset_name = os.path.join('/home/lqin/zarr_datasets', f'straight_jntpath_partially.zarr')
     store = zarr.DirectoryStore(dataset_name)
     root = zarr.group(store=store)
     print('dataset created in:', dataset_name)    
