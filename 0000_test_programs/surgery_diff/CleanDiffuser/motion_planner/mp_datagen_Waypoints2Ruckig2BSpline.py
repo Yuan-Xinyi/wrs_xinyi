@@ -48,7 +48,7 @@ ruckig_root = zarr.open('/home/lqin/zarr_datasets/straight_jntpath_partially.zar
 
 '''ruckig time optimal trajectory generation'''
 dt = 0.01  # seconds
-waypoints_num = 16  # number of waypoints for ruckig
+waypoints_num = 4  # number of waypoints for ruckig
 base, robot, otg, inp, out = helper.initialize_ruckig(dt, waypoint_num=waypoints_num)
 
 '''new the dataset'''
@@ -150,8 +150,8 @@ for traj_id in range(id_start, id_end):
     # helper.visualize_anime_path(base, robot, jnt_path)
 
     '''construct b-spline'''
-    jnt_array_org = np.array(jnt_path)
-    jnt_path_array = extend_path_for_bspline(jnt_array_org, repeat=2)  # Extend the path for better B-spline fitting
+    jnt_path_array = np.array(jnt_path)
+    # jnt_path_array = extend_path_for_bspline(jnt_array_org, repeat=2)  # Extend the path for better B-spline fitting
     T = len(jnt_path_array)
     t = np.linspace(0, (T - 1) * dt, T)
     num_joints = jnt_path_array.shape[1]  # reconstruct multiple joints
@@ -171,21 +171,23 @@ for traj_id in range(id_start, id_end):
     bspline_episode_ends_ds.append(np.array([bspline_episode_ends_counter], dtype=np.int32))
 
     '''test the b-spline reconstruction'''
-    ctrl_points = np.linspace(0, 1, num_ctrl_pts)
-    knots = np.linspace(0, 1, num_ctrl_pts - degree + 1)
-    knots = np.concatenate(([0] * degree, knots, [1] * degree))
-    spline = BSpline(knots, org_c, degree)
+    # ctrl_points = np.linspace(0, 1, num_ctrl_pts)
+    # knots = np.linspace(0, 1, num_ctrl_pts - degree + 1)
+    # knots = np.concatenate(([0] * degree, knots, [1] * degree))
+    # spline = BSpline(knots, org_c, degree)
 
-    T_total_list = [3.3, 4, 5]
-    results = []
-    for T_total_new in T_total_list:
-        print(f"\nTesting with T_total = {T_total_new}s")
-        result = (T_total_new, *helper.calculate_BSpline_wrt_T(spline, T_total_new))
-        results.append(result)
+    # T_total_list = [3.3, 4, 5]
+    # results = []
+    # for T_total_new in T_total_list:
+    #     print(f"\nTesting with T_total = {T_total_new}s")
+    #     result = (T_total_new, *helper.calculate_BSpline_wrt_T(spline, T_total_new))
+    #     results.append(result)
 
-    jnt_velpath_array = extend_path_for_bspline(np.array(jnt_velpath), repeat=2)
-    jnt_accpath_array = extend_path_for_bspline(np.array(jnt_accpath), repeat=2)
+    # # jnt_velpath_array = extend_path_for_bspline(np.array(jnt_velpath), repeat=2)
+    # # jnt_accpath_array = extend_path_for_bspline(np.array(jnt_accpath), repeat=2)
+    # jnt_velpath_array = np.array(jnt_velpath)
+    # jnt_accpath_array = np.array(jnt_accpath)
     
-    helper.plot_BSpline_wrt_org(jnt_path_array, jnt_velpath_array, jnt_accpath_array, t, results, overlay=True)
+    # helper.plot_BSpline_wrt_org(jnt_path_array, jnt_velpath_array, jnt_accpath_array, t, results, overlay=True)
 
 
