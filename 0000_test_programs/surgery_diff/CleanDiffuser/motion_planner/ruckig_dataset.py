@@ -12,6 +12,10 @@ import wrs.visualization.panda.world as wd
 import wrs.modeling.geometric_model as mgm
 import wrs.modeling.collision_model as mcm
 import wrs.basis.constant as ct
+
+import wrs.robot_sim.robots.franka_research_3.franka_research_3 as franka
+from wrs import wd, rm, mcm
+robot_s = franka.FrankaResearch3(enable_cc=True)
 # Initialize 3D visualization environment
 
 
@@ -430,13 +434,17 @@ class BSplineDataset(BaseDataset):
         control_points = sample['control_points']
         start_conf = control_points[0]
         end_conf = control_points[-1]
+        start_position, _ = robot_s.fk(jnt_values=start_conf)
+        end_position, _ = robot_s.fk(jnt_values=end_conf)
+        
         if self.normalizer:
             control_points = self.normalizer['obs']['jnt_pos'].normalize(control_points)
     
         data = {
             'start_conf': start_conf,
             'end_conf': end_conf,
-            'control_points': control_points
+            'control_points': control_points,
+            'cond': np.concatenate([start_position, end_position], axis=-1)
         }
         return data
     

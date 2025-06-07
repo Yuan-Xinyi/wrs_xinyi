@@ -148,6 +148,7 @@ def partiallydiscretize_joint_space(robot, n_intervals=None):
     sampled_jnts = []
     if n_intervals is None:
         n_intervals = np.linspace(6, 4, robot.n_dof - 1, endpoint=False)
+        # n_intervals = np.linspace(4, 2, robot.n_dof - 1, endpoint=False)
     print(f"Sampling Joint Space using the following joint granularity (excluding last DOF): {n_intervals.astype(int)}...")
 
     # 对前 n-1 个关节离散采样
@@ -221,7 +222,8 @@ if __name__ == '__main__':
     # # base.run()
 
     '''dataset generation'''
-    dataset_name = os.path.join('/home/lqin/zarr_datasets', f'straight_jntpath_partially.zarr')
+    # dataset_name = os.path.join('/home/lqin/zarr_datasets', f'straight_jntpath_partially.zarr')
+    dataset_name = os.path.join('/home/lqin/zarr_datasets', f'test.zarr')
     store = zarr.DirectoryStore(dataset_name)
     root = zarr.group(store=store)
     print('dataset created in:', dataset_name)    
@@ -245,7 +247,12 @@ if __name__ == '__main__':
         for axis in ['x', 'y', 'z']:
             axis_idx = {'x': 0, 'y': 1, 'z': 2}[axis]
             jnt_list, pos = [jnt_samples[_]], pos_init.copy()
-
+            jnt_p.append(np.array(jnt_list[-1]).reshape(1, dof))
+            axis_id.append(np.array([axis_idx], dtype=np.float32))
+            workspc_pos.append(np.array(pos).reshape(1, 3))
+            workspc_rotmat.append(np.array(rotmat_init).reshape(1, 9))
+            episode_ends_counter += 1
+            
             for _ in range(MAX_WAYPOINT):
                 pos_try = pos.copy(); pos_try[axis_idx] += waypoint_interval
                 # print(f"Trying to solve IK for position {pos_try} on axis {axis}...")

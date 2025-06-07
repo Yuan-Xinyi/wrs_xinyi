@@ -35,7 +35,7 @@ print(f"Total trajectories in the dataset: {total_trajectories}")
 traj_batch = 10
 traj_start_end_pairs = [
     (start, min(start + traj_batch, total_trajectories))
-    for start in range(0, total_trajectories, traj_batch)
+    for start in range(11200, total_trajectories, traj_batch)
 ]
 
 # Log file

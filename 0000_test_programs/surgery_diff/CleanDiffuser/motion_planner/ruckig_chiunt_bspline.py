@@ -215,7 +215,7 @@ def compare_bspline_two_methods(knots, control_points, action_points, degree, T_
 '''load the config file'''
 current_file_dir = os.path.dirname(__file__)
 parent_dir = os.path.dirname(os.path.dirname(__file__))
-config_file = os.path.join(current_file_dir,'config', 'ruckig_bspline_config.yaml')
+config_file = os.path.join(current_file_dir,'config', 'ruckig_straight_bspline_config.yaml')
 with open(config_file, "r") as file:
     config = yaml.safe_load(file)
 
@@ -271,8 +271,21 @@ jnt_v_max = rm.np.asarray([rm.pi * 2 / 3] * robot_s.n_dof)
 jnt_a_max = rm.np.asarray([rm.pi] * robot_s.n_dof)
 jnt_config_range = torch.tensor(robot_s.jnt_ranges, device=config['device'])
 
-x_max = (jnt_config_range[:,1]).repeat(1, config['horizon'], 1)
-x_min = (jnt_config_range[:,0]).repeat(1, config['horizon'], 1)
+if config['normalize']:
+    x_max = torch.ones((1, config['horizon'], config['action_dim']), device=config['device']) * +1.0
+    x_min = torch.ones((1, config['horizon'], config['action_dim']), device=config['device']) * -1.0
+    print('*'*50)
+    print("Using Normalized Action Space. the action space is normalized to [-1, 1]")
+    print('*'*50)
+else:
+    x_max = (jnt_config_range[:,1]).repeat(1, config['horizon'], 1)
+    x_min = (jnt_config_range[:,0]).repeat(1, config['horizon'], 1)
+    print('*'*50)
+    print("Using Absolute Action Space. the action space is absolute joint configuration")
+    print('*'*50)
+
+loss_weight = torch.ones((config['horizon'], config['action_dim']))
+loss_weight[0, :] = config['action_loss_weight']
 
 fix_mask = torch.zeros((config['horizon'], config['action_dim']), device=config['device'])
 fix_mask[0, :] = 1.
@@ -307,7 +320,7 @@ if config['mode'] == "train":
         # get condition
         if config['condition'] == "identity":
             condition = batch['cond'].to(config['device'])
-            condition = condition.flatten(start_dim=1) # (batch,14)
+            condition = condition.flatten(start_dim=1).to(torch.float32) # (batch,14)
         else:
             condition = None
         action = batch['control_points'].to(config['device']) # (batch,horizon,7)
