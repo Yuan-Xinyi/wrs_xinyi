@@ -287,12 +287,19 @@ else:
 loss_weight = torch.ones((config['horizon'], config['action_dim']))
 loss_weight[0, :] = config['action_loss_weight']
 
-fix_mask = torch.zeros((config['horizon'], config['action_dim']), device=config['device'])
-fix_mask[0, :] = 1.
-fix_mask[-1:, :] = 1.
+'''fix mask'''
+# fix_mask = torch.zeros((config['horizon'], config['action_dim']), device=config['device'])
+# fix_mask[0, :] = 1.
+# fix_mask[-1:, :] = 1.
 
+# agent = DDPM(
+#     nn_diffusion=nn_diffusion, nn_condition=nn_condition, fix_mask = fix_mask,
+#     device=config['device'], diffusion_steps=config['diffusion_steps'], x_max=x_max, x_min=x_min,
+#     optim_params={"lr": config['lr']}, predict_noise=config['predict_noise'])
+
+'''no fix mask'''
 agent = DDPM(
-    nn_diffusion=nn_diffusion, nn_condition=nn_condition, fix_mask = fix_mask,
+    nn_diffusion=nn_diffusion, nn_condition=nn_condition, loss_weight=loss_weight,
     device=config['device'], diffusion_steps=config['diffusion_steps'], x_max=x_max, x_min=x_min,
     optim_params={"lr": config['lr']}, predict_noise=config['predict_noise'])
 
@@ -353,9 +360,7 @@ if config['mode'] == "train":
 
 if config['mode'] == "inference":
     from scipy.interpolate import make_lsq_spline, BSpline
-
-    model_path = '0000_test_programs/surgery_diff/CleanDiffuser/motion_planner/results/' \
-    '0512_2022_64h_64b_normFalse/diffusion_ckpt_latest.pt'
+    model_path = '0000_test_programs/surgery_diff/CleanDiffuser/motion_planner/results/0608_1500_32h_64b_normTrue/diffusion_ckpt_latest.pt'
     agent.load(model_path)
     agent.model.eval()
     agent.model_ema.eval()
@@ -365,99 +370,99 @@ if config['mode'] == "inference":
     import wrs.visualization.panda.world as wd
     from wrs import wd, rm, mcm
     import wrs.modeling.geometric_model as mgm
-    import mp_datagen_ruckig_obstacle as mp_helper
     import copy
     
     # init
     base = wd.World(cam_pos=[2, 0, 1], lookat_pos=[0, 0, 0])
     mgm.gen_frame().attach_to(base)
 
-    # init the b-spline parameter
-    degree = 4
-    num_ctrl_pts = 64
-    ctrl_points = np.linspace(0, 1, num_ctrl_pts)
-    knots = np.linspace(0, 1, num_ctrl_pts - degree + 1)
-    knots = np.concatenate(([0] * degree, knots, [1] * degree))
-
     # inference
     solver = config['inference_solver']
     inference_steps = config['inference_steps']
-    visualization = config['visualization']
-    
-    success_num = 0
     n_samples = 1
-
-    root = zarr.open(dataset_path, mode='r')
-    start_list = []
-    goal_list = []
-
-    '''if get the start and goal from the dataset'''
-    # for id in tqdm(range(root['meta']['episode_ends'].shape[0]-1)):
-    #     traj_end = int(root['meta']['episode_ends'][id])
-    #     control_points = root['data']['control_points'][traj_end-64:traj_end]
-    #     # print(f"current traj start: {traj_start}, end: {traj_end}")
-    #     start_list.append(control_points[0])
-    #     goal_list.append(control_points[-1])
-
-    '''single traj test'''
-    root = zarr.open('/home/lqin/zarr_datasets/franka_ruckig_100hz_bspline.zarr', mode='r')
-    traj_id = 0
-    traj_end = int(root['meta']['episode_ends'][traj_id])
-    control_points = root['data']['control_points'][traj_end-64:traj_end]
     
-    # --------------- Inference -----------------
-    # for traj_id in tqdm(range(len(start_list))):
-    for traj_id in range(1):
-        '''prepare the start and goal config'''
-        # start_conf, goal_conf = start_list[traj_id], goal_list[traj_id]
-        start_conf = control_points[0]
-        goal_conf = control_points[-1]
-        # start_conf = robot_s.rand_conf()
-        # goal_conf = robot_s.rand_conf()
-        # start_conf = np.array([ 1.00625858,  0.15694599, -2.51097176, -1.60473395,  0.40952758,
-        # 3.05204021,  2.61735282])
-        # goal_conf = np.array([ 0.61532624,  0.1395668 ,  2.00860207, -2.93296071,  1.4677425 ,
-        # 1.3641184 , -2.99075278])
-        print('**'*100)
-        print(f"Start Conf: {start_conf}, Goal Conf: {goal_conf}")
-        tgt_pos, tgt_rotmat = robot_s.fk(jnt_values=goal_conf)
-        
-        '''simulate the robot with the start and goal config'''
-        robot_s.goto_given_conf(jnt_values=goal_conf)
-        robot_s.gen_meshmodel(alpha=0.2, rgb=[0,1,0]).attach_to(base)
-        robot_s.goto_given_conf(jnt_values=start_conf)
-        robot_s.gen_meshmodel(alpha=0.2, rgb=[0,0,1]).attach_to(base)
+    '''random traj test'''
+    # generate the random condition
+    gth_jnt_seed = robot_s.rand_conf()
+    pos, rot = robot_s.fk(jnt_values=gth_jnt_seed)
+    pos_start = copy.deepcopy(pos)  # start position
+    jnt_list = [gth_jnt_seed]
+    
+    axis = random.choice(['x', 'y', 'z'])
+    axis_map = {'x': 0, 'y': 1, 'z': 2}
+    axis_idx = axis_map[axis]
+    
+    for _ in range(200):
+        pos[axis_idx] += 0.01
+        jnt = robot_s.ik(tgt_pos=pos, tgt_rotmat=rot, seed_jnt_values=jnt_list[-1])
+        if jnt is not None:
+            jnt_list.append(jnt)
+        else:
+            print('-' * 40)
+            print(f"IK failed at sample {_},...")
+            break
+    print(f"Generated {len(jnt_list)} joint configurations.")
+    pos_goal = copy.deepcopy(robot_s.fk(jnt_values=jnt_list[-1])[0])
 
-        '''inference the trajectory'''
-        condition = None
-        prior = torch.zeros((1, config['horizon'], config['action_dim']), device=config['device'])
-        prior[:, 0, :] = torch.tensor(start_conf).to(config['device'])
-        prior[:, -1, :] = torch.tensor(goal_conf).to(config['device'])
-        with torch.no_grad():
-            action, _ = agent.sample(prior=prior, n_samples=n_samples, sample_steps=config['sample_steps'], temperature=0.1,
-                                    solver=solver, condition_cfg=condition, use_ema=True)
-        
+    '''report the parameters'''
+    print('=' * 80)
+    print(f"Start position: {pos_start}, Goal position: {pos_goal}")
+    print(f"Move axis: {axis}, Move distance: {pos[axis_idx] - pos_start[axis_idx]}m")
+    print(f"Total {len(jnt_list)} joint configurations sampled.")
+    print('=' * 80)
 
-        # '''recons b-spline'''
-        # # spline = BSpline(knots, control_points, degree)
-        # spline = BSpline(knots, action[0].cpu().numpy().copy(), degree)
-        # print(repr(action[0].cpu().numpy().copy()))
-        T_total_list = [5]
-        # results = []
 
-        # for T_total_new in T_total_list:
-        #     print(f"\nTesting with T_total = {T_total_new}s")
-        #     result = (T_total_new, *update_bspline_with_new_time(spline, T_total_new))
-        #     results.append(result)
+    '''prepare the start and goal config'''
+    condition = np.concatenate([pos_start, pos_goal], axis=0)  # (6,)
+    condition = torch.tensor(condition, device=config['device']).unsqueeze(0).float()  # (1, 6)
+    robot_s.goto_given_conf(gth_jnt_seed)
+    robot_s.gen_meshmodel(rgb = [0,1,0], alpha=0.3).attach_to(base)
 
-        # plot_bspline(results, robot_s.n_dof, overlay=True)
-        # plot_control_points_comparison(control_points, action[0].cpu().numpy().copy(), robot_s.n_dof)
-        
-        '''compare the action with the control points'''
-        generated_c = action[0].cpu().numpy().copy()
-        generated_c[:4] = control_points[:4]
-        generated_c[-4:] = control_points[-4:]
-        compare_bspline_two_methods(knots, control_points, generated_c, 
-                                    degree, T_total_list, robot_s.n_dof)
+    if axis == 'x':
+        rgb = [1, 0, 0]
+    elif axis == 'y':
+        rgb = [0, 1, 0]
+    elif axis == 'z':
+        rgb = [0, 0, 1]
+    else:
+        raise ValueError("Illegal axis, should be one of ['x', 'y', 'z']")
+    mgm.gen_arrow(spos=np.array(pos_start),
+                    epos=np.array(pos_goal), stick_radius=.005, rgb=rgb).attach_to(base)
+
+    '''inference the trajectory'''
+    prior = torch.zeros((n_samples, config['horizon'], config['action_dim']), device=config['device'])
+    if n_samples != 1:
+        condition = condition.repeat(n_samples, 1)
+    with torch.no_grad():
+        action, _ = agent.sample(prior=prior, n_samples=n_samples, sample_steps=config['sample_steps'], temperature=1.0,
+                                solver=solver, condition_cfg=condition, w_cfg = 1.0, use_ema=True)
+    for i in range(n_samples):
+        action = dataset.normalizer['obs']['jnt_pos'].unnormalize(action.cpu().numpy())
+        pred_jnt_seed = action[i,0,:]
+        print(f"Predicted joint seed: {repr(pred_jnt_seed)}")
+        robot_s.goto_given_conf(pred_jnt_seed)
+        if n_samples != 1:
+            robot_s.gen_meshmodel(rgb = None, alpha=0.2).attach_to(base)
+        else:
+            jnt_list = [pred_jnt_seed]
+            robot_s.goto_given_conf(pred_jnt_seed)
+            robot_s.gen_meshmodel(rgb = [1,0,0], alpha=0.1).attach_to(base)
+            pos = copy.deepcopy(pos_start)
+            _, rot = robot_s.fk(jnt_values=pred_jnt_seed, toggle_jacobian=True, update=True)
+            for _ in range(200):
+                pos[axis_idx] += 0.01
+                res = robot_s.ik(tgt_pos=pos, tgt_rotmat=rot, seed_jnt_values=jnt_list[-1])
+                if res is None:
+                    print(f"IK failed at sample {_},...")
+                    break
+                else:
+                    jnt_list.append(res)
+            for idx in [1,-1]:
+                robot_s.goto_given_conf(jnt_list[idx])
+                robot_s.gen_meshmodel(rgb = [0,0,1], alpha=0.2).attach_to(base)
+
+            pos,_ = robot_s.fk(jnt_values=jnt_list[-1])
+            print(f'Predicted joint length: {len(jnt_list)}, last position: {pos}')
+    base.run()
 else:
     raise ValueError("Illegal mode")

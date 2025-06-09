@@ -1,5 +1,5 @@
 abs_action: false
-mode: train  # train or inference
+mode: inference  # train or inference
 obs_keys: ['jnt_pos', 'jnt_vel', 'jnt_acc', 'control_points']
 dataset_name: straight_jntpath_partially_paras.zarr
 action_dim: 7

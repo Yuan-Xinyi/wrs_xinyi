@@ -27,7 +27,7 @@ def run_target_script(traj_start, traj_end):
         raise RuntimeError(f"Subprocess failed with stderr:\n{result.stderr}")
 
 # Open Zarr dataset
-ruckig_root = zarr.open('/home/lqin/zarr_datasets/straight_jntpath_partially.zarr', mode='r')
+ruckig_root = zarr.open('/home/lqin/zarr_datasets/0607_simple_straight.zarr', mode='r')
 total_trajectories = len(ruckig_root['meta']['episode_ends'][:])
 print(f"Total trajectories in the dataset: {total_trajectories}")
 
@@ -35,7 +35,7 @@ print(f"Total trajectories in the dataset: {total_trajectories}")
 traj_batch = 10
 traj_start_end_pairs = [
     (start, min(start + traj_batch, total_trajectories))
-    for start in range(11200, total_trajectories, traj_batch)
+    for start in range(0, total_trajectories, traj_batch)
 ]
 
 # Log file

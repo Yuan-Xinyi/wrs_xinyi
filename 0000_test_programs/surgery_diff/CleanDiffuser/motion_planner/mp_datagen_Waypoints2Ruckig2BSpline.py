@@ -43,7 +43,7 @@ id_end = int(sys.argv[2])    # The second parameter: trajectory end position
 
 print(f"Processing trajectory from {id_start} to {id_end}.")
 
-ruckig_root = zarr.open('/home/lqin/zarr_datasets/straight_jntpath_partially.zarr', mode='r')
+ruckig_root = zarr.open('/home/lqin/zarr_datasets/0607_simple_straight.zarr', mode='r')
 # ruckig_root = zarr.open('/home/lqin/zarr_datasets/straight_line_ruckig_jntpath.zarr', mode='r')
 
 '''ruckig time optimal trajectory generation'''
@@ -52,7 +52,7 @@ waypoints_num = 4  # number of waypoints for ruckig
 base, robot, otg, inp, out = helper.initialize_ruckig(dt, waypoint_num=waypoints_num)
 
 '''new the dataset'''
-dataset_name = '/home/lqin/zarr_datasets/straight_jntpath_partially_paras.zarr'
+dataset_name = '/home/lqin/zarr_datasets/0607_simple_straight_paras.zarr'
 dof = robot.n_dof
 # Check if the dataset exists
 if os.path.exists(dataset_name):
@@ -63,6 +63,9 @@ if os.path.exists(dataset_name):
     bspline_episode_ends_ds = root['meta']["bspline_episode_ends"]
     ruckig_episode_ends_counter = root['meta']['ruckig_episode_ends'][-1]
     bspline_episode_ends_counter = root['meta']['bspline_episode_ends'][-1]
+    workspc_pos = root['data']["position"]
+    workspc_rotmat = root['data']["rotation"]
+    print('Dataset opened:', dataset_name)
 
 else:
     store = zarr.DirectoryStore(dataset_name)
@@ -78,6 +81,9 @@ else:
     bspline_episode_ends_ds = meta_group.create_dataset("bspline_episode_ends", shape=(0,), chunks=(1,), dtype=np.float32, append=True)
 
     # Create datasets for joint positions, velocities, accelerations, and control points
+    workspc_pos = data_group.create_dataset("position", shape=(0, 3), chunks=(1, 3), dtype=np.float32, append=True)
+    workspc_rotmat = data_group.create_dataset("rotation", shape=(0, 9), chunks=(1, 9), dtype=np.float32, append=True)
+    
     jnt_p = data_group.create_dataset("jnt_pos", shape=(0, dof), chunks=(1, dof), dtype=np.float32, append=True)
     jnt_v = data_group.create_dataset("jnt_vel", shape=(0, dof), chunks=(1, dof), dtype=np.float32, append=True)
     jnt_a = data_group.create_dataset("jnt_acc", shape=(0, dof), chunks=(1, dof), dtype=np.float32, append=True)

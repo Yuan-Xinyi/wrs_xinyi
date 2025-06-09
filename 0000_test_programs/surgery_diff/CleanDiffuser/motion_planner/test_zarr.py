@@ -50,7 +50,7 @@ def plot_details(robot_s, jnt_pos_list, jnt_vel_list, jnt_acc_list):
 
 # root = zarr.open('/home/lqin/zarr_datasets/franka_kinodyn_obstacles_3.zarr', mode='r')
 # root = zarr.open('/home/lqin/zarr_datasets/franka_ruckig_100hz.zarr', mode='r')
-root = zarr.open('/home/lqin/zarr_datasets/straight_jntpath_partially_paras.zarr', mode='a')
+root = zarr.open('/home/lqin/zarr_datasets/straight_jntpath_partially.zarr', mode='r')
 # total_length = root['meta']['episode_ends'][-1]
 # goal_conf = np.zeros((int(total_length), 7), dtype=np.float32)
 
@@ -82,28 +82,20 @@ root = zarr.open('/home/lqin/zarr_datasets/straight_jntpath_partially_paras.zarr
 #     mgm.gen_stick(spos=s_pos, epos=e_pos,radius=.0005, rgb=[0,0,0]).attach_to(base)
 # base.run()
 
-
-# 指向 'meta' 子组
-meta_group = root['meta']
-
-# 重命名 'episode_ends' 为 'traj_ends'
-meta_group['episode_ends'] = meta_group['bspline_episode_ends'][:]  # 复制数据
-
-
 # print(repr(np.min(root['data']['poly_coef'], axis=0)))
 # print(repr(np.max(root['data']['poly_coef'], axis=0)))
 # exit(0)
 
-# traj_id =1
-# traj_start = int(np.sum(root['meta']['episode_ends'][:traj_id]))
-# traj_end = int(np.sum(root['meta']['episode_ends'][:traj_id + 1]))
-# jnt_pos_list = root['data']['jnt_pos'][traj_start:traj_end]
-# jnt_vel_list = root['data']['jnt_vel'][traj_start:traj_end]
-# jnt_acc_list = root['data']['jnt_acc'][traj_start:traj_end]
-# goal_conf = root['data']['goal_conf'][traj_start:traj_end]
-# print('start:', repr(jnt_pos_list[0]))
-# # print('waypoint:', repr(jnt_pos_list[1000]))
-# print('goal:', repr(jnt_pos_list[-1]))
+traj_id =1
+traj_start = int(np.sum(root['meta']['episode_ends'][:traj_id]))
+traj_end = int(np.sum(root['meta']['episode_ends'][:traj_id + 1]))
+jnt_pos_list = root['data']['jnt_pos'][traj_start:traj_end]
+jnt_vel_list = root['data']['jnt_vel'][traj_start:traj_end]
+jnt_acc_list = root['data']['jnt_acc'][traj_start:traj_end]
+goal_conf = root['data']['goal_conf'][traj_start:traj_end]
+print('start:', repr(jnt_pos_list[0]))
+# print('waypoint:', repr(jnt_pos_list[1000]))
+print('goal:', repr(jnt_pos_list[-1]))
 
 # robot_s.goto_given_conf(jnt_values=jnt_pos_list[-1])
 # robot_s.gen_meshmodel(alpha=0.2, rgb=[0,1,0]).attach_to(base)

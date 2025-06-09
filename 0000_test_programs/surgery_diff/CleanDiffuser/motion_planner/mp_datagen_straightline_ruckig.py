@@ -134,7 +134,7 @@ def plot_joint_trajectories(jnt_list):
 def discretize_joint_space(robot, n_intervals=None):
     sampled_jnts = []
     if n_intervals is None:
-        n_intervals = np.linspace(6, 4, robot.n_dof, endpoint=False)
+        n_intervals = np.linspace(6, 5, robot.n_dof, endpoint=False)
     print(f"Sampling Joint Space using the following joint granularity: {n_intervals.astype(int)}...")
     for i in range(robot.n_dof):
         sampled_jnts.append(
@@ -223,7 +223,7 @@ if __name__ == '__main__':
 
     '''dataset generation'''
     # dataset_name = os.path.join('/home/lqin/zarr_datasets', f'straight_jntpath_partially.zarr')
-    dataset_name = os.path.join('/home/lqin/zarr_datasets', f'test.zarr')
+    dataset_name = os.path.join('/home/lqin/zarr_datasets', f'0607_simple_straight.zarr')
     store = zarr.DirectoryStore(dataset_name)
     root = zarr.group(store=store)
     print('dataset created in:', dataset_name)    
@@ -247,11 +247,6 @@ if __name__ == '__main__':
         for axis in ['x', 'y', 'z']:
             axis_idx = {'x': 0, 'y': 1, 'z': 2}[axis]
             jnt_list, pos = [jnt_samples[_]], pos_init.copy()
-            jnt_p.append(np.array(jnt_list[-1]).reshape(1, dof))
-            axis_id.append(np.array([axis_idx], dtype=np.float32))
-            workspc_pos.append(np.array(pos).reshape(1, 3))
-            workspc_rotmat.append(np.array(rotmat_init).reshape(1, 9))
-            episode_ends_counter += 1
             
             for _ in range(MAX_WAYPOINT):
                 pos_try = pos.copy(); pos_try[axis_idx] += waypoint_interval
@@ -261,6 +256,14 @@ if __name__ == '__main__':
                 if jnt is None:
                     # print(f"IK failed for position {pos_try} on axis {axis}.")
                     break
+                if _ == 0:
+                    '''save the initial position and rotation matrix'''
+                    jnt_p.append(np.array(jnt_list[-1]).reshape(1, dof))
+                    axis_id.append(np.array([axis_idx], dtype=np.float32))
+                    workspc_pos.append(np.array(pos).reshape(1, 3))
+                    workspc_rotmat.append(np.array(rotmat_init).reshape(1, 9))
+                    episode_ends_counter += 1
+
                 pos = pos_try
                 jnt_list.append(jnt)
                 jnt_p.append(np.array(jnt).reshape(1, dof))
