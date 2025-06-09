@@ -193,17 +193,18 @@ def initialize_ruckig(sampling_interval, waypoint_num=10):
 
     return base, robot, otg, inp, out
 
-def visualize_anime_path(base, robot, path, start_conf=None, goal_conf=None, f = 0.01):
+def visualize_anime_path(base, robot, path, start_conf=None, goal_conf=None, f=0.01):
     class Data(object):
         def __init__(self):
             self.counter = 0
             self.path = None
-            self.current_model = None  # 当前帧的模型
+            self.current_model = None
+
     if start_conf is not None and goal_conf is not None:
         robot.goto_given_conf(jnt_values=start_conf)
-        robot.gen_meshmodel(rgb=[0, 0, 1], alpha=.3).attach_to(base)
+        robot.gen_meshmodel(rgb=[0, 0, 1], alpha=.2).attach_to(base)
         robot.goto_given_conf(jnt_values=goal_conf)
-        robot.gen_meshmodel(rgb=[0, 1, 0], alpha=.3).attach_to(base)
+        robot.gen_meshmodel(rgb=[0, 1, 0], alpha=.2).attach_to(base)
 
     anime_data = Data()
     anime_data.path = path
@@ -211,27 +212,29 @@ def visualize_anime_path(base, robot, path, start_conf=None, goal_conf=None, f =
     def update(robot, anime_data, task):
         if anime_data.counter >= len(anime_data.path):
             if anime_data.current_model:
-                anime_data.current_model.detach()  # 移除最后一帧的模型
+                anime_data.current_model.detach()
             anime_data.counter = 0
             return task.done
 
-        # 移除上一帧的模型
         if anime_data.current_model:
             anime_data.current_model.detach()
 
-        # 更新机器人位置并生成当前帧的模型
         conf = anime_data.path[anime_data.counter]
         robot.goto_given_conf(conf)
-        anime_data.current_model = robot.gen_meshmodel(alpha=1.0)
+        anime_data.current_model = robot.gen_meshmodel(alpha=0.7)
         anime_data.current_model.attach_to(base)
 
         anime_data.counter += 1
+        task.delayTime = f  # ✅ 设置下一帧的延迟
         return task.again
 
-    taskMgr.doMethodLater(f, update, "update",
-                        extraArgs=[robot, anime_data],
-                        appendTask=True)
+    # ✅ 第一次执行在 5 秒后启动
+    taskMgr.doMethodLater(5.0, update, "update",
+                          extraArgs=[robot, anime_data],
+                          appendTask=True)
+
     base.run()
+
 
 
 def workspace_plot(robot, jnt_path):
