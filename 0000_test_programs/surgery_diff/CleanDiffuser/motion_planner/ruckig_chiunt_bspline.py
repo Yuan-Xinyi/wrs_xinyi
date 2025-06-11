@@ -22,7 +22,6 @@ import random
 from tqdm import tqdm
 import matplotlib.pyplot as plt
 import json
-from scipy.interpolate import splprep, splev
 
 from torch.optim.lr_scheduler import CosineAnnealingLR
 from cleandiffuser.dataset.dataset_utils import loop_dataloader
@@ -289,22 +288,22 @@ loss_weight = torch.ones((config['horizon'], config['action_dim']))
 loss_weight[0, :] = config['action_loss_weight']
 
 '''fix mask'''
-fix_mask = torch.zeros((config['horizon'], config['action_dim']), device=config['device'])
-fix_mask[0, :] = 1.
-fix_mask[-1:, :] = 1.
+# fix_mask = torch.zeros((config['horizon'], config['action_dim']), device=config['device'])
+# fix_mask[0, :] = 1.
+# fix_mask[-1:, :] = 1.
 
-agent2 = DDPM(
-    nn_diffusion=nn_diffusion, nn_condition=nn_condition, fix_mask = fix_mask,
-    device=config['device'], diffusion_steps=config['diffusion_steps'], x_max=x_max, x_min=x_min,
-    optim_params={"lr": config['lr']}, predict_noise=config['predict_noise'])
+# agent = DDPM(
+#     nn_diffusion=nn_diffusion, nn_condition=nn_condition, fix_mask = fix_mask,
+#     device=config['device'], diffusion_steps=config['diffusion_steps'], x_max=x_max, x_min=x_min,
+#     optim_params={"lr": config['lr']}, predict_noise=config['predict_noise'])
 
 '''no fix mask'''
-agent1 = DDPM(
+agent = DDPM(
     nn_diffusion=nn_diffusion, nn_condition=nn_condition, loss_weight=loss_weight,
     device=config['device'], diffusion_steps=config['diffusion_steps'], x_max=x_max, x_min=x_min,
     optim_params={"lr": config['lr']}, predict_noise=config['predict_noise'])
 
-# lr_scheduler = CosineAnnealingLR(agent.optimizer, T_max=config['gradient_steps'])
+lr_scheduler = CosineAnnealingLR(agent.optimizer, T_max=config['gradient_steps'])
 
 if config['mode'] == "train":
     # --------------- Data Loading -----------------
@@ -362,120 +361,6 @@ if config['mode'] == "train":
 if config['mode'] == "inference":
     from scipy.interpolate import make_lsq_spline, BSpline
     model_path = '0000_test_programs/surgery_diff/CleanDiffuser/motion_planner/results/0608_1500_32h_64b_normTrue/diffusion_ckpt_latest.pt'
-    agent1.load(model_path)
-    agent1.model.eval()
-    agent1.model_ema.eval()
-
-    model_path = '0000_test_programs/surgery_diff/CleanDiffuser/motion_planner/results/0607_1543_32h_64b_normTrue/diffusion_ckpt_latest.pt'
-    agent2.load(model_path)
-    agent2.model.eval()
-    agent2.model_ema.eval()
-
-    '''capture the image'''
-    sys.path.append('/home/lqin/wrs_xinyi/wrs')
-    import wrs.visualization.panda.world as wd
-    from wrs import wd, rm, mcm
-    import wrs.modeling.geometric_model as mgm
-    import copy
-    
-    # init
-    base = wd.World(cam_pos=[2, 0, 1], lookat_pos=[0, 0, 0])
-    mgm.gen_frame().attach_to(base)
-
-    # inference
-    solver = config['inference_solver']
-    inference_steps = config['inference_steps']
-    n_samples = 1
-
-    '''random traj test'''
-    data = np.load("ik_traj_dataset.npy", allow_pickle=True)
-    init_pos_diff = []
-    init_jnt_diff = []
-    traj_len_list = []
-
-    success_count = 0
-    longer_traj_count = 0
-    
-    for id in tqdm(range(100,101)):
-        pos_start, pos_goal =  data[id]["start_pos"], data[id]["goal_pos"]
-        gth_jnt_seed = data[id]["start_jnt"]
-        condition = np.concatenate((pos_start, pos_goal), axis=0).astype(np.float32)
-        condition = torch.tensor(condition, device=config['device']).unsqueeze(0)  # (1,14)
-        disp = np.abs(pos_goal - pos_start)
-        axis_idx = np.argmax(disp)
-
-        '''inference the trajectory'''
-        prior = torch.zeros((n_samples, config['horizon'], config['action_dim']), device=config['device'])
-        if n_samples != 1:
-            condition = condition.repeat(n_samples, 1)
-        with torch.no_grad():
-            action, _ = agent1.sample(prior=prior, n_samples=n_samples, sample_steps=config['sample_steps'], temperature=1.0,
-                                    solver=solver, condition_cfg=condition, w_cfg = 1.0, use_ema=True)
-        for i in range(n_samples):
-            action = dataset.normalizer['obs']['jnt_pos'].unnormalize(action.cpu().numpy())
-            pred_jnt_seed = action[i,0,:]
-            _, rot_guess = robot_s.fk(jnt_values=pred_jnt_seed)
-
-            real_jnt_s = robot_s.ik(tgt_pos=pos_start, tgt_rotmat=rot_guess)
-            real_jnt_g = robot_s.ik(tgt_pos=pos_goal, tgt_rotmat=rot_guess)
-            
-            if real_jnt_s is not None and real_jnt_g is not None:
-                success_count += 1
-            else:
-                continue
-
-        normed_jnt_s = dataset.normalizer['obs']['jnt_pos'].normalize(real_jnt_s)
-        normed_jnt_g = dataset.normalizer['obs']['jnt_pos'].normalize(real_jnt_g)
-
-        prior = torch.zeros((n_samples, config['horizon'], config['action_dim']), device=config['device'])
-        prior[:, 0, :] = torch.tensor(normed_jnt_s, device=config['device']).unsqueeze(0)
-        prior[:, -1, :] = torch.tensor(normed_jnt_g, device=config['device']).unsqueeze(0)
-        
-        with torch.no_grad():
-            action, _ = agent2.sample(prior=prior, n_samples=n_samples, sample_steps=config['sample_steps'], temperature=1.0,
-                                    solver=solver, condition_cfg=condition, w_cfg = 1.0, use_ema=True)
-        
-        for i in range(n_samples):
-            action = dataset.normalizer['obs']['jnt_pos'].unnormalize(action.cpu().numpy())
-            control_points = action[i, :, :]
-        
-        np.set_printoptions(precision=4, suppress=True, linewidth=150)
-        print(control_points)
-
-        '''smooth the control points'''
-        # control_points_T = control_points.T  # (D, T)
-        # tck, u = splprep(control_points_T, s=0.001, k=3)
-        # u_fine = np.linspace(0, 1, config['horizon'])
-        # smoothed_control_points = np.array(splev(u_fine, tck)).T  # (T, D)
-        # control_points = smoothed_control_points
-        # print("Smoothed control points:", control_points)
-        
-        '''reconstruct the B-Spline'''
-        import helper_functions as helper
-        degree = 4
-        num_ctrl_pts = 32
-        ctrl_points = np.linspace(0, 1, num_ctrl_pts)
-        knots = np.linspace(0, 1, num_ctrl_pts - degree + 1)
-        knots = np.concatenate(([0] * degree, knots, [1] * degree))
-        spline = BSpline(knots, control_points, degree)
-
-        T_total_list = [5,10]
-        results = []
-        for T_total_new in T_total_list:
-            print(f"\nTesting with T_total = {T_total_new}s")
-            result = (T_total_new, *helper.calculate_BSpline_wrt_T(spline, T_total_new))
-            results.append(result)
-        # helper.plot_BSpline_wrt_T(results=results, num_joints=robot_s.n_dof, overlay=True)
-        # helper.workspace_plot(robot_s, results[0][2])
-        # helper.workspace_plot(robot_s, results[1][2])
-        helper.visualize_anime_path(base, robot_s, results[0][2],start_conf=results[0][2][0], goal_conf=results[0][2][-1])
-
-
-
-
-if config['mode'] == "init_inference":
-    from scipy.interpolate import make_lsq_spline, BSpline
-    model_path = '0000_test_programs/surgery_diff/CleanDiffuser/motion_planner/results/0608_1500_32h_64b_normTrue/diffusion_ckpt_latest.pt'
     agent.load(model_path)
     agent.model.eval()
     agent.model_ema.eval()
@@ -505,7 +390,8 @@ if config['mode'] == "init_inference":
     success_count = 0
     longer_traj_count = 0
     
-    for id in tqdm(range(1000)):
+    ts = time.time()
+    for id in tqdm(range(len(data))):
         pos_start, pos_g =  data[id]["start_pos"], data[id]["goal_pos"]
         gth_jnt_seed = data[id]["start_jnt"]
         condition = np.concatenate((pos_start, pos_g), axis=0).astype(np.float32)
@@ -557,11 +443,13 @@ if config['mode'] == "init_inference":
                 if traj_len > data[id]['traj_len']:
                     longer_traj_count += 1
     
-    print(f"Total successful samples: {success_count/1000*100:.2f}%")
-    print(f"Average initial joint difference: {np.mean(init_jnt_diff)}")
-    print(f"Average initial position difference: {np.mean(init_pos_diff)}")
-    print(f"Average trajectory length: {np.mean(traj_len_list)}")
-    print(f"Longer trajectory count: {longer_traj_count/success_count*100:.2f}%")
+    time_cost = time.time() - ts
+    print(f"Time cost: {time_cost:.2f} seconds")
+    print(f'average time per sample: {time_cost/success_count:.4f} seconds')
+    print(f"Total successful samples: {success_count/len(data)*100:.2f}%")
+    print(f"Average initial position difference: {np.sum(init_pos_diff)/len(data):.4f}")
+    print(f"Average trajectory length: {np.sum(traj_len_list)/len(data):.4f}")
+    print(f"Longer trajectory count: {longer_traj_count/len(data)*100:.2f}%")
 
 else:
     raise ValueError("Illegal mode")
