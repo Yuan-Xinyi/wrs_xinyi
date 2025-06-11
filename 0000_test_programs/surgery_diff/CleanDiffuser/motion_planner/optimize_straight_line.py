@@ -35,17 +35,28 @@ def generate_jnt_path(axis, num_points, max_attempts=100):
 
     raise RuntimeError(f"Failed to generate a valid joint path after {max_attempts} attempts.")
 
+def calculate_rot_error(rot1, rot2):
+    delta = rm.delta_w_between_rotmat(rot1, rot2)
+    return np.linalg.norm(delta)
 
 # 代价函数：末端误差 + 平滑项
-def cost_fn(q_all, path_points, num_joints, weight_smooth=1e-2):
+def cost_fn(q_all, path_points, num_joints, weight_smooth=1e-2, weight_rot_smooth=1e-1):
     q_all = q_all.reshape(len(path_points), num_joints)
     loss = 0.0
+    rot_prev = None
     for i, (q, x_desired) in enumerate(zip(q_all, path_points)):
-        x, _ = robot.fk(jnt_values=q)
+        x, rot = robot.fk(jnt_values=q)
         loss += np.linalg.norm(x - x_desired)**2  # 末端位置误差
+
         if i > 0:
-            loss += weight_smooth * np.linalg.norm(q - q_all[i-1])**2  # 平滑性
+            loss += weight_smooth * np.linalg.norm(q - q_all[i-1])**2  # 关节平滑
+            rot_dist = calculate_rot_error(rot_prev, rot)
+            loss += weight_rot_smooth * rot_dist**2  # 旋转平滑
+
+        rot_prev = rot
+
     return loss
+
 
 
 def traj_comparison_multi(*joint_seqs, labels=None):
@@ -146,6 +157,8 @@ q_max = robot.jnt_ranges[:, 1]
 bounds = [(q_min[i % num_joints], q_max[i % num_joints]) for i in range(num_points * num_joints)]
 
 # 优化
+import time
+start_time = time.time()
 res = minimize(
     cost_fn,
     q_init.flatten(),
@@ -154,6 +167,8 @@ res = minimize(
     bounds=bounds,
     options={'disp': True, 'maxiter': 1000, 'gtol': 1e-4}
 )
+end_time = time.time()
+print(f"Optimization took {end_time - start_time:.2f} seconds")
 
 q_traj = res.x.reshape(num_points, num_joints)
 similarity = np.mean(np.linalg.norm(q_traj - gth_jnt_path, axis=1))  # 平均 L2，越小越相似
