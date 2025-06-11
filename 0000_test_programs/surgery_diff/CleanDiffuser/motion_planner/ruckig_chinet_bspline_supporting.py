@@ -1,6 +1,8 @@
 import numpy as np
 import random
 import copy
+from tqdm import tqdm
+import time
 
 data = []
 success_count = 0
@@ -10,7 +12,7 @@ import wrs.robot_sim.robots.franka_research_3.franka_research_3 as franka
 from wrs import wd, rm, mcm
 robot_s = franka.FrankaResearch3(enable_cc=True)
 
-# while success_count < 1000:
+# while success_count < 5000:
 #     attempt += 1
 #     gth_jnt_seed = robot_s.rand_conf()
 #     pos, rot = robot_s.fk(jnt_values=gth_jnt_seed)
@@ -47,7 +49,7 @@ robot_s = franka.FrankaResearch3(enable_cc=True)
 # np.save("ik_traj_dataset.npy", data)
 # print(f"Finished. Collected {len(data)} successful samples.")
 
-# Load the dataset
+'''Load the dataset'''
 data = np.load("ik_traj_dataset.npy", allow_pickle=True)
 print(f"Loaded dataset with {len(data)} samples.")
 
@@ -55,18 +57,20 @@ start_positions = [item["start_pos"] for item in data]
 goal_positions = [item["goal_pos"] for item in data]
 start_joints = [item["start_jnt"] for item in data]
 traj_lengths = [item["traj_len"] for item in data]
+print(f'gth average length: {np.mean(traj_lengths):.4f} m')
 
 '''random initial joint conf test'''
 init_pos_diff = []
-init_jnt_diff = []
 traj_len_list = []
 
 success_count = 0
 longer_traj_count = 0
 
-for id in range(1000):
-    # seed = robot_s.rand_conf()
-    seed = np.zeros(robot_s.n_dof)
+ts = time.time()
+for id in tqdm(range(len(data))):
+# for id in tqdm(range(10)):
+    seed = robot_s.rand_conf()
+    # seed = np.zeros(robot_s.n_dof)
     pos_guess, rot = robot_s.fk(jnt_values=seed)
 
     gth_pos = data[id]['start_pos']
@@ -77,13 +81,12 @@ for id in range(1000):
         jnt_list = [real_jnt]
 
         '''record'''
-        init_jnt_diff.append(np.linalg.norm(real_jnt - data[id]['start_jnt']))
         init_pos_diff.append(np.linalg.norm(pos_guess - data[id]['start_pos']))
 
         goal_pos = data[id]['goal_pos']
         disp = np.abs(goal_pos - gth_pos)
         axis_idx = np.argmax(disp)
-        print(f"ID: {id}, Start Position: {gth_pos}, Goal Position: {goal_pos}, Axis: {axis_idx}")
+        # print(f"ID: {id}, Start Position: {gth_pos}, Goal Position: {goal_pos}, Axis: {axis_idx}")
 
         for _ in range(200):
             gth_pos[axis_idx] += 0.01
@@ -99,10 +102,12 @@ for id in range(1000):
             if traj_len > data[id]['traj_len']:
                 longer_traj_count += 1
             traj_len_list.append(traj_len)
-            print(f"Start Position: {gth_pos}, Goal Position: {pos_goal}, Trajectory Length: {traj_len}")
+            # print(f"Start Position: {gth_pos}, Goal Position: {pos_goal}, Trajectory Length: {traj_len}")
+time_cost = time.time() - ts
 
-print(f"Total successful samples: {success_count/1000*100:.2f}%")
-print(f"Average initial joint difference: {np.mean(init_jnt_diff)}")
-print(f"Average initial position difference: {np.mean(init_pos_diff)}")
-print(f"Average trajectory length: {np.mean(traj_len_list)}")
-print(f"Longer trajectory count: {longer_traj_count/success_count*100:.2f}%")
+print(f"Time cost: {time_cost:.2f} seconds")
+print(f'average time per sample: {time_cost/success_count:.4f} seconds')
+print(f"Total successful samples: {success_count/len(data)*100:.2f}%")
+print(f"Average initial position difference: {np.sum(init_pos_diff)/len(data):.4f}")
+print(f"Average trajectory length: {np.sum(traj_len_list)/len(data):.4f}")
+print(f"Longer trajectory count: {longer_traj_count/len(data)*100:.2f}%")

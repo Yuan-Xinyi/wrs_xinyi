@@ -142,7 +142,6 @@ def workspace_plot_multi(robot, *jnt_paths, labels=None):
     plt.tight_layout(rect=[0, 0.03, 1, 0.95])
     plt.show()
 
-
 # 参数
 num_joints = robot.n_dof
 num_points = 32
@@ -165,10 +164,12 @@ res = minimize(
     args=(path_points, num_joints),
     method='L-BFGS-B',
     bounds=bounds,
-    options={'disp': True, 'maxiter': 1000, 'gtol': 1e-4}
+    options={'disp': True, 'maxiter': 5000, 'gtol': 1e-5}
 )
 end_time = time.time()
+print('='*50)
 print(f"Optimization took {end_time - start_time:.2f} seconds")
+print('='*50)
 
 q_traj = res.x.reshape(num_points, num_joints)
 similarity = np.mean(np.linalg.norm(q_traj - gth_jnt_path, axis=1))  # 平均 L2，越小越相似
@@ -178,12 +179,12 @@ workspace_plot_multi(robot, np.array(gth_jnt_path), q_traj, labels=["Ground Trut
 
 
 robot.goto_given_conf(gth_jnt_path[0])
-robot.gen_meshmodel(rgb=[0,1,0], alpha=0.5).attach_to(base)
+robot.gen_meshmodel(rgb=[0,1,0], alpha=0.3).attach_to(base)
 robot.goto_given_conf(gth_jnt_path[-1])
-robot.gen_meshmodel(rgb=[0,1,0], alpha=0.5).attach_to(base)
+robot.gen_meshmodel(rgb=[0,1,0], alpha=0.3).attach_to(base)
 
 robot.goto_given_conf(q_traj[0])
-robot.gen_meshmodel(rgb=[0,0,1], alpha=0.5).attach_to(base)
+robot.gen_meshmodel(rgb=[0,0,1], alpha=0.3).attach_to(base)
 robot.goto_given_conf(q_traj[-1])
-robot.gen_meshmodel(rgb=[0,0,1], alpha=0.5).attach_to(base)
+robot.gen_meshmodel(rgb=[0,0,1], alpha=0.3).attach_to(base)
 base.run()

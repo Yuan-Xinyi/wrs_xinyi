@@ -8,7 +8,7 @@ class FrankaResearch3Arm(mi.ManipulatorInterface):
     def __init__(self,
                  pos=rm.np.zeros(3),
                  rotmat=rm.np.eye(3),
-                 ik_solver='d',
+                 ik_solver='s',
                  home_conf=rm.np.zeros(7),
                  name='franka_research_3_arm',
                  enable_cc=False):
