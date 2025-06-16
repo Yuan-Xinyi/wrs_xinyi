@@ -7,6 +7,9 @@ Reference: XArm Developer Manual (http://download.ufactory.cc/xarm/en/xArm%20Dev
 import time
 from typing import Optional
 import numpy as np
+import os
+import sys
+sys.path.append(os.path.dirname(os.path.abspath(__file__)))
 from xarm_lite6_dxl_x import XArmLite6DXLCon
 import wrs.basis.robot_math as rm
 import wrs.drivers.xarm.wrapper.xarm_api as arm

@@ -389,7 +389,7 @@ if config['mode'] == "inference":
     # inference
     solver = config['inference_solver']
     inference_steps = config['inference_steps']
-    n_samples = 100
+    n_samples = 200
 
     '''random traj test'''
     # # generate the random condition
@@ -421,116 +421,115 @@ if config['mode'] == "inference":
     # print(f"Total {len(jnt_list)} joint configurations sampled.")
     # print('=' * 80)
 
-    # 已知起点和终点
+    import numpy as np
+    import torch
+    import helper_functions as hf
+
+    # 预设三角形三个点
     pos_1 = np.array([-0.56887997, -0.06892034, 0.321434])
     pos_2 = np.array([-0.39887989, -0.06892035, 0.32143399])
-    pos_3 = third_vertex(pos_1, pos_2)
+    pos_3 = third_vertex(pos_1, pos_2)  # 你已有这个函数
 
-    mgm.gen_arrow(spos=np.array(pos_1),
-                    epos=np.array(pos_2), stick_radius=.005, rgb=[1,0,0]).attach_to(base)
-    mgm.gen_arrow(spos=np.array(pos_2),
-                    epos=np.array(pos_3), stick_radius=.005, rgb=[1,0,0]).attach_to(base)
-    mgm.gen_arrow(spos=np.array(pos_1),
-                    epos=np.array(pos_3), stick_radius=.005, rgb=[1,0,0]).attach_to(base)
-    # robot_s.goto_given_conf(robot_s.rand_conf())
-    # robot_s.gen_meshmodel(rgb=[0, 1, 0], alpha=0.3).attach_to(base)
-    # base.run()
-    triangle_edges = [[pos_1, pos_2],[pos_2, pos_3],[pos_3, pos_1]]
+    triangle_edges = [[pos_1, pos_2], [pos_2, pos_3], [pos_3, pos_1]]
 
+    # 可视化箭头
+    for spos, epos in triangle_edges:
+        mgm.gen_arrow(spos=np.array(spos), epos=np.array(epos), stick_radius=.005, rgb=[1, 0, 0]).attach_to(base)
+
+    # 使用 diffusion 预测所有边的初始关节角
+    conditions = np.array([np.concatenate([start, end]) for start, end in triangle_edges])
+    conditions = torch.tensor(conditions, device=config['device']).float().unsqueeze(1).repeat(1, n_samples, 1)
+    conditions = conditions.view(-1, 6)
+    prior = torch.zeros((3 * n_samples, config['horizon'], config['action_dim']), device=config['device'])
+
+    with torch.no_grad():
+        actions, _ = agent.sample(
+            prior=prior,
+            n_samples=3 * n_samples,
+            sample_steps=config['sample_steps'],
+            temperature=1.0,
+            solver=solver,
+            condition_cfg=conditions,
+            w_cfg=1.0,
+            use_ema=True,
+        )
+        actions_np = dataset.normalizer['obs']['jnt_pos'].unnormalize(actions.cpu().numpy())  # (3 * n_samples, H, D)
+
+    # 初始化
     jnt_list = []
-    all_sub_jnt_lists = []  # 存所有边的轨迹
+    all_sub_jnt_lists = []
+    sample_indices = [0] * len(triangle_edges)  # 每条边当前尝试的sample index
+    edge_idx = 0
 
-    for edge in triangle_edges:
-        sub_jnt_list = []  # 当前边的轨迹
+    while 0 <= edge_idx < len(triangle_edges):
+        sample_idx = sample_indices[edge_idx]
+        if sample_idx >= n_samples:
+            if edge_idx == 0:
+                print("Planning failed: all samples exhausted for first edge.")
+                break
+            # print(f"Edge {edge_idx} failed. Backtracking to edge {edge_idx - 1}")
+            edge_idx -= 1
+            jnt_list = jnt_list[:-len(all_sub_jnt_lists[-1])]
+            all_sub_jnt_lists.pop()
+            sample_indices[edge_idx] += 1  # 尝试下一个 sample
+            continue
 
-        pos_start = edge[0]
-        pos_goal = edge[1]
+        # 当前边的信息
+        pos_start, pos_goal = triangle_edges[edge_idx]
         disp_vec = pos_goal - pos_start
         distance = np.linalg.norm(disp_vec)
+        direction = disp_vec / distance
         n_steps = int(distance / 0.01)
+        # print(f"Edge {edge_idx} | Trying sample {sample_idx} | Distance: {distance:.4f}m | Steps: {n_steps}")
 
-        print(f"Start position: {pos_start}, Goal position: {pos_goal}, Distance: {distance:.4f}m, Steps: {n_steps}")
+        # diffusion sample -> initial joint angle
+        sample_id = edge_idx * n_samples + sample_idx
+        pred_jnt_seed = actions_np[sample_id, 0, :]
+        _, rot = robot_s.fk(jnt_values=pred_jnt_seed, toggle_jacobian=True, update=True)
 
-        # prepare condition
-        condition = np.concatenate([pos_start, pos_goal], axis=0)
-        condition = torch.tensor(condition, device=config['device']).unsqueeze(0).float()
+        sub_jnt_list = []
+        for step in range(1, n_steps + 1):
+            pos = pos_start + direction * (0.01 * step)
+            seed = all_sub_jnt_lists[-1][-1] if all_sub_jnt_lists else pred_jnt_seed
+            res = robot_s.ik(tgt_pos=pos, tgt_rotmat=rot, seed_jnt_values=seed)
+            if res is None:
+                break
+            sub_jnt_list.append(res)
 
-        prior = torch.zeros((n_samples, config['horizon'], config['action_dim']), device=config['device'])
-        if n_samples != 1:
-            condition = condition.repeat(n_samples, 1)
-        with torch.no_grad():
-            action, _ = agent.sample(
-                prior=prior,
-                n_samples=n_samples,
-                sample_steps=config['sample_steps'],
-                temperature=1.0,
-                solver=solver,
-                condition_cfg=condition,
-                w_cfg=1.0,
-                use_ema=True
-            )
+        # 判断是否成功
+        if len(sub_jnt_list) == n_steps:
+            print(f"Edge {edge_idx} succeeded with sample {sample_idx}")
+            all_sub_jnt_lists.append(sub_jnt_list)
+            jnt_list.extend(sub_jnt_list)
+            edge_idx += 1
+            if edge_idx < len(triangle_edges):
+                sample_indices[edge_idx] = 0  # ✅ 初始化下一个边的 sample index
 
-        action_np = dataset.normalizer['obs']['jnt_pos'].unnormalize(action.cpu().numpy())
+        else:
+            sample_indices[edge_idx] += 1  # 当前 edge 用下一个 sample 继续尝试
+
+    # 成功后可视化整条轨迹
+    if edge_idx == len(triangle_edges):
+        print(repr(jnt_list))
+        jnt_array = np.array(jnt_list)
         
-        # for sample_idx in range(n_samples):
-        #     pred_jnt_seed = action_np[sample_idx, 0, :]
-        #     direction = disp_vec / distance
-        #     _, rot = robot_s.fk(jnt_values=pred_jnt_seed, toggle_jacobian=True, update=True)
+        fig, axes = plt.subplots(7, 1, figsize=(10, 18), sharex=True)
 
-        #     for step in range(1, n_steps + 1):
-        #         pos = pos_start + direction * (0.01 * step)
-        #         seed = all_sub_jnt_lists[-1][-1] if all_sub_jnt_lists else pred_jnt_seed
-        #         res = robot_s.ik(tgt_pos=pos, tgt_rotmat=rot, seed_jnt_values=seed)
-        #         if res is None:
-        #             if step == 1:
-        #                 print(f"IK failed at the first step, pos = {pos}")
-        #                 continue
-        #             print(f"IK failed at step {step}, pos = {pos}")
-        #             break
-        #         sub_jnt_list.append(res)
+        for i in range(7):
+            axes[i].plot(jnt_array[:, i], label=f'Joint {i+1}')
+            axes[i].set_ylabel(f'Joint {i+1}')
+            axes[i].grid(True)
+            axes[i].legend()
 
-        #     # 保存当前边轨迹 + 汇总进完整轨迹
-        #     all_sub_jnt_lists.append(sub_jnt_list)
-        #     jnt_list.extend(sub_jnt_list)
+        axes[-1].set_xlabel('Step Index')
+        plt.tight_layout()
+        plt.show()
+        
+        hf.visualize_anime_path(base, robot_s, jnt_list)
+    else:
+        print("Trajectory planning failed.")
 
-        #     final_pos, _ = robot_s.fk(jnt_values=sub_jnt_list[-1])
-        #     print(f"Sub-path length: {len(sub_jnt_list)}, Final position: {final_pos}")
 
-        found_valid = False  # 成功标志位
-        for sample_idx in range(n_samples):
-            pred_jnt_seed = action_np[sample_idx, 0, :]
-            direction = disp_vec / distance
-            _, rot = robot_s.fk(jnt_values=pred_jnt_seed, toggle_jacobian=True, update=True)
-
-            sub_jnt_list = []  # 每条边新的轨迹
-            for step in range(1, n_steps + 1):
-                pos = pos_start + direction * (0.01 * step)
-                seed = all_sub_jnt_lists[-1][-1] if all_sub_jnt_lists else pred_jnt_seed
-                res = robot_s.ik(tgt_pos=pos, tgt_rotmat=rot, seed_jnt_values=seed)
-                if res is None:
-                    if step == 1:
-                        print(f"IK failed at first step for sample {sample_idx}, pos = {pos}")
-                    else:
-                        print(f"IK failed at step {step}, pos = {pos}")
-                    break  # 这个 sample 失败，试下一个 sample
-                sub_jnt_list.append(res)
-
-            # 如果整段轨迹成功（每一步都没失败）
-            if len(sub_jnt_list) == n_steps:
-                print(f"Sample {sample_idx} succeeded with {len(sub_jnt_list)} steps.")
-                all_sub_jnt_lists.append(sub_jnt_list)
-                jnt_list.extend(sub_jnt_list)
-                final_pos, _ = robot_s.fk(jnt_values=sub_jnt_list[-1])
-                print(f"Sub-path accepted from sample {sample_idx}: length = {len(sub_jnt_list)}, final pos = {final_pos}")
-                found_valid = True
-                break  # 找到成功的 sample，就退出 sample 遍历
-
-        if not found_valid:
-            print(f"All {n_samples} samples failed for edge from {pos_start} to {pos_goal}")
-
-    
-    import helper_functions as hf
-    hf.visualize_anime_path(base, robot_s, jnt_list,f=0.05)
 
 else:
     raise ValueError("Illegal mode")
