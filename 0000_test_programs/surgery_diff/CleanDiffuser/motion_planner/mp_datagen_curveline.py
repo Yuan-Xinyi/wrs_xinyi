@@ -45,10 +45,10 @@ def gen_jnt_list_from_pos_list(init_jnt, pos_list, robot, obstacle_list, base,
                 raise RuntimeError("Unknown failure")
             jnt_list.append(jnt)
         except Exception as e:
-            print(f"{'-'*40}\nAborting: {success_count} / {len(pos_list)} positions succeeded.\n{'-'*40}")
+            # print(f"{'-'*40}\nAborting: {success_count} / {len(pos_list)} positions succeeded.\n{'-'*40}")
             return [j for j in jnt_list if j is not None], success_count
 
-    print(f"{'-'*40}\nSuccessfully solved IK for {success_count} / {len(pos_list)} positions.\n{'-'*40}")
+    # print(f"{'-'*40}\nSuccessfully solved IK for {success_count} / {len(pos_list)} positions.\n{'-'*40}")
     return jnt_list, success_count
 
 
@@ -105,32 +105,52 @@ def generate_random_cubic_curve(num_points=20, scale=0.1, center=np.array([0.4, 
 
     return np.array(points), coeffs
 
+import sys
+# Get the parameters passed to the script
+if len(sys.argv) < 3:
+    print("Please provide both 'id_start' and 'id_end' parameters.")
+    sys.exit(1)
+
+# Read the parameters (in this case, traj_start and traj_end)
+id_start = int(sys.argv[1])  # The first parameter: trajectory start position
+id_end = int(sys.argv[2])    # The second parameter: trajectory end position
+
+print(f"Processing trajectory from {id_start} to {id_end}.")
 
 
-if __name__ == '__main__':
-    MAX_WAYPOINT = 200
-    MAX_TRY_TIME = 5.0
-    MAX_TRAJ_NUM = 100000
-    waypoint_interval = 0.01
+MAX_WAYPOINT = 200
+MAX_TRY_TIME = 5.0
+MAX_TRAJ_NUM = 100000
+waypoint_interval = 0.01
 
-    '''init the parameters'''
-    from copy import copy
-    current_file_dir = os.path.dirname(__file__)
+'''init the parameters'''
+from copy import copy
+current_file_dir = os.path.dirname(__file__)
 
-    '''Initialize the world and robot'''
-    base = wd.World(cam_pos=[2, 0, 1], lookat_pos=[0, 0, 0])
-    mgm.gen_frame().attach_to(base)
-    robot_s = xarm_s.XArmLite6WG2(enable_cc=True)
+'''Initialize the world and robot'''
+base = wd.World(cam_pos=[2, 0, 1], lookat_pos=[0, 0, 0])
+mgm.gen_frame().attach_to(base)
+robot_s = xarm_s.XArmLite6WG2(enable_cc=True)
 
-    '''dataset generation'''
-    dataset_name = os.path.join('/home/lqin/zarr_datasets', f'0616_curvelineIK.zarr')
+'''dataset generation'''
+dataset_name = os.path.join('/home/lqin/zarr_datasets', f'0616_curvelineIK.zarr')
+dof = robot_s.n_dof
+if os.path.exists(dataset_name):
+    root = zarr.open(dataset_name, mode='a')  # Open the dataset in append mode
+    jnt_p = root['data']["jnt_pos"]
+    workspc_pos = root['data']["position"]
+    workspc_rotmat = root['data']["rotation"]
+    coef = root['data']["coef"]
+    episode_ends_ds = root['meta']["episode_ends"]
+    episode_ends_counter = root['meta']['episode_ends'][-1]
+    print('Dataset opened:', dataset_name)
+
+else:
     store = zarr.DirectoryStore(dataset_name)
     root = zarr.group(store=store)
     print('dataset created in:', dataset_name)    
     meta_group = root.create_group("meta")
     data_group = root.create_group("data")
-    
-    dof = robot_s.n_dof
     episode_ends_ds = meta_group.create_dataset("episode_ends", shape=(0,), chunks=(1,), dtype=np.float32, append=True)
     jnt_p = data_group.create_dataset("jnt_pos", shape=(0, dof), chunks=(1, dof), dtype=np.float32, append=True)
     workspc_pos = data_group.create_dataset("position", shape=(0, 3), chunks=(1, 3), dtype=np.float32, append=True)
@@ -138,41 +158,40 @@ if __name__ == '__main__':
     coef = data_group.create_dataset("coef", shape=(0, 12), chunks=(1, 12), dtype=np.float32, append=True)
     episode_ends_counter = 0
 
-    jnt_samples = partiallydiscretize_joint_space(robot_s)
-    print(f"Robot has {robot_s.n_dof} degree of freedoms, total {len(jnt_samples)} joint configurations sampled.")
-    print('--' * 100)
+jnt_samples = partiallydiscretize_joint_space(robot_s)
+print(f"Robot has {robot_s.n_dof} degree of freedoms, total {len(jnt_samples)} joint configurations sampled.")
+print('--' * 100)
 
-    n = 50
+n = 50
 
-    # Iterate through each joint sample
-    # for _ in tqdm(range(len(jnt_samples))):
-    for _ in range(1):
-        pos_init, rotmat_init = robot_s.fk(jnt_values=jnt_samples[_])
-        
-        for _ in range(n):
-            scale = np.random.choice([0.1, 0.2, 0.3, 0.4, 0.5])
-            workspace_points, coeffs = generate_random_cubic_curve(num_points=64, scale=scale, center=pos_init)
-            
-            pos_list, success_count = gen_jnt_list_from_pos_list(init_jnt=jnt_samples[_],
-                pos_list=workspace_points, robot=robot_s, obstacle_list=None, base=base,
-                max_try_time=MAX_TRY_TIME, check_collision=True, visualize=False
-            )
-            
-            # Save the generated trajectory data
-            for jnt in pos_list:
-                p, r = robot_s.fk(jnt_values=jnt)
-                jnt_p.append(np.array(jnt).reshape(1, dof))
-                workspc_pos.append(np.array(p).reshape(1, 3))
-                workspc_rotmat.append(np.array(r).reshape(1, 9))
-                coef.append(np.array(coeffs).reshape(1, 12))
-            
-            # Update the counter
-            episode_ends_counter += len(pos_list)
-            episode_ends_ds.append(np.array([episode_ends_counter], dtype=np.float32))
-            
-            print(f"Generated {len(pos_list)} waypoints for the cubic curve with coeffs: {coeffs}, scale: {scale}")
+# Iterate through each joint sample
+for jnt_sample in jnt_samples[id_start:id_end]:
+    pos_init, rotmat_init = robot_s.fk(jnt_values=jnt_sample)
     
-    '''visualize the generated joint paths'''
-    # hf.visualize_anime_path(base, robot_s, pos_list)
+    for _ in range(n):
+        scale = np.random.choice([0.1, 0.2, 0.3, 0.4, 0.5])
+        workspace_points, coeffs = generate_random_cubic_curve(num_points=64, scale=scale, center=pos_init)
+        
+        pos_list, success_count = gen_jnt_list_from_pos_list(init_jnt=jnt_samples[_],
+            pos_list=workspace_points, robot=robot_s, obstacle_list=None, base=base,
+            max_try_time=MAX_TRY_TIME, check_collision=True, visualize=False
+        )
+        
+        # Save the generated trajectory data
+        for jnt in pos_list:
+            p, r = robot_s.fk(jnt_values=jnt)
+            jnt_p.append(np.array(jnt).reshape(1, dof))
+            workspc_pos.append(np.array(p).reshape(1, 3))
+            workspc_rotmat.append(np.array(r).reshape(1, 9))
+            coef.append(np.array(coeffs).reshape(1, 12))
+        
+        # Update the counter
+        episode_ends_counter += len(pos_list)
+        episode_ends_ds.append(np.array([episode_ends_counter], dtype=np.float32))
+        
+        print(f"Generated {len(pos_list)} waypoints for the cubic curve with scale: {scale}")
+
+'''visualize the generated joint paths'''
+# hf.visualize_anime_path(base, robot_s, pos_list)
 
 

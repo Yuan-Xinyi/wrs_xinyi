@@ -50,7 +50,7 @@ def plot_details(robot_s, jnt_pos_list, jnt_vel_list, jnt_acc_list):
 
 # root = zarr.open('/home/lqin/zarr_datasets/franka_kinodyn_obstacles_3.zarr', mode='r')
 # root = zarr.open('/home/lqin/zarr_datasets/franka_ruckig_100hz.zarr', mode='r')
-root = zarr.open('/home/lqin/zarr_datasets/straight_jntpath_partially.zarr', mode='r')
+root = zarr.open('/home/lqin/zarr_datasets/0616_curvelineIK.zarr', mode='r')
 # total_length = root['meta']['episode_ends'][-1]
 # goal_conf = np.zeros((int(total_length), 7), dtype=np.float32)
 

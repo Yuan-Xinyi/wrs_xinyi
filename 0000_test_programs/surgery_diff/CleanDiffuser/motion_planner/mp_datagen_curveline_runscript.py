@@ -18,7 +18,7 @@ for traj_start in traj_indices:
     try:
         # Run the target script with the current traj_start and traj_end
         result = subprocess.run(
-            ['python', script_path, str(traj_start), str(traj_end)],  # 传递参数
+            ['python', script_path, str(traj_start), str(traj_end)], 
             capture_output=True,
             text=True
         )

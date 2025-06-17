@@ -1,7 +1,7 @@
 import zarr
 
 # 打开 Zarr 数据集
-ruckig_root = zarr.open('/home/lqin/zarr_datasets/0607_simple_straight.zarr', mode='r+')
+ruckig_root = zarr.open('/home/lqin/zarr_datasets/0616_curvelineIK.zarr', mode='r+')
 # ruckig_root = zarr.open('/home/lqin/zarr_datasets/straight_line_joint_path.zarr', mode='r+')
 
 # 获取原始 'episode_ends' 数据
