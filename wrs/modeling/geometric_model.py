@@ -540,6 +540,8 @@ def gen_stick(spos=np.array([0, 0, 0]),
     return stick_sgm
 
 
+
+
 def gen_dashed_stick(spos=np.array([0, 0, 0]),
                      epos=np.array([.1, 0, 0]),
                      radius=.0025,

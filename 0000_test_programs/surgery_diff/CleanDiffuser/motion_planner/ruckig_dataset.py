@@ -1,12 +1,10 @@
 from typing import Dict
 import torch
 import numpy as np
-import copy
 from cleandiffuser.dataset.base_dataset import BaseDataset
 from cleandiffuser.dataset.replay_buffer import ReplayBuffer
 from cleandiffuser.dataset.dataset_utils import SequenceSampler, MinMaxNormalizer, ImageNormalizer, dict_apply
-import obstacle_utils as obstacle_utils
-
+import obstacle_utils
 
 import wrs.visualization.panda.world as wd
 import wrs.modeling.geometric_model as mgm
@@ -601,6 +599,77 @@ class StraightLineDataset(BaseDataset):
             'jnt_seed': init_jnt_pos,
             'jnt_pos': sample['jnt_pos'],
             'condition': np.concatenate([start_position, end_position], axis=-1)
+        }
+        return data
+    
+    def __getitem__(self, idx: int) -> Dict[str, torch.Tensor]:
+        sample = self.sampler.sample_sequence(idx)
+        data = self._sample_to_data(sample)
+        torch_data = dict_apply(data, torch.tensor)
+        return torch_data
+
+class CurveLineDataset(BaseDataset):
+    def __init__(self,
+            zarr_path,
+            obs_keys=[], 
+            horizon=1,
+            pad_before=0,
+            pad_after=0,
+            abs_action=False,
+            normalize=False
+        ):
+        
+        super().__init__()
+        self.replay_buffer = ReplayBuffer.copy_from_path(
+            zarr_path, keys=obs_keys)
+
+        self.sampler = SequenceSampler(
+            replay_buffer=self.replay_buffer, 
+            sequence_length=horizon,
+            pad_before=pad_before, 
+            pad_after=pad_after)
+        
+        self.horizon = horizon
+        self.pad_before = pad_before
+        self.pad_after = pad_after
+        if normalize:
+            self.normalizer = self.get_normalizer()
+        else:
+            self.normalizer = None
+
+
+    def get_normalizer(self):
+        jnt_pos_min_val = np.array([-3.14159265, -2.61799, -0.061087, -3.14159265, -2.1642, -3.14159265])
+        jnt_pos_max_val = np.array([3.14159265, 2.61799, 5.235988, 3.14159265, 2.1642, 3.14159265])
+        jnt_pos_normalizer = MinMaxNormalizer(np.array([jnt_pos_min_val, jnt_pos_max_val]))
+
+        print('*' * 100)
+        print('ATTENTION: Normalizer is used in the dataset.')
+        print('*' * 100)
+        
+        return {
+            "obs": {
+                "jnt_pos": jnt_pos_normalizer
+            }
+        }
+
+    def __str__(self) -> str:
+        return f"Keys: {self.replay_buffer.keys()} Steps: {self.replay_buffer.n_steps} Episodes: {self.replay_buffer.n_episodes}"
+    
+    def __len__(self) -> int:
+        return len(self.sampler)
+
+    def _sample_to_data(self, sample):
+        position = sample['position']
+        coef = sample['coef'][0]
+        
+        if self.normalizer:
+            jnt_pos = self.normalizer['obs']['jnt_pos'].normalize(sample['jnt_pos'])
+    
+        data = {
+            'jnt_pos': jnt_pos,
+            'coef_cond': coef,
+            'condition': position
         }
         return data
     
