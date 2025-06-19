@@ -167,53 +167,53 @@ def workspace_plot_multi(robot, *jnt_paths, labels=None):
     plt.tight_layout(rect=[0, 0.03, 1, 0.95])
     plt.show()
 
+if __name__ == "__main__":
+    # 参数
+    num_joints = robot.n_dof
+    num_points = 32
+    gth_jnt_path, path_points = generate_jnt_path('x', num_points)  # 生成关节路径
+    q_init = np.zeros((num_points, num_joints))  # 初始猜测
+    # q_init = np.array(gth_jnt_path) + np.random.normal(scale=0.05, size=(num_points, num_joints))
 
-# 参数
-num_joints = robot.n_dof
-num_points = 32
-gth_jnt_path, path_points = generate_jnt_path('x', num_points)  # 生成关节路径
-q_init = np.zeros((num_points, num_joints))  # 初始猜测
-# q_init = np.array(gth_jnt_path) + np.random.normal(scale=0.05, size=(num_points, num_joints))
 
+    # joint limits
+    q_min = robot.jnt_ranges[:, 0]
+    q_max = robot.jnt_ranges[:, 1]
+    bounds = [(q_min[i % num_joints], q_max[i % num_joints]) for i in range(num_points * num_joints)]
 
-# joint limits
-q_min = robot.jnt_ranges[:, 0]
-q_max = robot.jnt_ranges[:, 1]
-bounds = [(q_min[i % num_joints], q_max[i % num_joints]) for i in range(num_points * num_joints)]
+    # 优化
+    import time
+    start_time = time.time()
+    res = minimize(
+        cost_fn,
+        q_init.flatten(),
+        args=(path_points, num_joints),
+        method='L-BFGS-B',
+        bounds=bounds,
+        options={'disp': True, 'maxiter': 1000, 'gtol': 1e-4}
+    )
+    end_time = time.time()
+    print(f"Optimization took {end_time - start_time:.2f} seconds")
 
-# 优化
-import time
-start_time = time.time()
-res = minimize(
-    cost_fn,
-    q_init.flatten(),
-    args=(path_points, num_joints),
-    method='L-BFGS-B',
-    bounds=bounds,
-    options={'disp': True, 'maxiter': 1000, 'gtol': 1e-4}
-)
-end_time = time.time()
-print(f"Optimization took {end_time - start_time:.2f} seconds")
+    q_traj = res.x.reshape(num_points, num_joints)
+    similarity = np.mean(np.linalg.norm(q_traj - gth_jnt_path, axis=1))  # 平均 L2，越小越相似
+    print(f"Optimization completed with average l2 norm: {similarity:.4f}")
+    traj_comparison_multi(np.array(gth_jnt_path), q_traj, q_init, labels=["Ground Truth", "Optimized", "Init Guess"])
+    workspace_plot_multi(robot, np.array(gth_jnt_path), q_traj, labels=["Ground Truth", "Optimized"])
 
-q_traj = res.x.reshape(num_points, num_joints)
-similarity = np.mean(np.linalg.norm(q_traj - gth_jnt_path, axis=1))  # 平均 L2，越小越相似
-print(f"Optimization completed with average l2 norm: {similarity:.4f}")
-traj_comparison_multi(np.array(gth_jnt_path), q_traj, q_init, labels=["Ground Truth", "Optimized", "Init Guess"])
-workspace_plot_multi(robot, np.array(gth_jnt_path), q_traj, labels=["Ground Truth", "Optimized"])
+    print("===== Timing Analysis =====")
+    print(f"Total FK calls: {fk_call_count}")
+    print(f"Total FK time: {fk_total_time:.4f} sec")
+    print(f"Average FK time per call: {fk_total_time / fk_call_count:.8f} sec")
+    print("===========================")
 
-print("===== Timing Analysis =====")
-print(f"Total FK calls: {fk_call_count}")
-print(f"Total FK time: {fk_total_time:.4f} sec")
-print(f"Average FK time per call: {fk_total_time / fk_call_count:.8f} sec")
-print("===========================")
+    robot.goto_given_conf(gth_jnt_path[0])
+    robot.gen_meshmodel(rgb=[0,1,0], alpha=0.5).attach_to(base)
+    robot.goto_given_conf(gth_jnt_path[-1])
+    robot.gen_meshmodel(rgb=[0,1,0], alpha=0.5).attach_to(base)
 
-robot.goto_given_conf(gth_jnt_path[0])
-robot.gen_meshmodel(rgb=[0,1,0], alpha=0.5).attach_to(base)
-robot.goto_given_conf(gth_jnt_path[-1])
-robot.gen_meshmodel(rgb=[0,1,0], alpha=0.5).attach_to(base)
-
-robot.goto_given_conf(q_traj[0])
-robot.gen_meshmodel(rgb=[0,0,1], alpha=0.5).attach_to(base)
-robot.goto_given_conf(q_traj[-1])
-robot.gen_meshmodel(rgb=[0,0,1], alpha=0.5).attach_to(base)
-base.run()
+    robot.goto_given_conf(q_traj[0])
+    robot.gen_meshmodel(rgb=[0,0,1], alpha=0.5).attach_to(base)
+    robot.goto_given_conf(q_traj[-1])
+    robot.gen_meshmodel(rgb=[0,0,1], alpha=0.5).attach_to(base)
+    base.run()
