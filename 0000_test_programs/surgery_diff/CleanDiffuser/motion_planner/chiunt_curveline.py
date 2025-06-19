@@ -210,123 +210,135 @@ if config['mode'] == "inference":
     testing_num = 1000
     success = 0
     
-    for id in tqdm(range(testing_num)):
-        '''randomly generate a complex trajectory'''
-        pos_list = []
-        while len(pos_list) < 32:
-            init_jnt = robot_s.rand_conf()
-            pos_init, rotmat_init = robot_s.fk(jnt_values=init_jnt)
-            scale = np.random.choice([0.1, 0.2, 0.3, 0.4, 0.5])
-            # scale = np.random.choice([0.1, 0.2, 0.3])
-            import mp_datagen_curveline as datagen
-            workspace_points, coeffs = datagen.generate_random_cubic_curve(num_points=32, scale=scale, center=pos_init)
+    '''diffusion model inference'''
+    # for id in tqdm(range(testing_num)):
+    #     '''randomly generate a complex trajectory'''
+    #     pos_list = []
+    #     while len(pos_list) < 32:
+    #         init_jnt = robot_s.rand_conf()
+    #         pos_init, rotmat_init = robot_s.fk(jnt_values=init_jnt)
+    #         scale = np.random.choice([0.1, 0.2, 0.3, 0.4, 0.5])
+    #         # scale = np.random.choice([0.1, 0.2, 0.3])
+    #         import mp_datagen_curveline as datagen
+    #         workspace_points, coeffs = datagen.generate_random_cubic_curve(num_points=32, scale=scale, center=pos_init)
             
-            pos_list, success_count = datagen.gen_jnt_list_from_pos_list(init_jnt=init_jnt,
-                pos_list=workspace_points, robot=robot_s, obstacle_list=None, base=base,
-                max_try_time=5.0, check_collision=True, visualize=False
-            )
+    #         pos_list, success_count = datagen.gen_jnt_list_from_pos_list(init_jnt=init_jnt,
+    #             pos_list=workspace_points, robot=robot_s, obstacle_list=None, base=base,
+    #             max_try_time=5.0, check_collision=True, visualize=False
+    #         )
 
-        '''inference the trajectory'''
-        trajectory_window = torch.tensor(workspace_points[:config['horizon']]).to(config['device'])
-        if config['condition'] == "mlp":
-            condition = torch.tensor(trajectory_window, device=config['device']).unsqueeze(0).float()
-            condition = condition.flatten(start_dim=1)
-        prior = torch.zeros((n_samples, config['horizon'], config['action_dim']), device=config['device'])
-        if n_samples != 1:
-            condition = condition.repeat(n_samples, 1)
-        with torch.no_grad():
-            action, _ = agent.sample(prior=prior, n_samples=n_samples, sample_steps=config['sample_steps'], temperature=1.0,
-                                    solver=solver, condition_cfg=condition, w_cfg = 1.0, use_ema=True)
-        if config['normalize']:
-            action = dataset.normalizer['obs']['jnt_pos'].unnormalize(np.array(action.to('cpu')))
-        jnt_seed = action[0, 0, :]
-        _, rot = robot_s.fk(jnt_values=jnt_seed)
-        adjusted_jnt = robot_s.ik(tgt_pos=workspace_points[0], tgt_rotmat=rot, seed_jnt_values=jnt_seed)
-        if adjusted_jnt is None:
-            print("IK failed at initial position:", workspace_points[0])
+    #     '''inference the trajectory'''
+    #     trajectory_window = torch.tensor(workspace_points[:config['horizon']]).to(config['device'])
+    #     if config['condition'] == "mlp":
+    #         condition = torch.tensor(trajectory_window, device=config['device']).unsqueeze(0).float()
+    #         condition = condition.flatten(start_dim=1)
+    #     prior = torch.zeros((n_samples, config['horizon'], config['action_dim']), device=config['device'])
+    #     if n_samples != 1:
+    #         condition = condition.repeat(n_samples, 1)
+    #     with torch.no_grad():
+    #         action, _ = agent.sample(prior=prior, n_samples=n_samples, sample_steps=config['sample_steps'], temperature=1.0,
+    #                                 solver=solver, condition_cfg=condition, w_cfg = 1.0, use_ema=True)
+    #     if config['normalize']:
+    #         action = dataset.normalizer['obs']['jnt_pos'].unnormalize(np.array(action.to('cpu')))
+    #     jnt_seed = action[0, 0, :]
+    #     _, rot = robot_s.fk(jnt_values=jnt_seed)
+    #     adjusted_jnt = robot_s.ik(tgt_pos=workspace_points[0], tgt_rotmat=rot, seed_jnt_values=jnt_seed)
+    #     if adjusted_jnt is None:
+    #         print("IK failed at initial position:", workspace_points[0])
         
-        path = [adjusted_jnt] if adjusted_jnt is not None else []
-        for _ in workspace_points:
-            current_pos = np.array(_)
-            adjusted_jnt = robot_s.ik(tgt_pos=np.array(_), tgt_rotmat=rot, 
-                            seed_jnt_values=path[-1] if path else jnt_seed)
-            if adjusted_jnt is not None:
-                path.append(adjusted_jnt)
-            else:
-                print("IK failed at position:", current_pos)
-                break
-        if len(path) == 33:
-            print(f"Trajectory {id} generated successfully.")
-            success += 1
+    #     path = [adjusted_jnt] if adjusted_jnt is not None else []
+    #     for _ in workspace_points:
+    #         current_pos = np.array(_)
+    #         adjusted_jnt = robot_s.ik(tgt_pos=np.array(_), tgt_rotmat=rot, 
+    #                         seed_jnt_values=path[-1] if path else jnt_seed)
+    #         if adjusted_jnt is not None:
+    #             path.append(adjusted_jnt)
+    #         else:
+    #             print("IK failed at position:", current_pos)
+    #             break
+    #     if len(path) == 33:
+    #         print(f"Trajectory {id} generated successfully.")
+    #         success += 1
     
-    print(f"Total {testing_num} trajectories generated, {success} successful.")
-    print(f"Success rate: {success / testing_num * 100:.2f}%")
+    # print(f"Total {testing_num} trajectories generated, {success} successful.")
+    # print(f"Success rate: {success / testing_num * 100:.2f}%")
 
     '''randomly generate a complex trajectory'''
-    # pos_list = []
-    # while len(pos_list) < 32:
-    #     init_jnt = robot_s.rand_conf()
-    #     pos_init, rotmat_init = robot_s.fk(jnt_values=init_jnt)
-    #     # scale = np.random.choice([0.1, 0.2, 0.3, 0.4, 0.5])
-    #     scale = np.random.choice([0.1, 0.2, 0.3])
-    #     import mp_datagen_curveline as datagen
-    #     workspace_points, coeffs = datagen.generate_random_cubic_curve(num_points=32, scale=scale, center=pos_init)
+    pos_list = []
+    traj_length = 16
+    while len(pos_list) < 16:
+        init_jnt = robot_s.rand_conf()
+        pos_init, rotmat_init = robot_s.fk(jnt_values=init_jnt)
+        # scale = np.random.choice([0.1, 0.2, 0.3, 0.4, 0.5])
+        scale = np.random.choice([0.1, 0.2, 0.3])
+        import mp_datagen_curveline as datagen
+        workspace_points, coeffs = datagen.generate_random_cubic_curve(num_points=16, scale=scale, center=pos_init)
         
-    #     pos_list, success_count = datagen.gen_jnt_list_from_pos_list(init_jnt=init_jnt,
-    #         pos_list=workspace_points, robot=robot_s, obstacle_list=None, base=base,
-    #         max_try_time=5.0, check_collision=True, visualize=False
-    #     )
-    # # trajectory_generator = ComplexTrajectoryGenerator(num_segments=1, num_points_per_segment=32, 
-    # #                                                   scale_range=(0.1,0.3), center_init=init_pos)
-    # # test_trajectory = trajectory_generator.generate()
-    # AttachTraj2base(workspace_points, radius=0.0025)
+        pos_list, success_count = datagen.gen_jnt_list_from_pos_list(init_jnt=init_jnt,
+            pos_list=workspace_points, robot=robot_s, obstacle_list=None, base=base,
+            max_try_time=5.0, check_collision=True, visualize=False
+        )
+    # trajectory_generator = ComplexTrajectoryGenerator(num_segments=1, num_points_per_segment=32, 
+    #                                                   scale_range=(0.1,0.3), center_init=init_pos)
+    # test_trajectory = trajectory_generator.generate()
+    AttachTraj2base(workspace_points, radius=0.0025)
 
-    # robot_s.goto_given_conf(pos_list[0])
-    # robot_s.gen_meshmodel(rgb=[0,1,0], alpha=0.2).attach_to(base)
-    # robot_s.goto_given_conf(pos_list[-1])
-    # robot_s.gen_meshmodel(rgb=[0,1,0], alpha=0.2).attach_to(base)
+    robot_s.goto_given_conf(pos_list[0])
+    robot_s.gen_meshmodel(rgb=[0,1,0], alpha=0.2).attach_to(base)
+    robot_s.goto_given_conf(pos_list[-1])
+    robot_s.gen_meshmodel(rgb=[0,1,0], alpha=0.2).attach_to(base)
 
-    # '''inference the trajectory'''
-    # trajectory_window = torch.tensor(workspace_points[:config['horizon']]).to(config['device'])
-    # if config['condition'] == "mlp":
-    #     condition = torch.tensor(trajectory_window, device=config['device']).unsqueeze(0).float()
-    #     condition = condition.flatten(start_dim=1)
-    # prior = torch.zeros((n_samples, config['horizon'], config['action_dim']), device=config['device'])
-    # if n_samples != 1:
-    #     condition = condition.repeat(n_samples, 1)
-    # with torch.no_grad():
-    #     action, _ = agent.sample(prior=prior, n_samples=n_samples, sample_steps=config['sample_steps'], temperature=1.0,
-    #                             solver=solver, condition_cfg=condition, w_cfg = 1.0, use_ema=True)
-    # if config['normalize']:
-    #     action = dataset.normalizer['obs']['jnt_pos'].unnormalize(np.array(action.to('cpu')))
-    # jnt_seed = action[0, 0, :]
-    # robot_s.goto_given_conf(jnt_seed)
-    # robot_s.gen_meshmodel(rgb=[1,0,0], alpha=0.2).attach_to(base)
-    # _, rot = robot_s.fk(jnt_values=jnt_seed)
-    # adjusted_jnt = robot_s.ik(tgt_pos=workspace_points[0], tgt_rotmat=rot, seed_jnt_values=jnt_seed)
-    # if adjusted_jnt is not None:
-    #     robot_s.goto_given_conf(adjusted_jnt)
-    #     robot_s.gen_meshmodel(rgb=[0,0,1], alpha=0.2).attach_to(base)
-    # else:
-    #     print("IK failed at initial position:", workspace_points[0])
+    '''inference the trajectory'''
+    visualization = 'dynamic' # 'static' or 'dynamic'
+
+    trajectory_window = torch.tensor(workspace_points[:config['horizon']]).to(config['device'])
+    if config['condition'] == "mlp":
+        condition = torch.tensor(trajectory_window, device=config['device']).unsqueeze(0).float()
+        condition = condition.flatten(start_dim=1)
+    prior = torch.zeros((n_samples, config['horizon'], config['action_dim']), device=config['device'])
+    if n_samples != 1:
+        condition = condition.repeat(n_samples, 1)
+    with torch.no_grad():
+        action, _ = agent.sample(prior=prior, n_samples=n_samples, sample_steps=config['sample_steps'], temperature=1.0,
+                                solver=solver, condition_cfg=condition, w_cfg = 1.0, use_ema=True)
+    if config['normalize']:
+        action = dataset.normalizer['obs']['jnt_pos'].unnormalize(np.array(action.to('cpu')))
+    jnt_seed = action[0, 0, :]
+    if visualization == 'static':
+        robot_s.goto_given_conf(jnt_seed)
+        robot_s.gen_meshmodel(rgb=[1,0,0], alpha=0.2).attach_to(base)
+    _, rot = robot_s.fk(jnt_values=jnt_seed)
+    adjusted_jnt = robot_s.ik(tgt_pos=workspace_points[0], tgt_rotmat=rot, seed_jnt_values=jnt_seed)
+    if adjusted_jnt is not None:
+        if visualization == 'static':
+            robot_s.goto_given_conf(adjusted_jnt)
+            robot_s.gen_meshmodel(rgb=[0,0,1], alpha=0.2).attach_to(base)
+    else:
+        print("IK failed at initial position:", workspace_points[0])
     
-    # path = [adjusted_jnt] if adjusted_jnt is not None else []
-    # for _ in workspace_points:
-    #     current_pos = np.array(_)
-    #     adjusted_jnt = robot_s.ik(tgt_pos=np.array(_), tgt_rotmat=rot, 
-    #                     seed_jnt_values=path[-1] if path else jnt_seed)
-    #     if adjusted_jnt is not None:
-    #         path.append(adjusted_jnt)
-    #         robot_s.goto_given_conf(adjusted_jnt)
-    #         robot_s.gen_meshmodel(rgb=[0,0,1], alpha=0.2).attach_to(base)
-    #     else:
-    #         print("IK failed at position:", current_pos)
-    #         break
-    # if len(path) == 32:
-    #     print(f"Trajectory generated successfully.")
-    # else:
-    #     print(f"Trajectory generation failed.")
-    #     print(f"Generated {len(path)} waypoints, expected 32 waypoints.")
-    # base.run()
+    path = [adjusted_jnt] if adjusted_jnt is not None else []
+    for _ in workspace_points[1:]:
+        current_pos = np.array(_)
+        adjusted_jnt = robot_s.ik(tgt_pos=np.array(_), tgt_rotmat=rot, 
+                        seed_jnt_values=path[-1] if path else jnt_seed)
+        if adjusted_jnt is not None:
+            path.append(adjusted_jnt)
+            if visualization == 'static':
+                robot_s.goto_given_conf(adjusted_jnt)
+                robot_s.gen_meshmodel(rgb=[0,0,1], alpha=0.2).attach_to(base)
+        else:
+            print("IK failed at position:", current_pos)
+            break
+    if len(path) == traj_length:
+        print(f"Trajectory generated successfully.")
+    else:
+        print(f"Trajectory generation failed.")
+        print(f"Generated {len(path)} waypoints, expected {traj_length} waypoints.")
+    import helper_functions as hf
+    if visualization == 'dynamic':
+        hf.visualize_anime_path(base, robot_s, path)
+    else:
+        base.run()
+
 else:
     raise ValueError("Illegal mode")
