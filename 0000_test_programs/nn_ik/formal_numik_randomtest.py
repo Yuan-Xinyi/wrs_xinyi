@@ -63,7 +63,8 @@ if __name__ == '__main__':
                 tgt_pos, tgt_rotmat = robot.fk(jnt_values = jnt_values)
                 # print('tgt_pos', tgt_pos)
                 tic = time.time()
-                result = robot.ik(tgt_pos, tgt_rotmat, best_sol_num = best_sol_num)
+                # result = robot.ik(tgt_pos, tgt_rotmat, best_sol_num = best_sol_num)
+                result = robot.ik(tgt_pos, tgt_rotmat)
                 toc = time.time()
                 time_list.append(toc-tic)
                 if result is not None:

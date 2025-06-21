@@ -46,7 +46,7 @@ if __name__ == '__main__':
         print(f'jnt_values: {repr(jnt_values)}')
     
     elif mode == 'plot':
-        with open('wrs/robot_sim/_data_files/cobotta_arm_jnt_data.pkl', 'rb') as f_jnt:
+        with open('wrs/robot_sim/_data_files/cobotta_arm_iksel_jnt_data.pkl', 'rb') as f_jnt:
             kdt_jnt_data = pickle.load(f_jnt)
         kdt_jnt_data = kdt_jnt_data[0]
         jnt_values = [-0.89298267, -0.99745798,  2.20644947, -1.90284232, -0.62446831,

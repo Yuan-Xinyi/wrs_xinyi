@@ -170,7 +170,7 @@ class SELIKSolver(object):
             sorted_indices = np.argsort(square_sums)
             seed_jnt_array_cad = seed_jnt_array[sorted_indices[:20]]
             for id, seed_jnt_values in enumerate(seed_jnt_array_cad):
-                if id > 3:
+                if id > 1:
                     return None
                 if toggle_dbg:
                     rkmg.gen_jlc_stick_by_jnt_values(self.jlc,
