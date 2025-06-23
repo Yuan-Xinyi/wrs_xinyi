@@ -49,11 +49,11 @@ data_by_robot = load_jsonl_as_numpy_by_robot("ReA_plot.jsonl")
 for robot, arr in data_by_robot.items():
     print(f"{robot}: shape = {arr.shape}")
 
-reselect_counts = np.arange(1, 21)
-success_c0 = data_by_robot['Cobotta'][:20, 0]
-success_c1 = data_by_robot['CobottaPro1300WithRobotiq140'][:20, 0]
-success_ur3 = data_by_robot['UR3'][:20, 0]
-success_irb = data_by_robot['YumiSglArm'][:20, 0]
+reselect_counts = np.arange(1, 31)
+success_c0 = data_by_robot['Cobotta'][:30, 0]
+success_c1 = data_by_robot['CobottaPro1300WithRobotiq140'][:30, 0]
+success_ur3 = data_by_robot['UR3'][:30, 0]
+success_irb = data_by_robot['YumiSglArm'][:30, 0]
 colors = ["#FF9F57", "#6BAFAD", "#6498B7", "#E75A4E"]
 
 '''
@@ -73,7 +73,7 @@ plt.plot(reselect_counts, success_irb, marker='d', label='IRB', color=colors[3],
 # plt.ylabel("Success Rate (%)", fontsize=12)
 # plt.title("Success Rate vs. Re-selection Count", fontsize=13)
 
-plt.xticks([1, 5, 10, 15, 20])
+plt.xticks([1, 5, 10, 15, 20, 25, 30])
 # 隐藏 x 和 y 轴刻度数字
 # plt.gca().set_xticklabels([])
 # plt.gca().set_yticklabels([])
@@ -86,29 +86,29 @@ plt.grid(axis='y', linestyle='--', alpha=0.6)
 
 # 自动调整布局防止遮挡
 plt.tight_layout()
-plt.savefig(f'0000_test_programs/nn_ik/res_figs/0621_save/sr2ReA.png', dpi = 1200, bbox_inches='tight')
+# plt.savefig(f'0000_test_programs/nn_ik/res_figs/0621_save/sr2ReA.png', dpi = 1200, bbox_inches='tight')
 # 显示图像
 plt.show()
 
 '''
 绘制平均时间与重选次数的关系图
 '''
-# mean_time_c0 = data_by_robot['Cobotta'][:20, 1]
-# mean_time_c1 = data_by_robot['CobottaPro1300WithRobotiq140'][:20, 1]
-# mean_time_ur3 = data_by_robot['UR3'][:20, 1]
-# mean_time_irb = data_by_robot['YumiSglArm'][:20, 1]
-# plt.figure(figsize=(12, 6))
-# markersize = 10
-# # 绘制每条曲线
-# plt.plot(reselect_counts, mean_time_c0, marker='o', label='C0', color=colors[0], linewidth=2.5, markersize=markersize)
-# plt.plot(reselect_counts, mean_time_c1, marker='s', label='C1', color=colors[2], linewidth=2.5, markersize=markersize)  
-# plt.plot(reselect_counts, mean_time_ur3, marker='^', label='UR3', color=colors[1], linewidth=2.5, markersize=markersize)
-# plt.plot(reselect_counts, mean_time_irb, marker='d', label='IRB', color=colors[3], linewidth=2.5, markersize=markersize)
-# #
-# # plt.legend(['Cobotta', 'CobottaPro1300WithRobotiq140', 'UR3', 'YumiSglArm'], loc='upper right', fontsize=12)
-# plt.xticks([1, 5, 10, 15, 20])
-# plt.yticks([2, 3, 4, 5])
-# plt.grid(axis='y', linestyle='--', alpha=0.6)
+mean_time_c0 = data_by_robot['Cobotta'][:30, 1]
+mean_time_c1 = data_by_robot['CobottaPro1300WithRobotiq140'][:30, 1]
+mean_time_ur3 = data_by_robot['UR3'][:30, 1]
+mean_time_irb = data_by_robot['YumiSglArm'][:30, 1]
+plt.figure(figsize=(12, 6))
+markersize = 10
+# 绘制每条曲线
+plt.plot(reselect_counts, mean_time_c0, marker='o', label='C0', color=colors[0], linewidth=2.5, markersize=markersize)
+plt.plot(reselect_counts, mean_time_c1, marker='s', label='C1', color=colors[2], linewidth=2.5, markersize=markersize)  
+plt.plot(reselect_counts, mean_time_ur3, marker='^', label='UR3', color=colors[1], linewidth=2.5, markersize=markersize)
+plt.plot(reselect_counts, mean_time_irb, marker='d', label='IRB', color=colors[3], linewidth=2.5, markersize=markersize)
+#
+# plt.legend(['Cobotta', 'CobottaPro1300WithRobotiq140', 'UR3', 'YumiSglArm'], loc='upper right', fontsize=12)
+plt.xticks([1, 5, 10, 15, 20, 25, 30])
+plt.yticks([2, 3, 4, 5])
+plt.grid(axis='y', linestyle='--', alpha=0.6)
 # plt.savefig(f'0000_test_programs/nn_ik/res_figs/0621_save/avgtime2ReA.png', dpi = 1200, bbox_inches='tight')
-# plt.show()
+plt.show()
 

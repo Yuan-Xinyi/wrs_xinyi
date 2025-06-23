@@ -27,10 +27,10 @@ mcm.mgm.gen_frame().attach_to(base)
 
 
 nupdate = 10000
-# best_sol_num_list = [1] # [1,3,5,10,20]
-best_sol_num_list = np.arange(1, 21, 1).tolist() # [1,2,3,...,30]
-# robot_list = ['cbt','cbtpro1300', 'ur3', 'yumi']
-robot_list = ['ur3']
+best_sol_num_list = [1] # [1,3,5,10,20]
+# best_sol_num_list = np.arange(1, 21, 1).tolist() # [1,2,3,...,30]
+robot_list = ['cbt','cbtpro1300', 'ur3', 'yumi']
+# robot_list = ['cbt','cbtpro1300']
 # robot_list = ['cbtpro1300']
 json_file = "metrics_robot_result.jsonl"
 
@@ -44,6 +44,7 @@ if __name__ == '__main__':
             robot = cbt.Cobotta(pos=rm.vec(0.1,.3,.5), enable_cc=True)
         elif robot == 'ur3':
             robot = ur3.UR3(pos=rm.vec(0.1, .3, .5), enable_cc=True)
+            # robot = ur3e.UR3e(pos=rm.vec(0.1, .3, .5), enable_cc=True)
         elif robot == 'cbtpro1300':
             robot = cbtpro1300.CobottaPro1300WithRobotiq140(pos=rm.vec(0.1, .3, .5), enable_cc=True)
         else:
@@ -59,8 +60,8 @@ if __name__ == '__main__':
                 jnt_values = robot.rand_conf()
                 tgt_pos, tgt_rotmat = robot.fk(jnt_values = jnt_values)
                 tic = time.time()
-                # result = robot.ik(tgt_pos, tgt_rotmat, best_sol_num = best_sol_num)
-                result = robot.ik(tgt_pos, tgt_rotmat)
+                result = robot.ik(tgt_pos, tgt_rotmat, best_sol_num = best_sol_num)
+                # result = robot.ik(tgt_pos, tgt_rotmat)
                 toc = time.time()
                 time_list.append(toc-tic)
                 if result is not None:

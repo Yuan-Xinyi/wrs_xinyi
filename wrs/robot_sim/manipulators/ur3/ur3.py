@@ -53,7 +53,7 @@ class UR3(mi.ManipulatorInterface):
         self.jlc.jnts[3].lnk.loc_rotmat = rm.rotmat_from_euler(np.pi / 2, .0, .0)
         self.jlc.jnts[3].lnk.cmodel.rgba = np.array([.7, .7, .7, 1.0])
         # fifth joint and link
-        self.jlc.jnts[4].loc_pos = np.array([.0, -.08505, .0])
+        self.jlc.jnts[4].loc_pos = np.array([.0, -.08535, .0])
         self.jlc.jnts[4].loc_rotmat = rm.rotmat_from_euler(np.pi / 2.0, .0, .0)
         self.jlc.jnts[4].loc_motion_ax = np.array([0, 0, 1])
         self.jlc.jnts[4].motion_range = np.array([-np.pi * 2, np.pi * 2])
@@ -95,158 +95,158 @@ class UR3(mi.ManipulatorInterface):
     Ik sel
     use the ddik solver
     '''
-    # def ik(self,
-    #        tgt_pos,
-    #        tgt_rotmat,
-    #        best_sol_num,
-    #        seed_jnt_values=None,
-    #        option="single",
-    #        toggle_dbg=False):
-    #     """
-    #     This ik solver uses ikgeo to find an initial solution and then uses numik(pinv) as a backbone for precise
-    #     computation. IKGeo assumes the jlc root is at pos=0 and rotmat=I. Numik uses jlc fk and does not have this
-    #     assumption. IKGeo will shift jlc root to zero. There is no need to do them on the upper level. (20241121)
-    #     :param tgt_pos:
-    #     :param tgt_rotmat:
-    #     :param seed_jnt_values:
-    #     :param option:
-    #     :param toggle_dbg:
-    #     :return:
-    #     """
-    #     toggle_update = False
-    #     # directly use specified ik
-    #     self.jlc._ik_solver._k_max = 200
-    #     rel_rotmat = tgt_rotmat @ self.loc_tcp_rotmat.T
-    #     rel_pos = tgt_pos - tgt_rotmat @ self.loc_tcp_pos
-    #     result = self.jlc.ik(tgt_pos=rel_pos, tgt_rotmat=rel_rotmat, seed_jnt_values=seed_jnt_values, best_sol_num = best_sol_num)
-
-    #     return result
-
-    #     # mcm.mgm.gen_myc_frame(pos=tgt_pos, rotmat=tgt_rotmat).attach_to(base)
-    #     # result = ikgeo.ik(jlc=self.jlc, tgt_pos=rel_pos, tgt_rotmat=rel_rotmat, seed_jnt_values=None)
-    #     # if result is None:
-    #     #     # print("No valid solutions found")
-    #     #     return None
-    #     # else:
-    #     #     if toggle_update:
-    #     #         rel_pos, rel_rotmat = rm.rel_pose(self.jlc.pos, self.jlc.rotmat, rel_pos, rel_rotmat)
-    #     #         rel_rotvec = self.jlc._ik_solver._rotmat_to_vec(rel_rotmat)
-    #     #         query_point = np.concatenate((rel_pos, rel_rotvec))
-    #     #         # update dd driven file
-    #     #         tree_data = np.vstack((self.jlc._ik_solver.query_tree.data, query_point))
-    #     #         self.jlc._ik_solver.jnt_data.append(result)
-    #     #         self.jlc._ik_solver.query_tree = scipy.spatial.cKDTree(tree_data)
-    #     #         print(f"Updating query tree, {id} explored...")
-    #     #         self.jlc._ik_solver.persist_data()
-    #     #     return result
-
     def ik(self,
-           tgt_pos: np.ndarray,
-           tgt_rotmat: np.ndarray,
+           tgt_pos,
+           tgt_rotmat,
+           best_sol_num,
            seed_jnt_values=None,
            option="single",
            toggle_dbg=False):
         """
+        This ik solver uses ikgeo to find an initial solution and then uses numik(pinv) as a backbone for precise
+        computation. IKGeo assumes the jlc root is at pos=0 and rotmat=I. Numik uses jlc fk and does not have this
+        assumption. IKGeo will shift jlc root to zero. There is no need to do them on the upper level. (20241121)
         :param tgt_pos:
         :param tgt_rotmat:
         :param seed_jnt_values:
-        :param option: "single", "multiple"
+        :param option:
         :param toggle_dbg:
         :return:
-        author: weiwei, liang qin
-        date: 20240708
         """
-        # relative to base
-        rel_pos, rel_rotmat = rm.rel_pose(self.jlc.pos, self.jlc.rotmat, tgt_pos, tgt_rotmat)
-        # target
-        tgt_rotmat = rel_rotmat @ self.loc_tcp_rotmat.T
-        tgt_pos = rel_pos - rel_rotmat @ self.loc_tcp_pos
-        # DH parameters of ur3e
-        a2 = -0.24365
-        a3 = -0.21325
-        d1 = 0.1519
-        d4 = 0.11235
-        d5 = 0.08535
-        d6 = 0.08190
-        n = tgt_rotmat[:, 0]  # normal (x)
-        o = tgt_rotmat[:, 1]  # orientation (y)
-        a = tgt_rotmat[:, 2]  # approach (z)
-        p = tgt_pos
-        # initialize all 8 possibilities
-        q = np.zeros((8, 6))
-        m1 = d6 * a[1] - p[1]
-        n1 = d6 * a[0] - p[0]
-        k = m1 ** 2 + n1 ** 2 - d4 ** 2
-        if -1e-8 < k < 0:
-            k = 0
-        for index in range(4):
-            q[index][0] = np.arctan2(m1, n1) - np.arctan2(d4, np.sqrt(k))
-            q[index + 4][0] = np.arctan2(m1, n1) - np.arctan2(d4, -np.sqrt(k))
-        for index in range(4):
-            q5 = np.arccos(a[0] * np.sin(q[2 * index + 1][0]) - a[1] * np.cos(q[2 * index + 1][0]))
-            if index % 2 == 0:
-                q[2 * index][4] = q5
-                q[2 * index + 1][4] = q5
-            else:
-                q[2 * index][4] = -q5
-                q[2 * index + 1][4] = -q5
-        for index in range(8):
-            m6 = n[0] * np.sin(q[index][0]) - n[1] * np.cos(q[index][0])
-            n6 = o[0] * np.sin(q[index][0]) - o[1] * np.cos(q[index][0])
-            q[index][5] = np.arctan2(m6, n6) - np.arctan2(np.sin(q[index][4]), 0)
-            m3 = d5 * (np.sin(q[index][5]) * (n[0] * np.cos(q[index][0]) + n[1] * np.sin(q[index][0]))
-                       + np.cos(q[index][5]) * (o[0] * np.cos(q[index][0]) + o[1] * np.sin(q[index][0]))) \
-                 + p[0] * np.cos(q[index][0]) + p[1] * np.sin(q[index][0]) - d6 * (
-                         a[0] * np.cos(q[index][0]) + a[1] * np.sin(q[index][0]))
-            n3 = p[2] - d1 - a[2] * d6 + d5 * (o[2] * np.cos(q[index][5]) + n[2] * np.sin(q[index][5]))
-            k3 = (m3 ** 2 + n3 ** 2 - a2 ** 2 - a3 ** 2) / (2 * a2 * a3)
-            if k3 - 1 > 1e-6 or k3 + 1 < -1e-6:
-                q3 = np.nan
-            elif 0 <= k3 - 1 <= 1e-6:
-                q3 = 0
-            elif 0 <= k3 + 1 < 1e-6:
-                q3 = np.pi
-            else:
-                q3 = np.arccos(k3)
-            q[index][2] = q3 if index % 2 == 0 else -q3
-            s2 = ((a3 * np.cos(q[index][2]) + a2) * n3 - a3 * np.sin(q[index][2]) * m3) / \
-                 (a2 ** 2 + a3 ** 2 + 2 * a2 * a3 * np.cos(q[index][2]))
-            c2 = (m3 + a3 * np.sin(q[index][2]) * s2) / (a3 * np.cos(q[index][2]) + a2)
-            q[index][1] = np.arctan2(s2, c2)
-            s234 = -np.sin(q[index][5]) * (n[0] * np.cos(q[index][0]) + n[1] * np.sin(q[index][0])) - \
-                   np.cos(q[index][5]) * (o[0] * np.cos(q[index][0]) + o[1] * np.sin(q[index][0]))
-            c234 = o[2] * np.cos(q[index][5]) + n[2] * np.sin(q[index][5])
-            q[index][3] = np.arctan2(s234, c234) - q[index][1] - q[index][2]
-        # for index_i in range(8):
-        #     for index_j in range(6):
-        #         if q[index_i][index_j] < -np.pi:
-        #             q[index_i][index_j] += 2 * np.pi
-        #         elif q[index_i][index_j] >= np.pi:
-        #             q[index_i][index_j] -= 2 * np.pi
-        for index_i in range(8):
-            for index_j in range(6):
-                if q[index_i][index_j] < self.jnt_ranges[index_j][0]:
-                    q[index_i][index_j] += 2 * np.pi
-                elif q[index_i][index_j] >= self.jnt_ranges[index_j][1]:
-                    q[index_i][index_j] -= 2 * np.pi
-        result = q[~np.isnan(q).any(axis=1)]
-        if len(result) == 0:
-            print("No valid solutions found")
-            return None
-        else:
-            # print(result)
-            # print(self.jnt_ranges)
-            mask = np.all((result >= self.jnt_ranges[:, 0]) & (result <= self.jnt_ranges[:, 1]), axis=1)
-            filtered_result = result[mask]
-            if len(filtered_result) == 0:
-                print("No valid solutions found")
-                return None
-            if seed_jnt_values is None:
-                seed_jnt_values = self.home_conf
-            if option == "single":
-                return filtered_result[np.argmin(np.linalg.norm(filtered_result - seed_jnt_values, axis=1))]
-            elif option == "multiple":
-                return filtered_result[np.argsort(np.linalg.norm(filtered_result - seed_jnt_values, axis=1))]
+        toggle_update = False
+        # directly use specified ik
+        self.jlc._ik_solver._k_max = 200
+        rel_rotmat = tgt_rotmat @ self.loc_tcp_rotmat.T
+        rel_pos = tgt_pos - tgt_rotmat @ self.loc_tcp_pos
+        result = self.jlc.ik(tgt_pos=rel_pos, tgt_rotmat=rel_rotmat, seed_jnt_values=seed_jnt_values, best_sol_num = best_sol_num)
+
+        return result
+
+        # mcm.mgm.gen_myc_frame(pos=tgt_pos, rotmat=tgt_rotmat).attach_to(base)
+        # result = ikgeo.ik(jlc=self.jlc, tgt_pos=rel_pos, tgt_rotmat=rel_rotmat, seed_jnt_values=None)
+        # if result is None:
+        #     # print("No valid solutions found")
+        #     return None
+        # else:
+        #     if toggle_update:
+        #         rel_pos, rel_rotmat = rm.rel_pose(self.jlc.pos, self.jlc.rotmat, rel_pos, rel_rotmat)
+        #         rel_rotvec = self.jlc._ik_solver._rotmat_to_vec(rel_rotmat)
+        #         query_point = np.concatenate((rel_pos, rel_rotvec))
+        #         # update dd driven file
+        #         tree_data = np.vstack((self.jlc._ik_solver.query_tree.data, query_point))
+        #         self.jlc._ik_solver.jnt_data.append(result)
+        #         self.jlc._ik_solver.query_tree = scipy.spatial.cKDTree(tree_data)
+        #         print(f"Updating query tree, {id} explored...")
+        #         self.jlc._ik_solver.persist_data()
+        #     return result
+
+    # def ik(self,
+    #        tgt_pos: np.ndarray,
+    #        tgt_rotmat: np.ndarray,
+    #        seed_jnt_values=None,
+    #        option="single",
+    #        toggle_dbg=False):
+    #     """
+    #     :param tgt_pos:
+    #     :param tgt_rotmat:
+    #     :param seed_jnt_values:
+    #     :param option: "single", "multiple"
+    #     :param toggle_dbg:
+    #     :return:
+    #     author: weiwei, liang qin
+    #     date: 20240708
+    #     """
+    #     # relative to base
+    #     rel_pos, rel_rotmat = rm.rel_pose(self.jlc.pos, self.jlc.rotmat, tgt_pos, tgt_rotmat)
+    #     # target
+    #     tgt_rotmat = rel_rotmat @ self.loc_tcp_rotmat.T
+    #     tgt_pos = rel_pos - rel_rotmat @ self.loc_tcp_pos
+    #     # DH parameters of ur3e
+    #     a2 = -0.24365
+    #     a3 = -0.21325
+    #     d1 = 0.1519
+    #     d4 = 0.11235
+    #     d5 = 0.08535
+    #     d6 = 0.0819
+    #     n = tgt_rotmat[:, 0]  # normal (x)
+    #     o = tgt_rotmat[:, 1]  # orientation (y)
+    #     a = tgt_rotmat[:, 2]  # approach (z)
+    #     p = tgt_pos
+    #     # initialize all 8 possibilities
+    #     q = np.zeros((8, 6))
+    #     m1 = d6 * a[1] - p[1]
+    #     n1 = d6 * a[0] - p[0]
+    #     k = m1 ** 2 + n1 ** 2 - d4 ** 2
+    #     if -1e-8 < k < 0:
+    #         k = 0
+    #     for index in range(4):
+    #         q[index][0] = np.arctan2(m1, n1) - np.arctan2(d4, np.sqrt(k))
+    #         q[index + 4][0] = np.arctan2(m1, n1) - np.arctan2(d4, -np.sqrt(k))
+    #     for index in range(4):
+    #         q5 = np.arccos(a[0] * np.sin(q[2 * index + 1][0]) - a[1] * np.cos(q[2 * index + 1][0]))
+    #         if index % 2 == 0:
+    #             q[2 * index][4] = q5
+    #             q[2 * index + 1][4] = q5
+    #         else:
+    #             q[2 * index][4] = -q5
+    #             q[2 * index + 1][4] = -q5
+    #     for index in range(8):
+    #         m6 = n[0] * np.sin(q[index][0]) - n[1] * np.cos(q[index][0])
+    #         n6 = o[0] * np.sin(q[index][0]) - o[1] * np.cos(q[index][0])
+    #         q[index][5] = np.arctan2(m6, n6) - np.arctan2(np.sin(q[index][4]), 0)
+    #         m3 = d5 * (np.sin(q[index][5]) * (n[0] * np.cos(q[index][0]) + n[1] * np.sin(q[index][0]))
+    #                    + np.cos(q[index][5]) * (o[0] * np.cos(q[index][0]) + o[1] * np.sin(q[index][0]))) \
+    #              + p[0] * np.cos(q[index][0]) + p[1] * np.sin(q[index][0]) - d6 * (
+    #                      a[0] * np.cos(q[index][0]) + a[1] * np.sin(q[index][0]))
+    #         n3 = p[2] - d1 - a[2] * d6 + d5 * (o[2] * np.cos(q[index][5]) + n[2] * np.sin(q[index][5]))
+    #         k3 = (m3 ** 2 + n3 ** 2 - a2 ** 2 - a3 ** 2) / (2 * a2 * a3)
+    #         if k3 - 1 > 1e-6 or k3 + 1 < -1e-6:
+    #             q3 = np.nan
+    #         elif 0 <= k3 - 1 <= 1e-6:
+    #             q3 = 0
+    #         elif 0 <= k3 + 1 < 1e-6:
+    #             q3 = np.pi
+    #         else:
+    #             q3 = np.arccos(k3)
+    #         q[index][2] = q3 if index % 2 == 0 else -q3
+    #         s2 = ((a3 * np.cos(q[index][2]) + a2) * n3 - a3 * np.sin(q[index][2]) * m3) / \
+    #              (a2 ** 2 + a3 ** 2 + 2 * a2 * a3 * np.cos(q[index][2]))
+    #         c2 = (m3 + a3 * np.sin(q[index][2]) * s2) / (a3 * np.cos(q[index][2]) + a2)
+    #         q[index][1] = np.arctan2(s2, c2)
+    #         s234 = -np.sin(q[index][5]) * (n[0] * np.cos(q[index][0]) + n[1] * np.sin(q[index][0])) - \
+    #                np.cos(q[index][5]) * (o[0] * np.cos(q[index][0]) + o[1] * np.sin(q[index][0]))
+    #         c234 = o[2] * np.cos(q[index][5]) + n[2] * np.sin(q[index][5])
+    #         q[index][3] = np.arctan2(s234, c234) - q[index][1] - q[index][2]
+    #     # for index_i in range(8):
+    #     #     for index_j in range(6):
+    #     #         if q[index_i][index_j] < -np.pi:
+    #     #             q[index_i][index_j] += 2 * np.pi
+    #     #         elif q[index_i][index_j] >= np.pi:
+    #     #             q[index_i][index_j] -= 2 * np.pi
+    #     for index_i in range(8):
+    #         for index_j in range(6):
+    #             if q[index_i][index_j] < self.jnt_ranges[index_j][0]:
+    #                 q[index_i][index_j] += 2 * np.pi
+    #             elif q[index_i][index_j] >= self.jnt_ranges[index_j][1]:
+    #                 q[index_i][index_j] -= 2 * np.pi
+    #     result = q[~np.isnan(q).any(axis=1)]
+    #     if len(result) == 0:
+    #         print("No valid solutions found")
+    #         return None
+    #     else:
+    #         # print(result)
+    #         # print(self.jnt_ranges)
+    #         mask = np.all((result >= self.jnt_ranges[:, 0]) & (result <= self.jnt_ranges[:, 1]), axis=1)
+    #         filtered_result = result[mask]
+    #         if len(filtered_result) == 0:
+    #             print("No valid solutions found")
+    #             return None
+    #         if seed_jnt_values is None:
+    #             seed_jnt_values = self.home_conf
+    #         if option == "single":
+    #             return filtered_result[np.argmin(np.linalg.norm(filtered_result - seed_jnt_values, axis=1))]
+    #         elif option == "multiple":
+    #             return filtered_result[np.argsort(np.linalg.norm(filtered_result - seed_jnt_values, axis=1))]
 
 
 if __name__ == '__main__':

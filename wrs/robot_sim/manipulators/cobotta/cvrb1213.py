@@ -2,7 +2,7 @@ import os
 import wrs.basis.robot_math as rm
 import wrs.modeling.collision_model as mcm
 import wrs.robot_sim.manipulators.manipulator_interface as mi
-# import wrs.robot_sim.manipulators.cobotta.ikgeo_cvrb1213 as ikgeo
+import wrs.robot_sim.manipulators.cobotta.ikgeo1213 as ikgeo
 
 
 class CVRB1213(mi.ManipulatorInterface):
