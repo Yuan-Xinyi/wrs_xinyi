@@ -33,6 +33,7 @@ robot_list = ['cbt','cbtpro1300', 'ur3', 'yumi']
 # robot_list = ['cbt','cbtpro1300']
 # robot_list = ['cbtpro1300']
 json_file = "metrics_robot_result.jsonl"
+n_intervals = 12
 
 if __name__ == '__main__':
 # while True:
@@ -101,6 +102,7 @@ if __name__ == '__main__':
 
             data_entry = {
                 "robot": robot.__class__.__name__,
+                "n_intervals": n_intervals,
                 "best_solution_number": best_sol_num,
                 "success_rate": f"{success_num / nupdate * 100:.2f}%",
 
