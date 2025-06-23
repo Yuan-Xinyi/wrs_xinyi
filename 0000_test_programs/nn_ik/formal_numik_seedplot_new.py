@@ -135,34 +135,34 @@ linewidth = 5
 #     plt.show()
 
 '''mean time'''
-linestyles = ['-', '--', ':']
-for color_id, color in enumerate(colors):
-    plt.figure(figsize=(10, 8))
-    if color_id == 0:
-        sr_list = [cbt_mean_time_reatt, cbt_mean_time_adjust, cbt_mean_time_kdt]
-        name = 'cbt'
-        ylim = [1.5,6.5]
-    elif color_id == 1:
-        sr_list = [ur3_mean_time_reatt, ur3_mean_time_adjust, ur3_mean_time_kdt]
-        name = 'ur3'
-        ylim = [2,9]
-    elif color_id == 2:
-        sr_list = [cbtpro1300_mean_time_reatt, cbtpro1300_mean_time_adjust, cbtpro1300_mean_time_kdt]
-        name = 'cbtpro1300'
-        ylim = [2,3.5]
-    elif color_id == 3:
-        sr_list = [yumi_mean_time_reatt, yumi_mean_time_adjust, yumi_mean_time_kdt]
-        name = 'yumi'
-        ylim = [1.5,3]
+# linestyles = ['-', '--', ':']
+# for color_id, color in enumerate(colors):
+#     plt.figure(figsize=(10, 8))
+#     if color_id == 0:
+#         sr_list = [cbt_mean_time_reatt, cbt_mean_time_adjust, cbt_mean_time_kdt]
+#         name = 'cbt'
+#         ylim = [1.5,6.5]
+#     elif color_id == 1:
+#         sr_list = [ur3_mean_time_reatt, ur3_mean_time_adjust, ur3_mean_time_kdt]
+#         name = 'ur3'
+#         ylim = [2,9]
+#     elif color_id == 2:
+#         sr_list = [cbtpro1300_mean_time_reatt, cbtpro1300_mean_time_adjust, cbtpro1300_mean_time_kdt]
+#         name = 'cbtpro1300'
+#         ylim = [2,3.5]
+#     elif color_id == 3:
+#         sr_list = [yumi_mean_time_reatt, yumi_mean_time_adjust, yumi_mean_time_kdt]
+#         name = 'yumi'
+#         ylim = [1.5,3]
     
-    for id, sr in enumerate(sr_list):
-        plt.plot(sr, color = color, linewidth=5, linestyle=linestyles[id])
-        # plt.grid(True)
-        plt.xlim(0.8, 20.2)
-        plt.ylim(ylim) 
-        plt.xticks([1, 5, 10, 15, 20])
-        plt.savefig(f'0000_test_programs/nn_ik/res_figs/0318_save/{name}_meant.png', dpi = 600, bbox_inches='tight')
-    # plt.show()
+#     for id, sr in enumerate(sr_list):
+#         plt.plot(sr, color = color, linewidth=5, linestyle=linestyles[id])
+#         # plt.grid(True)
+#         plt.xlim(0.8, 20.2)
+#         plt.ylim(ylim) 
+#         plt.xticks([1, 5, 10, 15, 20])
+#         # plt.savefig(f'0000_test_programs/nn_ik/res_figs/0318_save/{name}_meant.png', dpi = 600, bbox_inches='tight')
+#     plt.show()
 
 '''mean and std time'''
 # for fig_id in range(3):
@@ -192,3 +192,38 @@ for color_id, color in enumerate(colors):
 #         plt.yticks([-4,0,4,8,12,16,20])
 #     # plt.savefig(f'0000_test_programs/nn_ik/res_figs/0318_save/{name}_std_t.png', dpi = 600, bbox_inches='tight')
 #     plt.show()
+
+
+'''
+0621 revision
+- 重新绘制了成功率和平均时间的图表
+回应审稿人的不清晰的图
+'''
+for fig_id in range(3):
+    if fig_id == 0:
+        mean_list = [cbt_mean_time_reatt, ur3_mean_time_reatt, cbtpro1300_mean_time_reatt, yumi_mean_time_reatt]
+        std_list = [cbt_std_time_reatt, ur3_std_time_reatt, cbtpro1300_std_time_reatt, yumi_std_time_reatt]
+        name = 'reatt_std'
+    elif fig_id == 1:
+        mean_list = [cbt_mean_time_adjust, ur3_mean_time_adjust, cbtpro1300_mean_time_adjust, yumi_mean_time_adjust]
+        std_list = [cbt_std_time_adjust, ur3_std_time_adjust, cbtpro1300_std_time_adjust, yumi_std_time_adjust]
+        name = 'woreatt_std'
+    elif fig_id == 2:
+        mean_list = [cbt_mean_time_kdt, ur3_mean_time_kdt, cbtpro1300_mean_time_kdt, yumi_mean_time_kdt]
+        std_list = [cbt_std_time_kdt, ur3_std_time_kdt, cbtpro1300_std_time_kdt, yumi_std_time_kdt]
+        name = 'kdt_std'
+    
+    plt.figure(figsize=(14, 8))
+    for id, color in enumerate(colors):
+        plt.plot(best_sol_num_list, mean_list[id], color = color, linewidth=5)
+        plt.plot(best_sol_num_list, std_list[id], color = color, linewidth=3, linestyle='--',alpha=0.6)
+        # plt.axhline(y=0, color='gray', linewidth=3, linestyle=':')
+        plt.ylim([0, 12]) 
+        plt.xlim(0.8, 20.2)
+        plt.xticks([1, 5, 10, 15, 20])
+        plt.yticks([0,3,6,9,12])
+        plt.grid(axis='y', linestyle='--', alpha=0.6)
+    plt.savefig(f'0000_test_programs/nn_ik/res_figs/0621_save/{name}_std_t.png', dpi = 600, bbox_inches='tight')
+    plt.show()
+
+

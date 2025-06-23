@@ -28,8 +28,9 @@ mcm.mgm.gen_frame().attach_to(base)
 
 nupdate = 10000
 # best_sol_num_list = [1] # [1,3,5,10,20]
-best_sol_num_list = [1]
-robot_list = ['cbt','cbtpro1300', 'ur3', 'yumi']
+best_sol_num_list = np.arange(1, 21, 1).tolist() # [1,2,3,...,30]
+# robot_list = ['cbt','cbtpro1300', 'ur3', 'yumi']
+robot_list = ['ur3']
 # robot_list = ['cbtpro1300']
 json_file = "metrics_robot_result.jsonl"
 
@@ -56,14 +57,10 @@ if __name__ == '__main__':
 
             for i in tqdm(range(nupdate)):
                 jnt_values = robot.rand_conf()
-    #             jnt_values = [-0.89298267, -0.99745798,  2.20644947, -1.90284232, -0.62446831,
-    #    -0.94061137]
-                # print("*" * 150 + "\n")
-                # print('gth jnt', repr(jnt_values))
                 tgt_pos, tgt_rotmat = robot.fk(jnt_values = jnt_values)
-                # print('tgt_pos', tgt_pos)
                 tic = time.time()
-                result = robot.ik(tgt_pos, tgt_rotmat, best_sol_num = best_sol_num)
+                # result = robot.ik(tgt_pos, tgt_rotmat, best_sol_num = best_sol_num)
+                result = robot.ik(tgt_pos, tgt_rotmat)
                 toc = time.time()
                 time_list.append(toc-tic)
                 if result is not None:

@@ -34,28 +34,28 @@ for id, robot in enumerate(robot_list):
 colors = ["#FF9F57", "#6BAFAD", "#6498B7", "#E75A4E"]
 
 
-# plt.figure(figsize=(12, 6))
-# for i in range(success_array.shape[0]):
-#     plt.plot(best_sol_num_list, success_array[i], label=robot_list[i],color = colors[i], linewidth=2.5)
-#     # plt.legend()
-#     plt.grid(True)
-#     # plt.xlim(0, 100)
-#     # plt.ylim(70, 100) 
-#     plt.savefig('0226_save/success_seed0_100.png', dpi = 1200)
-
-# plt.show()
-
-
-
 plt.figure(figsize=(12, 6))
-for i in range(time_array.shape[0]):
-    time_array[i] = time_array[i] * 1000
-    mean_time = np.mean(time_array[i], axis=1)
-    std_time = np.std(time_array[i], axis=1)
-    # print(std_time[99])
-    plt.plot(best_sol_num_list, mean_time, label=robot_list[i],color = colors[i], linewidth=2.5)
-    # plt.fill_between(best_sol_num_list, mean_time + std_time, mean_time - std_time, color = colors[i], alpha=0.2)
-    plt.grid(True)
-    plt.savefig('0226_save/mean_time_seed0_100.png', dpi = 1200)
+for i in range(success_array.shape[0]):
+    plt.plot(best_sol_num_list, success_array[i], label=robot_list[i],color = colors[i], linewidth=2.5)
     # plt.legend()
+    plt.grid(True)
+    # plt.xlim(0, 100)
+    # plt.ylim(70, 100) 
+    # plt.savefig('0226_save/success_seed0_100.png', dpi = 1200)
+
 plt.show()
+
+
+
+# plt.figure(figsize=(12, 6))
+# for i in range(time_array.shape[0]):
+#     time_array[i] = time_array[i] * 1000
+#     mean_time = np.mean(time_array[i], axis=1)
+#     std_time = np.std(time_array[i], axis=1)
+#     # print(std_time[99])
+#     plt.plot(best_sol_num_list, mean_time, label=robot_list[i],color = colors[i], linewidth=2.5)
+#     plt.fill_between(best_sol_num_list, mean_time + std_time, mean_time - std_time, color = colors[i], alpha=0.2)
+#     plt.grid(True)
+#     # plt.savefig('0226_save/mean_time_seed0_100.png', dpi = 1200)
+#     # plt.legend()
+# plt.show()

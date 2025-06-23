@@ -120,7 +120,7 @@ class DDIKSolver(object):
     def _build_data(self):
         # gen sampled qs
         sampled_jnts = []
-        n_intervals = np.linspace(6, 4, self.jlc.n_dof, endpoint=False) # 6,8,10
+        n_intervals = np.linspace(8, 4, self.jlc.n_dof, endpoint=False) # 6,8,10
         print(f"Buidling Data for DDIK using the following joint granularity: {n_intervals.astype(int)}...")
         for i in range(self.jlc.n_dof):
             sampled_jnts.append(
@@ -156,7 +156,7 @@ class DDIKSolver(object):
     def ik(self,
            tgt_pos,
            tgt_rotmat,
-           best_sol_num = 3,
+           best_sol_num=1,
            seed_jnt_values=None,
            max_n_iter=None,
            toggle_dbg=False):
@@ -177,7 +177,6 @@ class DDIKSolver(object):
                                          max_n_iter=max_n_iter,
                                          toggle_dbg=toggle_dbg)
         else:
-            '''sort'''
             # relative to base
             rel_pos, rel_rotmat = rm.rel_pose(self.jlc.pos, self.jlc.rotmat, tgt_pos, tgt_rotmat)
             rel_rotvec = self._rotmat_to_vec(rel_rotmat)
@@ -185,9 +184,6 @@ class DDIKSolver(object):
             dist_value_list, nn_indx_list = self.query_tree.query(query_point, k=self._k_max, workers=-1)
             if type(nn_indx_list) is int:
                 nn_indx_list = [nn_indx_list]
-            # seed_jnt_array_cad = self.jnt_data[nn_indx_list[:20]]
-            
-            '''sort'''
             seed_jnt_array = self.jnt_data[nn_indx_list]
             seed_tcp_array = self.tcp_data[nn_indx_list]
             seed_jinv_array = self.jinv_data[nn_indx_list]
@@ -195,35 +191,7 @@ class DDIKSolver(object):
             adjust_array = np.einsum('ijk,ik->ij', seed_jinv_array, seed_posrot_diff_array)
             square_sums = np.sum((adjust_array) ** 2, axis=1)
             sorted_indices = np.argsort(square_sums)
-            # sorted_indices = range(self._k_max)
-            seed_jnt_array_cad = seed_jnt_array[sorted_indices[:20]]  # 20
-            # seed_jnt_array_cad = seed_jnt_array[sorted_indices]
-            
-            '''find the most concentrated seed jnt values'''
-            # ransac_means = []
-            # X = np.ones((len(seed_jnt_array_cad), 1))
-            # for i in range(6):
-            #     model = RANSACRegressor().fit(X, seed_jnt_array_cad[:, i]) 
-            #     ransac_means.append(model.estimator_.intercept_) 
-
-            # ransac_means = np.array(ransac_means).reshape(1, 6)
-            # distances = np.linalg.norm(seed_jnt_array_cad - ransac_means, axis=1)
-            # closest_index = np.argmin(distances)
-            # seed_jnt_array_cad = seed_jnt_array_cad[closest_index].reshape(1, 6)
-
-            '''find the median solution'''
-            # distances = cdist(seed_jnt_array_cad, seed_jnt_array_cad, metric='euclidean')
-            # median_idx = np.argmin(np.sum(distances, axis=1)) 
-            # median_center = seed_jnt_array_cad[median_idx]
-            # seed_jnt_array_cad = median_center.reshape(1, 6)
-
-            '''mean shift clustering'''
-            # auto_bdw = estimate_bandwidth(seed_jnt_array_cad, quantile=0.2)
-            # mean_shift = MeanShift(bandwidth=auto_bdw)
-            # mean_shift.fit(seed_jnt_array_cad)
-            # center = mean_shift.cluster_centers_
-            # seed_jnt_array_cad = center[0].reshape(1,6)
-            
+            seed_jnt_array_cad = seed_jnt_array[sorted_indices[:20]]
             for id, seed_jnt_values in enumerate(seed_jnt_array_cad):
                 if id > best_sol_num:
                     return None
@@ -241,40 +209,11 @@ class DDIKSolver(object):
                     distances = np.linalg.norm(nid*seed_jnt_array_cad[nid:] - np.sum(seed_jnt_array_cad[:nid], axis=0), axis=1)
                     sorted_cad_indices = np.argsort(-distances)
                     seed_jnt_array_cad[nid:] = seed_jnt_array_cad[nid:][sorted_cad_indices]
-                    # print(f'failed seed jnt value id {id}: {repr(seed_jnt_values)}')
                     continue
                 else:
-                    # print('-'*50)
-                    # print(f'success seed jnt value id {id}: {repr(seed_jnt_values)}')
-                    # print('-'*50)
                     return result
             return None
-        # else:
-        #     '''no sort'''
-        #     # relative to base
-        #     rel_pos, rel_rotmat = rm.rel_pose(self.jlc.pos, self.jlc.rotmat, tgt_pos, tgt_rotmat)
-        #     rel_rotvec = self._rotmat_to_vec(rel_rotmat)
-        #     query_point = np.concatenate((rel_pos, rel_rotvec))
-        #     dist_value_array, nn_indx_array = self.query_tree.query(query_point, k=self._k_max, workers=-1)
-        #     if type(nn_indx_array) is int:
-        #         nn_indx_array = [nn_indx_array]
-        #     for id, nn_indx in enumerate(nn_indx_array):
-        #         seed_jnt_values = self.jnt_data[nn_indx]
-        #         if toggle_dbg:
-        #             rkmg.gen_jlc_stick_by_jnt_values(self.jlc,
-        #                                              jnt_values=seed_jnt_values,
-        #                                              stick_rgba=rm.bc.red).attach_to(base)
-        #         result = self._backbone_solver(tgt_pos=tgt_pos,
-        #                                        tgt_rotmat=tgt_rotmat,
-        #                                        seed_jnt_values=seed_jnt_values,
-        #                                        max_n_iter=max_n_iter,
-        #                                        toggle_dbg=toggle_dbg)
-        #         if result is None:
-        #             return None
-        #         else:
-        #             return result
-        #     # failed to find a solution, use optimization methods to solve and update the database?
-        # return None
+
 
 
 if __name__ == '__main__':
