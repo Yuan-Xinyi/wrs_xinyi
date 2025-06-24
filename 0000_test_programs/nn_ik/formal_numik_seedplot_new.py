@@ -90,49 +90,49 @@ colors = ["#FF9F57", "#6BAFAD", "#6498B7", "#E75A4E"]
 linewidth = 5
 
 '''success rate'''
-# linestyles = ['-', '--', ':']
-# for color_id, color in enumerate(colors):
-#     plt.figure(figsize=(10, 8))
-#     if color_id == 0:
-#         sr_list = [cbt_sr_reatt, cbt_sr_adjust, cbt_sr_kdt]
-#         name = 'cbt'
-#         seed_100 = 97.26
-#         ylim = 60
-#     elif color_id == 1:
-#         sr_list = [ur3_sr_reatt, ur3_sr_adjust, ur3_sr_kdt]
-#         name = 'ur3'
-#         seed_100 = 97.69
-#         ylim = 50
-#     elif color_id == 2:
-#         sr_list = [cbtpro1300_sr_reatt, cbtpro1300_sr_adjust, cbtpro1300_sr_kdt]
-#         name = 'cbtpro1300'
-#         seed_100 = 99.58
-#         ylim = 75
-#     elif color_id == 3:
-#         sr_list = [yumi_sr_reatt, yumi_sr_adjust, yumi_sr_kdt]
-#         name = 'yumi'
-#         seed_100 = 99.89
-#         ylim = 80
-#     reatt_5 = 0
-#     plt.axhline(y=seed_100, color='grey', linewidth=3, linestyle=':')
-#     for id, sr in enumerate(sr_list):
-#         plt.plot(best_sol_num_list, sr, color = color, linewidth=5, linestyle=linestyles[id])
-#         if id == 0:
-#             plt.axhline(y=sr[4], color=color, linewidth=3, linestyle=':')
-#             reatt_5 = sr[4]
+linestyles = ['-', '--', ':']
+for color_id, color in enumerate(colors):
+    plt.figure(figsize=(10, 8))
+    if color_id == 0:
+        sr_list = [cbt_sr_reatt, cbt_sr_adjust, cbt_sr_kdt]
+        name = 'cbt'
+        seed_100 = 97.26
+        ylim = 60
+    elif color_id == 1:
+        sr_list = [ur3_sr_reatt, ur3_sr_adjust, ur3_sr_kdt]
+        name = 'ur3'
+        seed_100 = 97.69
+        ylim = 50
+    elif color_id == 2:
+        sr_list = [cbtpro1300_sr_reatt, cbtpro1300_sr_adjust, cbtpro1300_sr_kdt]
+        name = 'cbtpro1300'
+        seed_100 = 99.58
+        ylim = 75
+    elif color_id == 3:
+        sr_list = [yumi_sr_reatt, yumi_sr_adjust, yumi_sr_kdt]
+        name = 'yumi'
+        seed_100 = 99.89
+        ylim = 80
+    reatt_5 = 0
+    plt.axhline(y=seed_100, color='grey', linewidth=3, linestyle=':')
+    for id, sr in enumerate(sr_list):
+        plt.plot(best_sol_num_list, sr, color = color, linewidth=5, linestyle=linestyles[id])
+        if id == 0:
+            plt.axhline(y=sr[4], color=color, linewidth=3, linestyle=':')
+            reatt_5 = sr[4]
 
-#         if id in [1, 2]:
-#             y_diff = np.abs(np.array(sr) - reatt_5)
-#             closest_idx = np.argmin(y_diff) 
-#             closest_x = best_sol_num_list[closest_idx] 
-#             if np.min(y_diff) < 1:
-#                 plt.plot([closest_x, closest_x], [ylim, reatt_5], color=color, linewidth=3, linestyle=':')
-#         # plt.grid(True)
-#         plt.xlim(0.8, 20.2)
-#         plt.ylim(ylim, 100) 
-#         plt.xticks([1, 5, 10, 15, 20])
-#         # plt.savefig(f'0000_test_programs/nn_ik/res_figs/0318_save/{name}_sr.png', dpi = 600, bbox_inches='tight')
-#     plt.show()
+        if id in [1, 2]:
+            y_diff = np.abs(np.array(sr) - reatt_5)
+            closest_idx = np.argmin(y_diff) 
+            closest_x = best_sol_num_list[closest_idx] 
+            if np.min(y_diff) < 1:
+                plt.plot([closest_x, closest_x], [ylim, reatt_5], color=color, linewidth=3, linestyle=':')
+        # plt.grid(True)
+        plt.xlim(0.8, 20.2)
+        plt.ylim(ylim, 100) 
+        plt.xticks([1, 5, 10, 15, 20])
+        # plt.savefig(f'0000_test_programs/nn_ik/res_figs/0318_save/{name}_sr.png', dpi = 600, bbox_inches='tight')
+    plt.show()
 
 '''mean time'''
 # linestyles = ['-', '--', ':']
@@ -223,7 +223,7 @@ for fig_id in range(3):
         plt.xticks([1, 5, 10, 15, 20])
         plt.yticks([0,3,6,9,12])
         plt.grid(axis='y', linestyle='--', alpha=0.6)
-    plt.savefig(f'0000_test_programs/nn_ik/res_figs/0621_save/{name}_std_t.png', dpi = 600, bbox_inches='tight')
+    # plt.savefig(f'0000_test_programs/nn_ik/res_figs/0621_save/{name}_std_t.png', dpi = 600, bbox_inches='tight')
     plt.show()
 
 
