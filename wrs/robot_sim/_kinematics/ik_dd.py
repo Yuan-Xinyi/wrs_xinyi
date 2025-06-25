@@ -120,7 +120,7 @@ class DDIKSolver(object):
     def _build_data(self):
         # gen sampled qs
         sampled_jnts = []
-        n_intervals = np.linspace(12, 4, self.jlc.n_dof, endpoint=False) # 6,8,10
+        n_intervals = np.linspace(8, 4, self.jlc.n_dof, endpoint=False) # 6,8,10
         print(f"Buidling Data for DDIK using the following joint granularity: {n_intervals.astype(int)}...")
         for i in range(self.jlc.n_dof):
             sampled_jnts.append(
