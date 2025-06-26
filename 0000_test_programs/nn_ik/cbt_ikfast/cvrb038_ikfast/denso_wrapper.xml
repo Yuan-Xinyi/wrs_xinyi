@@ -1,0 +1,6 @@
+<robot file="denso_robot.dae">
+  <Manipulator name="cvr038">
+    <base>base_link</base>
+    <effector>J6</effector>
+  </Manipulator>
+</robot>
