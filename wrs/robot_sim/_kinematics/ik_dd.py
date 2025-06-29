@@ -24,83 +24,6 @@ from sklearn.linear_model import RANSACRegressor
 from scipy.spatial.distance import cdist
 from sklearn.cluster import MeanShift, estimate_bandwidth
 
-class MinMaxNormalizer:
-    """
-    Normalizes 6D pose vectors (position + rotation vector) into [-1, 1] range,
-    using user-provided min and max values.
-    """
-
-    def __init__(self, min_vals, max_vals):
-        self.min = np.array(min_vals, dtype=np.float32)
-        self.max = np.array(max_vals, dtype=np.float32)
-        self.range = self.max - self.min
-
-    def normalize(self, x):
-        x = np.asarray(x, dtype=np.float32)
-        nx = (x - self.min) / self.range
-        return nx * 2.0 - 1.0
-
-    def unnormalize(self, x):
-        x = np.asarray(x, dtype=np.float32)
-        nx = (x + 1.0) / 2.0
-        return nx * self.range + self.min
-
-class ZScoreNormalizer:
-    """
-    Normalizes 6D pose vectors (position + rotation vector) using z-score normalization,
-    based on user-provided mean and standard deviation values.
-    """
-
-    def __init__(self, mean_vals, std_vals):
-        self.mean = np.array(mean_vals, dtype=np.float32)
-        self.std = np.array(std_vals, dtype=np.float32)
-        # 防止除以0
-        self.std[self.std == 0] = 1.0
-
-    def normalize(self, x):
-        x = np.asarray(x, dtype=np.float32)
-        return (x - self.mean) / self.std
-
-    def unnormalize(self, x):
-        x = np.asarray(x, dtype=np.float32)
-        return x * self.std + self.mean
-
-
-# normalizer_type = 'zscore'  # 'zscore' or 'minmax'
-# if normalizer_type == 'zscore':
-#     c0_normalizer = ZScoreNormalizer(mean_vals = np.array([5.65921551e-02, 1.67266481e-03, 2.85319569e-01, 1.93198632e-16,
-#        1.78358029e-01, 1.54329812e-16]),
-#                                     std_vals = np.array([0.12539669, 0.16988069, 0.16742596, 1.36795728, 1.40832485,
-#        1.26668143]))
-    
-#     c1_normalizer = ZScoreNormalizer(mean_vals = np.array([ 1.76125770e-02,  1.68238884e-02,  4.47239188e-01, -1.01616511e-03,
-#        -2.64338815e-18, -1.96951692e-16]),
-#                                     std_vals = np.array([0.50326296, 0.56435419, 0.59201299, 1.3336131 , 1.34351365,
-#        1.33506408])) 
-    
-#     ur3_normalizer = ZScoreNormalizer(mean_vals = np.array([-4.98556548e-03,  1.19962500e-02,  1.51562500e-01,  3.76800431e-02,
-#        -1.64033249e-16, -4.68967347e-17]),
-#                                     std_vals = np.array([0.18314669, 0.19923094, 0.26765431, 1.32520244, 1.30989798,
-#        1.32732863]))
-    
-#     yumi_normalizer = ZScoreNormalizer(mean_vals = np.array([-3.55909486e-02,  9.58674278e-17,  2.99653529e-01,  1.88154019e-04,
-#        -1.19320080e-02, -5.24688667e-04]),
-#                                         std_vals = np.array([0.24727049, 0.27174006, 0.2298521 , 1.23108923, 1.23141579,
-#        1.39932997])) 
-    
-# elif normalizer_type == 'minmax':
-#     c0_normalizer = MinMaxNormalizer(min_vals = np.array([-0.2383036, -0.38786122, -0.02182429, -3.12729207, -3.10317142, -3.0540088], dtype=np.float32),
-#                                     max_vals = np.array([0.38708663, 0.39260529, 0.56706232, 3.12729207, 3.11187487, 3.0540088], dtype=np.float32))
-
-#     c1_normalizer = MinMaxNormalizer(min_vals = np.array([-1.44785728, -1.34219186, -0.81410117, -3.12488023, -3.13203112, -3.11153799]),
-#                                     max_vals = np.array([1.44785728, 1.34219186, 1.67651439, 3.1374543 , 3.13203112, 3.11153799]))
-
-#     ur3_normalizer = MinMaxNormalizer(min_vals = np.array([-0.55385525, -0.55059487, -0.39459894, -2.95688735, -2.97838964, -3.00194667]),
-#                                     max_vals = np.array([0.55385525, 0.54633171, 0.69839894, 2.9248206 , 2.97838964, 3.00194667]))
-
-#     yumi_normalizer = MinMaxNormalizer(min_vals = np.array([-0.59054252, -0.60083072, -0.25625469, -3.12602102, -3.12559121, -3.13713925]),
-#                                     max_vals = np.array([0.52477136, 0.60083072, 0.66554782, 3.13087534, 3.12721132, 3.13891262]))
-
 class DDIKSolver(object):
     def __init__(self, jlc, path=None, identifier_str='test', backbone_solver='n', rebuild=False):
         """
@@ -122,32 +45,6 @@ class DDIKSolver(object):
         self._k_max = 1000  # maximum nearest neighbours examined by the backbone solver
         self._max_n_iter = 7  # max_n_iter of the backbone solver
         
-        '''normlization'''
-        # if identifier_str == 'irb14050_sglarm_yumi':
-        #     self._normalizer = yumi_normalizer
-        #     print("Using yumi_minmax_normalizer for irb14050_sglarm_yumi.")
-        # elif identifier_str == 'ur3':
-        #     self._normalizer = ur3_normalizer
-        #     print("Using ur3_minmax_normalizer for ur3.")
-        # elif identifier_str == 'cobotta_arm':
-        #     self._normalizer = c0_normalizer
-        #     print("Using c0_minmax_normalizer for cobotta_arm.")
-        # elif identifier_str == 'cobotta_pro_1300_manipulator':
-        #     self._normalizer = c1_normalizer
-        #     print("Using c1_minmax_normalizer for cobotta_pro_1300_manipulator.")
-        # else:
-        #     raise ValueError(f"Unknown identifier_str: {identifier_str}. Please use 'test', 'ur3', 'c0', or 'c1'.")
-        
-        '''weighted l2 norm'''
-        # self._weights = np.array([1, 1, 1, 1, 1, 1], dtype=np.float32)
-        # self._weights = np.array([10, 10, 10, 1, 1, 1], dtype=np.float32)
-        # self._weights = np.array([20, 20, 20, 1, 1, 1], dtype=np.float32)
-        # self._weights = np.array([15, 15, 15, 1, 1, 1], dtype=np.float32)
-        # self._weights = np.array([5, 5, 5, 1, 1, 1], dtype=np.float32)
-        self._weights = np.array([1, 1, 1, 10, 10, 10], dtype=np.float32)
-        self._sqrt_weights = np.sqrt(self._weights)
-
-
         if backbone_solver == 'n':
             self._backbone_solver = ikn.NumIKSolver(self.jlc)
             print("Using NumIKSolver as the backbone solver.")
@@ -242,17 +139,7 @@ class DDIKSolver(object):
             rel_rotvec = self._rotmat_to_vec(rel_rotmat)
 
             '''baseline query data'''
-            # query_data.append(rel_pos.tolist() + rel_rotvec.tolist())
-
-            '''add normalization'''
-            # query = np.array(rel_pos.tolist() + rel_rotvec.tolist())
-            # query = self._normalizer.normalize(query)
-            # query_data.append(query)
-
-            '''weighted l2 norm'''
-            query = np.array(rel_pos.tolist() + rel_rotvec.tolist())
-            query = query * self._sqrt_weights
-            query_data.append(query)
+            query_data.append(rel_pos.tolist() + rel_rotvec.tolist())
 
             jnt_data.append(jnt_values)
             jinv_data.append(jinv)
@@ -295,13 +182,6 @@ class DDIKSolver(object):
             rel_pos, rel_rotmat = rm.rel_pose(self.jlc.pos, self.jlc.rotmat, tgt_pos, tgt_rotmat)
             rel_rotvec = self._rotmat_to_vec(rel_rotmat)
             query_point = np.concatenate((rel_pos, rel_rotvec))
-            
-            '''normalize the query point'''
-            # query_point = self._normalizer.normalize(query_point)
-
-            '''weighted l2 norm'''
-            query_point = query_point * self._sqrt_weights
-            
             dist_value_list, nn_indx_list = self.query_tree.query(query_point, k=self._k_max, workers=-1)
             if type(nn_indx_list) is int:
                 nn_indx_list = [nn_indx_list]
