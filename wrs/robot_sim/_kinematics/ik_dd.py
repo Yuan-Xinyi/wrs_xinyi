@@ -24,6 +24,39 @@ from sklearn.linear_model import RANSACRegressor
 from scipy.spatial.distance import cdist
 from sklearn.cluster import MeanShift, estimate_bandwidth
 
+import numpy as np
+
+def rank_seeds_with_nonlinearity(seed_jinv_array, seed_tcp_array, query_point, alpha=1.0):
+    # Compute delta x
+    seed_posrot_diff_array = query_point - seed_tcp_array  # shape: (k, 6)
+
+    # Adjustment vector: J^† Δx
+    adjust_array = np.einsum('ijk,ik->ij', seed_jinv_array, seed_posrot_diff_array)
+    square_sums = np.sum(adjust_array ** 2, axis=1)  # shape: (k,)
+
+    # Estimate λ_max(J^T J) ≈ λ_max( (J^†)^+ (J^†) )
+    lambda_max_list = []
+    for jinv in seed_jinv_array:
+        try:
+            J = np.linalg.pinv(jinv)
+            JTJ = J.T @ J
+            eigvals = np.linalg.eigvalsh(JTJ)
+            lambda_max = np.max(eigvals)
+        except np.linalg.LinAlgError:
+            lambda_max = 1e6  # fallback in case of numerical issue
+        lambda_max_list.append(lambda_max)
+    lambda_max_array = np.array(lambda_max_list)
+
+    # Composite score = adjustment × (1 + α * nonlinearity)
+    composite_score = square_sums * (1 + alpha * lambda_max_array)
+
+    # Rank by ascending order
+    sorted_indices = np.argsort(composite_score)
+
+    return sorted_indices, composite_score
+
+
+
 class DDIKSolver(object):
     def __init__(self, jlc, path=None, identifier_str='test', backbone_solver='n', rebuild=False):
         """
@@ -189,10 +222,24 @@ class DDIKSolver(object):
             seed_tcp_array = self.tcp_data[nn_indx_list]
             seed_jinv_array = self.jinv_data[nn_indx_list]
             seed_posrot_diff_array = query_point - seed_tcp_array
-            adjust_array = np.einsum('ijk,ik->ij', seed_jinv_array, seed_posrot_diff_array)
-            square_sums = np.sum((adjust_array) ** 2, axis=1)
-            sorted_indices = np.argsort(square_sums)
+
+            '''original ranking by distance'''
+            # adjust_array = np.einsum('ijk,ik->ij', seed_jinv_array, seed_posrot_diff_array)
+            # square_sums = np.sum((adjust_array) ** 2, axis=1)
+            # sorted_indices = np.argsort(square_sums)
+            # seed_jnt_array_cad = seed_jnt_array[sorted_indices[:20]]
+
+            '''nonlinear ranking'''
+            sorted_indices, _ = rank_seeds_with_nonlinearity(
+                seed_jinv_array=seed_jinv_array,
+                seed_tcp_array=seed_tcp_array,
+                query_point=query_point,
+                alpha=20.0  # optional tuning
+            )
             seed_jnt_array_cad = seed_jnt_array[sorted_indices[:20]]
+
+
+
             for id, seed_jnt_values in enumerate(seed_jnt_array_cad):
                 if id > best_sol_num:
                     return None
