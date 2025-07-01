@@ -33,50 +33,6 @@ import numpy as np
 
 import numpy as np
 
-def rank_seeds_with_nonlinearity(seed_jin_array, seed_jinv_array, seed_tcp_array, query_point, alpha=1.0):
-    """
-    Compute composite ranking score for candidate seeds based on both adjustment magnitude
-    and local nonlinearity estimated from the largest eigenvalue of J^T J.
-
-    Args:
-        seed_jinv_array: np.ndarray of shape (k, 6, n), pseudo-inverse Jacobians of each seed.
-        seed_tcp_array: np.ndarray of shape (k, 6), corresponding TCP poses of each seed.
-        query_point: np.ndarray of shape (6,), relative target pose in 6D space.
-        alpha: float, weighting coefficient for nonlinearity penalty.
-
-    Returns:
-        sorted_indices: np.ndarray of sorted indices (ascending) by composite score.
-        composite_score: np.ndarray of computed scores for all seeds.
-    """
-    # Compute delta x
-    seed_posrot_diff_array = query_point - seed_tcp_array  # shape: (k, 6)
-
-    # Adjustment vector: J^† Δx
-    adjust_array = np.einsum('ijk,ik->ij', seed_jinv_array, seed_posrot_diff_array)
-    square_sums = np.sum(adjust_array ** 2, axis=1)  # shape: (k,)
-
-    # Estimate λ_max(J^T J) ≈ λ_max( (J^†)^+ (J^†) )
-    lambda_max_list = []
-    for id, J in enumerate(seed_jin_array):
-        try:
-            # J = np.linalg.pinv(jinv)
-            JTJ = J.T @ J
-            eigvals = np.linalg.eigvalsh(JTJ)
-            lambda_max = np.max(eigvals)
-        except np.linalg.LinAlgError:
-            lambda_max = 1e6  # fallback in case of numerical issue
-        lambda_max_list.append(lambda_max)
-    lambda_max_array = np.array(lambda_max_list)
-
-    # Composite score = adjustment × (1 + α * nonlinearity)
-    composite_score = square_sums * (1 + alpha * lambda_max_array)
-
-    # Rank by ascending order
-    sorted_indices = np.argsort(composite_score)
-
-    return sorted_indices, composite_score
-
-
 
 class DDIKSolver(object):
     def __init__(self, jlc, path=None, identifier_str='test', backbone_solver='n', rebuild=False):
@@ -112,16 +68,16 @@ class DDIKSolver(object):
             print("Rebuilding the database. It starts a new evolution and is costly.")
             y_or_n = bu.get_yesno()
             if y_or_n == 'y':
-                self.query_tree, self.jnt_data, self.tcp_data, self.jin_data, self.jinv_data = self._build_data()
+                self.query_tree, self.jnt_data, self.tcp_data, self.jinv_data = self._build_data()
                 self.persist_data()
         else:
             try:
                 with open(self._fname_tree, 'rb') as f_tree:
                     self.query_tree = pickle.load(f_tree)
                 with open(self._fname_jnt, 'rb') as f_jnt:
-                    self.jnt_data, self.tcp_data, self.jin_data, self.jinv_data = pickle.load(f_jnt)
+                    self.jnt_data, self.tcp_data, self.jinv_data = pickle.load(f_jnt)
             except FileNotFoundError:
-                self.query_tree, self.jnt_data, self.tcp_data, self.jin_data, self.jinv_data = self._build_data()
+                self.query_tree, self.jnt_data, self.tcp_data, self.jinv_data = self._build_data()
                 self.persist_data()
 
     def __call__(self,
@@ -181,7 +137,6 @@ class DDIKSolver(object):
         # gen sampled qs and their correspondent flange poses
         query_data = []
         jnt_data = []
-        jin_data = []
         jinv_data = []
         for id in tqdm(range(len(sampled_qs))):
             jnt_values = sampled_qs[id]
@@ -196,11 +151,10 @@ class DDIKSolver(object):
             '''baseline query data'''
             query_data.append(rel_pos.tolist() + rel_rotvec.tolist())
             jnt_data.append(jnt_values)
-            jin_data.append(j_mat)
             jinv_data.append(jinv)
         query_tree = scipy.spatial.cKDTree(query_data)
 
-        return query_tree, np.asarray(jnt_data), np.asarray(query_data), np.asarray(jin_data), np.asarray(jinv_data)
+        return query_tree, np.asarray(jnt_data), np.asarray(query_data), np.asarray(jinv_data)
 
     def persist_data(self):
         with open(self._fname_tree, 'wb') as f_tree:
@@ -242,26 +196,14 @@ class DDIKSolver(object):
                 nn_indx_list = [nn_indx_list]
             seed_jnt_array = self.jnt_data[nn_indx_list]
             seed_tcp_array = self.tcp_data[nn_indx_list]
-            seed_jin_array = self.jin_data[nn_indx_list]
             seed_jinv_array = self.jinv_data[nn_indx_list]
             seed_posrot_diff_array = query_point - seed_tcp_array
 
             '''original ranking by distance'''
-            # adjust_array = np.einsum('ijk,ik->ij', seed_jinv_array, seed_posrot_diff_array)
-            # square_sums = np.sum((adjust_array) ** 2, axis=1)
-            # sorted_indices = np.argsort(square_sums)
-            # seed_jnt_array_cad = seed_jnt_array[sorted_indices[:20]]
-
-            '''2nd order ranking by nonlinearity'''
-            sorted_indices, _ = rank_seeds_with_nonlinearity(
-                seed_jin_array=seed_jin_array,
-                seed_jinv_array=seed_jinv_array,
-                seed_tcp_array=seed_tcp_array,
-                query_point=query_point,
-                alpha=20.0  # optional tuning
-            )
+            adjust_array = np.einsum('ijk,ik->ij', seed_jinv_array, seed_posrot_diff_array)
+            square_sums = np.sum((adjust_array) ** 2, axis=1)
+            sorted_indices = np.argsort(square_sums)
             seed_jnt_array_cad = seed_jnt_array[sorted_indices[:20]]
-
 
             for id, seed_jnt_values in enumerate(seed_jnt_array_cad):
                 if id > best_sol_num:
