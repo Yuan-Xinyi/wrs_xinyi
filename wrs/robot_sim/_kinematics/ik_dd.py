@@ -187,23 +187,62 @@ class DDIKSolver(object):
                                          max_n_iter=max_n_iter,
                                          toggle_dbg=toggle_dbg)
         else:
+            # # relative to base
+            # rel_pos, rel_rotmat = rm.rel_pose(self.jlc.pos, self.jlc.rotmat, tgt_pos, tgt_rotmat)
+            # rel_rotvec = self._rotmat_to_vec(rel_rotmat)
+            # query_point = np.concatenate((rel_pos, rel_rotvec))
+            # dist_value_list, nn_indx_list = self.query_tree.query(query_point, k=self._k_max, workers=-1)
+            # if type(nn_indx_list) is int:
+            #     nn_indx_list = [nn_indx_list]
+            # seed_jnt_array = self.jnt_data[nn_indx_list]
+            # seed_tcp_array = self.tcp_data[nn_indx_list]
+            # seed_jinv_array = self.jinv_data[nn_indx_list]
+            # seed_posrot_diff_array = query_point - seed_tcp_array
+            # '''original ranking by distance'''
+            # adjust_array = np.einsum('ijk,ik->ij', seed_jinv_array, seed_posrot_diff_array)
+            # square_sums = np.sum((adjust_array) ** 2, axis=1)
+            # sorted_indices = np.argsort(square_sums)
+            # seed_jnt_array_cad = seed_jnt_array[sorted_indices[:20]]
+
+            '''add mid joint point evaluation'''
             # relative to base
             rel_pos, rel_rotmat = rm.rel_pose(self.jlc.pos, self.jlc.rotmat, tgt_pos, tgt_rotmat)
             rel_rotvec = self._rotmat_to_vec(rel_rotmat)
             query_point = np.concatenate((rel_pos, rel_rotvec))
             dist_value_list, nn_indx_list = self.query_tree.query(query_point, k=self._k_max, workers=-1)
-            if type(nn_indx_list) is int:
+
+            if isinstance(nn_indx_list, int):
                 nn_indx_list = [nn_indx_list]
+
+            # 原始种子点
             seed_jnt_array = self.jnt_data[nn_indx_list]
             seed_tcp_array = self.tcp_data[nn_indx_list]
             seed_jinv_array = self.jinv_data[nn_indx_list]
             seed_posrot_diff_array = query_point - seed_tcp_array
+            
+            adjust_array_1 = np.einsum('ijk,ik->ij', seed_jinv_array, seed_posrot_diff_array)
+            square_sums1 = np.sum((adjust_array_1) ** 2, axis=1)
+           
+            middle_jnt_array = seed_jnt_array + 0.5 * adjust_array_1
+            middle_tcp_array = []
+            middle_jinv_array = []
 
-            '''original ranking by distance'''
-            adjust_array = np.einsum('ijk,ik->ij', seed_jinv_array, seed_posrot_diff_array)
-            square_sums = np.sum((adjust_array) ** 2, axis=1)
-            sorted_indices = np.argsort(square_sums)
+            for jnt in middle_jnt_array:
+                pos, rotmat, jacobian = self.jlc.fk(jnt_values=jnt, toggle_jacobian=True)
+                tcp = np.concatenate((pos, self._rotmat_to_vec(rotmat)))
+                middle_tcp_array.append(tcp)
+                middle_jinv_array.append(np.linalg.pinv(jacobian, rcond=1e-4))
+
+            new_posrot_diff_array = query_point - middle_tcp_array
+            adjust_array_2 = np.einsum('ijk,ik->ij', middle_jinv_array, new_posrot_diff_array)
+
+            # 基于新的 adjustment 排序
+            square_sums2 = np.sum(adjust_array_2 ** 2, axis=1)
+            sorted_indices = np.argsort(square_sums1+ square_sums2)
+
+            # 取 top-20 的 joint seed
             seed_jnt_array_cad = seed_jnt_array[sorted_indices[:20]]
+
 
             for id, seed_jnt_values in enumerate(seed_jnt_array_cad):
                 if id > best_sol_num:
