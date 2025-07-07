@@ -26,8 +26,8 @@ mcm.mgm.gen_frame().attach_to(base)
 # robot = cbtpro900.CobottaPro900Spine(pos=rm.vec(0.1, .3, .5), enable_cc=True)
 
 
-nupdate = 1000
-best_sol_num_list = [1] # [1,3,5,10,20]
+nupdate = 1
+best_sol_num_list = [20] # [1,3,5,10,20]
 # best_sol_num_list = np.arange(1, 21, 1).tolist() # [1,2,3,...,30]
 robot_list = ['cbt','cbtpro1300', 'ur3', 'yumi']
 # robot_list = ['cbt','cbtpro1300']
@@ -106,25 +106,25 @@ if __name__ == '__main__':
                 "best_solution_number": best_sol_num,
                 "success_rate": f"{success_num / nupdate * 100:.2f}%",
 
-                # "t_mean": f"{np.mean(time_list) * 1000:.2f} ms",
-                # "t_std": f"{np.std(time_list) * 1000:.2f} ms",
-                # "t_min": f"{np.min(time_list) * 1000:.2f} ms",
-                # "t_max": f"{np.max(time_list) * 1000:.2f} ms",
+                "t_mean": f"{np.mean(time_list) * 1000:.2f} ms",
+                "t_std": f"{np.std(time_list) * 1000:.2f} ms",
+                "t_min": f"{np.min(time_list) * 1000:.2f} ms",
+                "t_max": f"{np.max(time_list) * 1000:.2f} ms",
                 
-                # 'pos_err_mean': f"{np.mean(pos_err_list):.2f} mm",
-                # 'pos_err_std': f"{np.std(pos_err_list):.2f} mm",
-                # 'pos_err_min': f"{np.min(pos_err_list):.2f} mm",
-                # 'pos_err_q1': f"{np.percentile(pos_err_list, 25):.2f} mm",
-                # 'pos_err_q3': f"{np.percentile(pos_err_list, 75):.2f} mm",
-                # 'pos_err_max': f"{np.max(pos_err_list):.2f} mm",
+                'pos_err_mean': f"{np.mean(pos_err_list):.2f} mm",
+                'pos_err_std': f"{np.std(pos_err_list):.2f} mm",
+                'pos_err_min': f"{np.min(pos_err_list):.2f} mm",
+                'pos_err_q1': f"{np.percentile(pos_err_list, 25):.2f} mm",
+                'pos_err_q3': f"{np.percentile(pos_err_list, 75):.2f} mm",
+                'pos_err_max': f"{np.max(pos_err_list):.2f} mm",
 
 
-                # 'rot_err_mean': f"{np.mean(rot_err_list)*180/np.pi:.2f} deg",
-                # 'rot_err_std': f"{np.std(rot_err_list)*180/np.pi:.2f} deg",
-                # 'rot_err_min': f"{np.min(rot_err_list)*180/np.pi:.2f} deg",
-                # 'rot_err_q1': f"{np.percentile(rot_err_list, 25)*180/np.pi:.2f} deg",
-                # 'rot_err_q3': f"{np.percentile(rot_err_list, 75)*180/np.pi:.2f} deg",
-                # 'rot_err_max': f"{np.max(rot_err_list)*180/np.pi:.2f} deg"
+                'rot_err_mean': f"{np.mean(rot_err_list)*180/np.pi:.2f} deg",
+                'rot_err_std': f"{np.std(rot_err_list)*180/np.pi:.2f} deg",
+                'rot_err_min': f"{np.min(rot_err_list)*180/np.pi:.2f} deg",
+                'rot_err_q1': f"{np.percentile(rot_err_list, 25)*180/np.pi:.2f} deg",
+                'rot_err_q3': f"{np.percentile(rot_err_list, 75)*180/np.pi:.2f} deg",
+                'rot_err_max': f"{np.max(rot_err_list)*180/np.pi:.2f} deg"
 
             }
 
