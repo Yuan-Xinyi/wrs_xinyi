@@ -27,11 +27,11 @@ mcm.mgm.gen_frame().attach_to(base)
 
 
 nupdate = 1000
-best_sol_num_list = [0] # [1,3,5,10,20]
+best_sol_num_list = [1] # [1,3,5,10,20]
 # best_sol_num_list = np.arange(1, 21, 1).tolist() # [1,2,3,...,30]
 robot_list = ['cbt','cbtpro1300', 'ur3', 'yumi']
 # robot_list = ['cbt','cbtpro1300']
-# robot_list = ['ur3']
+# robot_list = ['yumi']
 json_file = "metrics_robot_result.jsonl"
 
 if __name__ == '__main__':
@@ -57,9 +57,9 @@ if __name__ == '__main__':
             rot_err_list = []
 
             for i in tqdm(range(nupdate)):
-                # jnt_values = robot.rand_conf()
+                jnt_values = robot.rand_conf()
                 # print(f'jnt_values: {repr(jnt_values)}')
-                jnt_values = np.array([ 1.36875765, -0.62576553,  1.32609601, -0.42831308,  1.16467815, -0.06658116]) # for testing
+                # jnt_values = np.array([ 1.36875765, -0.62576553,  1.32609601, -0.42831308,  1.16467815, -0.06658116]) # for testing
                 tgt_pos, tgt_rotmat = robot.fk(jnt_values = jnt_values)
                 tic = time.time()
                 result = robot.ik(tgt_pos, tgt_rotmat, best_sol_num = best_sol_num)
@@ -106,25 +106,25 @@ if __name__ == '__main__':
                 "best_solution_number": best_sol_num,
                 "success_rate": f"{success_num / nupdate * 100:.2f}%",
 
-                "t_mean": f"{np.mean(time_list) * 1000:.2f} ms",
-                "t_std": f"{np.std(time_list) * 1000:.2f} ms",
-                "t_min": f"{np.min(time_list) * 1000:.2f} ms",
-                "t_max": f"{np.max(time_list) * 1000:.2f} ms",
+                # "t_mean": f"{np.mean(time_list) * 1000:.2f} ms",
+                # "t_std": f"{np.std(time_list) * 1000:.2f} ms",
+                # "t_min": f"{np.min(time_list) * 1000:.2f} ms",
+                # "t_max": f"{np.max(time_list) * 1000:.2f} ms",
                 
-                'pos_err_mean': f"{np.mean(pos_err_list):.2f} mm",
-                'pos_err_std': f"{np.std(pos_err_list):.2f} mm",
-                'pos_err_min': f"{np.min(pos_err_list):.2f} mm",
-                'pos_err_q1': f"{np.percentile(pos_err_list, 25):.2f} mm",
-                'pos_err_q3': f"{np.percentile(pos_err_list, 75):.2f} mm",
-                'pos_err_max': f"{np.max(pos_err_list):.2f} mm",
+                # 'pos_err_mean': f"{np.mean(pos_err_list):.2f} mm",
+                # 'pos_err_std': f"{np.std(pos_err_list):.2f} mm",
+                # 'pos_err_min': f"{np.min(pos_err_list):.2f} mm",
+                # 'pos_err_q1': f"{np.percentile(pos_err_list, 25):.2f} mm",
+                # 'pos_err_q3': f"{np.percentile(pos_err_list, 75):.2f} mm",
+                # 'pos_err_max': f"{np.max(pos_err_list):.2f} mm",
 
 
-                'rot_err_mean': f"{np.mean(rot_err_list)*180/np.pi:.2f} deg",
-                'rot_err_std': f"{np.std(rot_err_list)*180/np.pi:.2f} deg",
-                'rot_err_min': f"{np.min(rot_err_list)*180/np.pi:.2f} deg",
-                'rot_err_q1': f"{np.percentile(rot_err_list, 25)*180/np.pi:.2f} deg",
-                'rot_err_q3': f"{np.percentile(rot_err_list, 75)*180/np.pi:.2f} deg",
-                'rot_err_max': f"{np.max(rot_err_list)*180/np.pi:.2f} deg"
+                # 'rot_err_mean': f"{np.mean(rot_err_list)*180/np.pi:.2f} deg",
+                # 'rot_err_std': f"{np.std(rot_err_list)*180/np.pi:.2f} deg",
+                # 'rot_err_min': f"{np.min(rot_err_list)*180/np.pi:.2f} deg",
+                # 'rot_err_q1': f"{np.percentile(rot_err_list, 25)*180/np.pi:.2f} deg",
+                # 'rot_err_q3': f"{np.percentile(rot_err_list, 75)*180/np.pi:.2f} deg",
+                # 'rot_err_max': f"{np.max(rot_err_list)*180/np.pi:.2f} deg"
 
             }
 

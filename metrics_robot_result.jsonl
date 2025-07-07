@@ -722,3 +722,58 @@ re-calculate jac inv
 {"robot": "Cobotta", "best_solution_number": 0, "success_rate": "57.20%", "t_mean": "6.58 ms", "t_std": "0.46 ms", "t_min": "5.41 ms", "t_max": "8.25 ms", "pos_err_mean": "0.02 mm", "pos_err_std": "0.03 mm", "pos_err_min": "0.00 mm", "pos_err_q1": "0.00 mm", "pos_err_q3": "0.03 mm", "pos_err_max": "0.14 mm", "rot_err_mean": "0.01 deg", "rot_err_std": "0.01 deg", "rot_err_min": "0.00 deg", "rot_err_q1": "0.00 deg", "rot_err_q3": "0.01 deg", "rot_err_max": "0.05 deg"}
 {"robot": "CobottaPro1300WithRobotiq140", "best_solution_number": 0, "success_rate": "24.60%", "t_mean": "7.18 ms", "t_std": "0.41 ms", "t_min": "5.41 ms", "t_max": "12.20 ms", "pos_err_mean": "0.03 mm", "pos_err_std": "0.04 mm", "pos_err_min": "0.00 mm", "pos_err_q1": "0.00 mm", "pos_err_q3": "0.04 mm", "pos_err_max": "0.19 mm", "rot_err_mean": "0.00 deg", "rot_err_std": "0.01 deg", "rot_err_min": "0.00 deg", "rot_err_q1": "0.00 deg", "rot_err_q3": "0.00 deg", "rot_err_max": "0.06 deg"}
 {"robot": "UR3", "best_solution_number": 0, "success_rate": "48.80%", "t_mean": "6.68 ms", "t_std": "0.51 ms", "t_min": "5.43 ms", "t_max": "11.72 ms", "pos_err_mean": "0.02 mm", "pos_err_std": "0.02 mm", "pos_err_min": "0.00 mm", "pos_err_q1": "0.00 mm", "pos_err_q3": "0.02 mm", "pos_err_max": "0.10 mm", "rot_err_mean": "0.00 deg", "rot_err_std": "0.01 deg", "rot_err_min": "0.00 deg", "rot_err_q1": "0.00 deg", "rot_err_q3": "0.00 deg", "rot_err_max": "0.05 deg"}
+
+rea0
+{"robot": "Cobotta", "best_solution_number": 0, "success_rate": "75.10%"}
+{"robot": "CobottaPro1300WithRobotiq140", "best_solution_number": 0, "success_rate": "66.00%"}
+{"robot": "UR3", "best_solution_number": 0, "success_rate": "69.00%"}
+rea1
+{"robot": "Cobotta", "best_solution_number": 1, "success_rate": "85.00%"}
+{"robot": "CobottaPro1300WithRobotiq140", "best_solution_number": 1, "success_rate": "82.80%"}
+{"robot": "UR3", "best_solution_number": 1, "success_rate": "80.80%"}
+
+mean
+rea0
+{"robot": "Cobotta", "best_solution_number": 0, "success_rate": "75.30%"}
+{"robot": "CobottaPro1300WithRobotiq140", "best_solution_number": 0, "success_rate": "69.30%"}
+{"robot": "UR3", "best_solution_number": 0, "success_rate": "69.60%"}
+{"robot": "Cobotta", "best_solution_number": 5, "success_rate": "92.00%"}
+{"robot": "CobottaPro1300WithRobotiq140", "best_solution_number": 5, "success_rate": "95.80%"}
+{"robot": "UR3", "best_solution_number": 5, "success_rate": "88.70%"}
+{"robot": "Cobotta", "best_solution_number": 5, "success_rate": "93.00%"}
+{"robot": "CobottaPro1300WithRobotiq140", "best_solution_number": 5, "success_rate": "94.30%"}
+{"robot": "UR3", "best_solution_number": 5, "success_rate": "88.00%"}
+
+10000
+{"robot": "Cobotta", "best_solution_number": 0, "success_rate": "74.12%"}
+{"robot": "CobottaPro1300WithRobotiq140", "best_solution_number": 0, "success_rate": "70.57%"}
+{"robot": "UR3", "best_solution_number": 0, "success_rate": "70.66%"}
+
+余弦相似度
+1000
+{"robot": "Cobotta", "best_solution_number": 0, "success_rate": "73.50%"}
+{"robot": "CobottaPro1300WithRobotiq140", "best_solution_number": 0, "success_rate": "70.50%"}
+{"robot": "UR3", "best_solution_number": 0, "success_rate": "73.90%"}
+10000
+{"robot": "UR3", "best_solution_number": 0, "success_rate": "71.68%"}
+
+1000 q+delta q然后再给backbone solver
+{"robot": "Cobotta", "best_solution_number": 0, "success_rate": "72.40%"}
+{"robot": "CobottaPro1300WithRobotiq140", "best_solution_number": 0, "success_rate": "75.20%"}
+{"robot": "UR3", "best_solution_number": 0, "success_rate": "72.80%"}
+10000
+{"robot": "Cobotta", "best_solution_number": 0, "success_rate": "74.46%"}
+{"robot": "CobottaPro1300WithRobotiq140", "best_solution_number": 0, "success_rate": "76.06%"}
+{"robot": "UR3", "best_solution_number": 0, "success_rate": "71.43%"}
+
+10000
+1 3 5
+{"robot": "Cobotta", "best_solution_number": 1, "success_rate": "85.56%"}
+{"robot": "Cobotta", "best_solution_number": 3, "success_rate": "91.39%"}
+{"robot": "Cobotta", "best_solution_number": 5, "success_rate": "93.15%"}
+{"robot": "CobottaPro1300WithRobotiq140", "best_solution_number": 1, "success_rate": "87.27%"}
+{"robot": "CobottaPro1300WithRobotiq140", "best_solution_number": 3, "success_rate": "93.85%"}
+{"robot": "CobottaPro1300WithRobotiq140", "best_solution_number": 5, "success_rate": "96.66%"}
+{"robot": "UR3", "best_solution_number": 1, "success_rate": "80.51%"}
+{"robot": "Cobotta", "best_solution_number": 1, "success_rate": "83.00%"}
+{"robot": "CobottaPro1300WithRobotiq140", "best_solution_number": 1, "success_rate": "84.20%"}
