@@ -33,6 +33,28 @@ import numpy as np
 
 import numpy as np
 
+def damped_pinv(J, damping=1e-4):
+    m, n = J.shape
+    if m >= n:
+        # "Tall" or square Jacobian: (JᵗJ + λ²I)⁻¹ Jᵗ
+        JTJ = J.T @ J
+        damped_term = damping ** 2 * np.eye(n)
+        return np.linalg.inv(JTJ + damped_term) @ J.T
+    else:
+        # "Wide" Jacobian: Jᵗ (JJᵗ + λ²I)⁻¹
+        JJT = J @ J.T
+        damped_term = damping ** 2 * np.eye(m)
+        return J.T @ np.linalg.inv(JJT + damped_term)
+
+def clamp_tgt_err(f2t_pos_err, f2t_rot_err, f2t_err_vec):
+    clamp_pos_err = .1
+    clamp_rot_err = np.pi / 10.0
+    clamped_vec = np.copy(f2t_err_vec)
+    if f2t_pos_err >= clamp_pos_err:
+        clamped_vec[:3] = clamp_pos_err * f2t_err_vec[:3] / f2t_pos_err
+    if f2t_rot_err >= clamp_rot_err:
+        clamped_vec[3:6] = clamp_rot_err * f2t_err_vec[3:6] / f2t_rot_err
+    return clamped_vec
 
 class DDIKSolver(object):
     def __init__(self, jlc, path=None, identifier_str='test', backbone_solver='n', rebuild=False):
@@ -187,61 +209,117 @@ class DDIKSolver(object):
                                          max_n_iter=max_n_iter,
                                          toggle_dbg=toggle_dbg)
         else:
-            # # relative to base
-            # rel_pos, rel_rotmat = rm.rel_pose(self.jlc.pos, self.jlc.rotmat, tgt_pos, tgt_rotmat)
-            # rel_rotvec = self._rotmat_to_vec(rel_rotmat)
-            # query_point = np.concatenate((rel_pos, rel_rotvec))
-            # dist_value_list, nn_indx_list = self.query_tree.query(query_point, k=self._k_max, workers=-1)
-            # if type(nn_indx_list) is int:
-            #     nn_indx_list = [nn_indx_list]
-            # seed_jnt_array = self.jnt_data[nn_indx_list]
-            # seed_tcp_array = self.tcp_data[nn_indx_list]
-            # seed_jinv_array = self.jinv_data[nn_indx_list]
-            # seed_posrot_diff_array = query_point - seed_tcp_array
-            # '''original ranking by distance'''
-            # adjust_array = np.einsum('ijk,ik->ij', seed_jinv_array, seed_posrot_diff_array)
-            # square_sums = np.sum((adjust_array) ** 2, axis=1)
-            # sorted_indices = np.argsort(square_sums)
-            # seed_jnt_array_cad = seed_jnt_array[sorted_indices[:20]]
-
-            '''add mid joint point evaluation'''
             # relative to base
             rel_pos, rel_rotmat = rm.rel_pose(self.jlc.pos, self.jlc.rotmat, tgt_pos, tgt_rotmat)
             rel_rotvec = self._rotmat_to_vec(rel_rotmat)
             query_point = np.concatenate((rel_pos, rel_rotvec))
             dist_value_list, nn_indx_list = self.query_tree.query(query_point, k=self._k_max, workers=-1)
-
-            if isinstance(nn_indx_list, int):
+            if type(nn_indx_list) is int:
                 nn_indx_list = [nn_indx_list]
-
-            # 原始种子点
             seed_jnt_array = self.jnt_data[nn_indx_list]
             seed_tcp_array = self.tcp_data[nn_indx_list]
             seed_jinv_array = self.jinv_data[nn_indx_list]
             seed_posrot_diff_array = query_point - seed_tcp_array
             
-            adjust_array_1 = np.einsum('ijk,ik->ij', seed_jinv_array, seed_posrot_diff_array)
-            square_sums1 = np.sum((adjust_array_1) ** 2, axis=1)
-           
-            middle_jnt_array = seed_jnt_array + 0.5 * adjust_array_1
-            middle_tcp_array = []
-            middle_jinv_array = []
-
-            for jnt in middle_jnt_array:
-                pos, rotmat, jacobian = self.jlc.fk(jnt_values=jnt, toggle_jacobian=True)
-                tcp = np.concatenate((pos, self._rotmat_to_vec(rotmat)))
-                middle_tcp_array.append(tcp)
-                middle_jinv_array.append(np.linalg.pinv(jacobian, rcond=1e-4))
-
-            new_posrot_diff_array = query_point - middle_tcp_array
-            adjust_array_2 = np.einsum('ijk,ik->ij', middle_jinv_array, new_posrot_diff_array)
-
-            # 基于新的 adjustment 排序
-            square_sums2 = np.sum(adjust_array_2 ** 2, axis=1)
-            sorted_indices = np.argsort(square_sums1+ square_sums2)
-
-            # 取 top-20 的 joint seed
+            '''original ranking by distance'''
+            adjust_array = np.einsum('ijk,ik->ij', seed_jinv_array, seed_posrot_diff_array)
+            square_sums = np.sum((adjust_array) ** 2, axis=1)
+            sorted_indices = np.argsort(square_sums)
             seed_jnt_array_cad = seed_jnt_array[sorted_indices[:20]]
+
+            '''first iteration'''
+            # first_cad = seed_jnt_array_cad[0]
+            # pos, rotmat, j_mat = self.jlc.fk(jnt_values=first_cad, toggle_jacobian=True)
+            # f2t_pos_err, f2t_rot_err, f2t_err_vec = rm.diff_between_poses(src_pos=pos,
+            #                                                               src_rotmat=rotmat,
+            #                                                               tgt_pos=tgt_pos,
+            #                                                               tgt_rotmat=tgt_rotmat)
+            # clamped_err_vec = clamp_tgt_err(f2t_pos_err, f2t_rot_err, f2t_err_vec)
+            # # delta_jnt_values = np.linalg.lsts
+            # delta_jnt_values = np.linalg.lstsq(j_mat, clamped_err_vec, rcond=1e-4)[0]
+            # next_jnt_values = first_cad + delta_jnt_values
+            # # adjust_array[sorted_indices[0]]
+            
+            '''next iteration'''
+            # pos, rotmat, j_mat = self.jlc.fk(jnt_values=next_jnt_values, toggle_jacobian=True)
+            # f2t_pos_err, f2t_rot_err, f2t_err_vec = rm.diff_between_poses(src_pos=pos,
+            #                                                               src_rotmat=rotmat,
+            #                                                               tgt_pos=tgt_pos,
+            #                                                               tgt_rotmat=tgt_rotmat)
+            # clamped_err_vec = clamp_tgt_err(f2t_pos_err, f2t_rot_err, f2t_err_vec)
+            # delta_jnt_values = np.linalg.lstsq(j_mat, clamped_err_vec, rcond=1e-4)[0]
+            # next2_jnt_values = next_jnt_values + delta_jnt_values
+            # print(f"delta_jnt_values: {delta_jnt_values}")
+        
+        
+        
+        
+        
+        #     top20_nn_index_list = [nn_indx_list[i] for i in sorted_indices[:20]]
+        #     if type(top20_nn_index_list) is int:
+        #         top20_nn_index_list = [top20_nn_index_list]
+
+
+        #     '''add mid joint point evaluation'''
+        #     # # relative to base
+        #     # rel_pos, rel_rotmat = rm.rel_pose(self.jlc.pos, self.jlc.rotmat, tgt_pos, tgt_rotmat)
+        #     # rel_rotvec = self._rotmat_to_vec(rel_rotmat)
+        #     # query_point = np.concatenate((rel_pos, rel_rotvec))
+        #     # dist_value_list, nn_indx_list = self.query_tree.query(query_point, k=self._k_max, workers=-1)
+
+        #     # if isinstance(nn_indx_list, int):
+        #     #     nn_indx_list = [nn_indx_list]
+
+        #    # 原始种子点
+        #     nn_indx_list = np.array(top20_nn_index_list)
+        #     seed_jnt_array = self.jnt_data[nn_indx_list]
+        #     seed_tcp_array = self.tcp_data[nn_indx_list]
+        #     seed_jinv_array = self.jinv_data[nn_indx_list]
+
+        #     # 差值 Δx（注意目标是 query_point = x_t）
+        #     seed_dx_array = seed_tcp_array - query_point
+
+        #     # e_s = J^+ * Δx
+        #     adjust_array_1 = np.einsum('ijk,ik->ij', seed_jinv_array, seed_dx_array)
+
+        #     # 中间点 joint = 原始 joint + 0.5 * Δq
+        #     middle_jnt_array = seed_jnt_array + 0.5 * adjust_array_1
+        #     # middle_jnt_array = seed_jnt_array + adjust_array_1
+        #     middle_tcp_array = []
+        #     middle_jinv_array = []
+
+        #     for jnt in middle_jnt_array:
+        #         pos, rotmat, jacobian = self.jlc.fk(jnt_values=jnt, toggle_jacobian=True)
+        #         tcp = np.concatenate((pos, self._rotmat_to_vec(rotmat)))
+        #         middle_tcp_array.append(tcp)
+        #         # middle_jinv_array.append(np.linalg.pinv(jacobian, rcond=1e-4))
+        #         middle_jinv_array.append(damped_pinv(jacobian, damping=1e-4))
+
+        #     middle_tcp_array = np.array(middle_tcp_array)
+        #     middle_jinv_array = np.array(middle_jinv_array)
+
+        #     # 差值 Δx_mid
+        #     middle_dx_array = middle_tcp_array - query_point
+
+        #     # e_mid = J^+ * Δx_mid
+        #     adjust_array_2 = np.einsum('ijk,ik->ij', middle_jinv_array, middle_dx_array)
+
+        #     # 比例项 A_s = e / Δx
+        #     ratio_array_1 = adjust_array_1 / seed_dx_array
+        #     ratio_array_2 = adjust_array_2 / middle_dx_array
+
+        #     # 线性性误差：均值差平方
+        #     linear_error_array = (np.mean(np.abs(ratio_array_1), axis=1) - np.mean(np.abs(ratio_array_2), axis=1)) ** 2
+        #     # linear_error_array = np.sum((ratio_array_1 - ratio_array_2) ** 2, axis=1)
+        #     # linear_error_array = np.sum((ratio_array_2) ** 2, axis=1)
+
+        #     # 根据误差排序（越小越线性）
+        #     sorted_indices = np.argsort(linear_error_array)
+
+        #     # 取 top-20 的 joint seed
+        #     seed_jnt_array_cad = seed_jnt_array[sorted_indices[:20]]
+        #     # seed_jnt_array_cad += adjust_array_2[sorted_indices[:20]] + adjust_array_1[sorted_indices[:20]]*1/2
+        #     seed_jnt_array_cad += adjust_array_1[sorted_indices[:20]]
 
 
             for id, seed_jnt_values in enumerate(seed_jnt_array_cad):
