@@ -14,9 +14,9 @@ from tqdm import tqdm
 import numpy as np
 import json
 
-import random
-np.random.seed(42)
-random.seed(42)
+# import random
+# np.random.seed(42)
+# random.seed(42)
 
 base = wd.World(cam_pos=[1.7, 1.7, 1.7], lookat_pos=[0, 0, .3])
 mcm.mgm.gen_frame().attach_to(base)
@@ -30,12 +30,12 @@ mcm.mgm.gen_frame().attach_to(base)
 # robot = cbtpro900.CobottaPro900Spine(pos=rm.vec(0.1, .3, .5), enable_cc=True)
 
 
-nupdate = 1000
+nupdate = 10000
 best_sol_num_list = [0] # [1,3,5,10,20]
 # best_sol_num_list = np.arange(1, 21, 1).tolist() # [1,2,3,...,30]
 robot_list = ['cbt','cbtpro1300', 'ur3', 'yumi']
 # robot_list = ['cbt','cbtpro1300']
-robot_list = ['cbt']
+# robot_list = ['yumi']
 json_file = "metrics_robot_result.jsonl"
 
 if __name__ == '__main__':

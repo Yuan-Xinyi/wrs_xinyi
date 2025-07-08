@@ -158,48 +158,72 @@ class DDIKSolver(object):
             return np.array([0])
 
     def _build_data(self):
-        # gen sampled qs
-        sampled_jnts = []
-        n_intervals = np.linspace(8, 4, self.jlc.n_dof, endpoint=False) # 6,8,10
-        print(f"Buidling Data for DDIK using the following joint granularity: {n_intervals.astype(int)}...")
-        for i in range(self.jlc.n_dof):
-            sampled_jnts.append(
-                np.linspace(self.jlc.jnt_ranges[i][0], self.jlc.jnt_ranges[i][1], int(n_intervals[i] + 2))[1:-1])
-        grid = np.meshgrid(*sampled_jnts)
-        sampled_qs = np.vstack([x.ravel() for x in grid]).T
-        # gen sampled qs and their correspondent flange poses
+        print("Building Data for DDIK...")
+
+        # ----------- Part 1: Build x_query_tree (coarse) -----------
         query_data = []
-        q_query_data = []
         jnt_data = []
         jinv_data = []
-        pos_data = []
-        rotmat_data = []
-        jmat_data = []
-        for id in tqdm(range(len(sampled_qs))):
-            jnt_values = sampled_qs[id]
-            # pinv of jacobian
+
+        n_intervals_x = np.linspace(8, 4, self.jlc.n_dof, endpoint=False)  # coarse
+        print(f"[x_query_tree] Joint granularity: {n_intervals_x.astype(int)}")
+
+        sampled_jnts_x = [
+            np.linspace(self.jlc.jnt_ranges[i][0], self.jlc.jnt_ranges[i][1], int(n_intervals_x[i] + 2))[1:-1]
+            for i in range(self.jlc.n_dof)
+        ]
+        grid_x = np.meshgrid(*sampled_jnts_x)
+        sampled_qs_x = np.vstack([x.ravel() for x in grid_x]).T
+
+        for jnt_values in tqdm(sampled_qs_x, desc="x_query_tree sampling"):
             flange_pos, flange_rotmat, j_mat = self.jlc.fk(jnt_values=jnt_values, toggle_jacobian=True)
             jinv = np.linalg.pinv(j_mat, rcond=1e-4)
-            # jinv = np.linalg.inv(j_mat.T @ j_mat + 1e-4 * np.eye(j_mat.shape[1])) @ j_mat.T
-            # relative to base
             rel_pos, rel_rotmat = rm.rel_pose(self.jlc.pos, self.jlc.rotmat, flange_pos, flange_rotmat)
             rel_rotvec = self._rotmat_to_vec(rel_rotmat)
-
-            '''baseline query data'''
             query_data.append(rel_pos.tolist() + rel_rotvec.tolist())
             jnt_data.append(jnt_values)
             jinv_data.append(jinv)
-            '''add q tree'''
-            q_query_data.append(((jnt_values - self.jlc.jnt_ranges[:, 0]) / 
-                                 (self.jlc.jnt_ranges[:, 1] - self.jlc.jnt_ranges[:, 0] + 1e-8)).tolist())
+
+        x_query_tree = scipy.spatial.cKDTree(query_data)
+
+        # ----------- Part 2: Build q_query_tree (fine) -----------
+        q_query_data = []
+        pos_data = []
+        rotmat_data = []
+        jmat_data = []
+
+        n_intervals_q = np.linspace(8, 8, self.jlc.n_dof, endpoint=False)  # fine
+        print(f"[q_query_tree] Joint granularity: {n_intervals_q.astype(int)}")
+
+        sampled_jnts_q = [
+            np.linspace(self.jlc.jnt_ranges[i][0], self.jlc.jnt_ranges[i][1], int(n_intervals_q[i] + 2))[1:-1]
+            for i in range(self.jlc.n_dof)
+        ]
+        grid_q = np.meshgrid(*sampled_jnts_q)
+        sampled_qs_q = np.vstack([x.ravel() for x in grid_q]).T
+
+        for jnt_values in tqdm(sampled_qs_q, desc="q_query_tree sampling"):
+            flange_pos, flange_rotmat, j_mat = self.jlc.fk(jnt_values=jnt_values, toggle_jacobian=True)
+            normalized_jnt = (jnt_values - self.jlc.jnt_ranges[:, 0]) / (self.jlc.jnt_ranges[:, 1] - self.jlc.jnt_ranges[:, 0] + 1e-8)
+            q_query_data.append(normalized_jnt.tolist())
             pos_data.append(flange_pos)
             rotmat_data.append(flange_rotmat)
             jmat_data.append(j_mat)
-        x_query_tree = scipy.spatial.cKDTree(query_data)
+
         q_query_tree = scipy.spatial.cKDTree(q_query_data)
 
-        return (x_query_tree, q_query_tree, np.asarray(jnt_data), np.asarray(query_data), np.asarray(jinv_data), 
-                np.asarray(pos_data), np.asarray(rotmat_data), np.asarray(jmat_data))
+        return (
+            x_query_tree,
+            q_query_tree,
+            np.asarray(jnt_data),
+            np.asarray(query_data),
+            np.asarray(jinv_data),
+            np.asarray(pos_data),
+            np.asarray(rotmat_data),
+            np.asarray(jmat_data),
+        )
+
+
 
     def persist_data(self):
         with open(self._fname_x_tree, 'wb') as f_tree:
@@ -349,13 +373,9 @@ class DDIKSolver(object):
             final_delta_jnt_values_squared = np.sum(final_delta_jnt_values_array ** 2, axis=1)
             # sum_squared = delta_jnt_values_squared + mid_delta_jnt_values_squared
             # sum_squared = delta_jnt_values_squared + mid_delta_jnt_values_squared+ final_delta_jnt_values_squared
-            sum_squared = final_delta_jnt_values_squared
+            sum_squared = delta_jnt_values_squared
             sorted_indices = np.argsort(sum_squared)
-            seed_jnt_array_cad = final_jnt_values_array[sorted_indices[:20]]
-
-            
-
-
+            seed_jnt_array_cad = next_jnt_values_array[sorted_indices[:20]]
 
             for id, seed_jnt_values in enumerate(seed_jnt_array_cad):
                 if id > best_sol_num:
