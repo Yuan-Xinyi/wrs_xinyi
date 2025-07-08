@@ -26,12 +26,12 @@ mcm.mgm.gen_frame().attach_to(base)
 # robot = cbtpro900.CobottaPro900Spine(pos=rm.vec(0.1, .3, .5), enable_cc=True)
 
 
-nupdate = 1
-best_sol_num_list = [20] # [1,3,5,10,20]
+nupdate = 1000
+best_sol_num_list = [0] # [1,3,5,10,20]
 # best_sol_num_list = np.arange(1, 21, 1).tolist() # [1,2,3,...,30]
 robot_list = ['cbt','cbtpro1300', 'ur3', 'yumi']
 # robot_list = ['cbt','cbtpro1300']
-# robot_list = ['yumi']
+# robot_list = ['ur3']
 json_file = "metrics_robot_result.jsonl"
 
 if __name__ == '__main__':
