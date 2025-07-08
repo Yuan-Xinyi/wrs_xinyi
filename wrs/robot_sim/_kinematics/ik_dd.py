@@ -78,7 +78,8 @@ class DDIKSolver(object):
             path = os.path.join(os.path.dirname(current_file_dir), "_data_files")
         if not os.path.exists(path):
             os.makedirs(path)
-        self._fname_tree = os.path.join(path, f"{identifier_str}_ikdd_tree.pkl")
+        self._fname_x_tree = os.path.join(path, f"{identifier_str}_ikdd_x_tree.pkl")
+        self._fname_q_tree = os.path.join(path, f"{identifier_str}_ikdd_q_tree.pkl")
         self._fname_jnt = os.path.join(path, f"{identifier_str}_jnt_data.pkl")
         self._k_max = 1000  # maximum nearest neighbours examined by the backbone solver
         self._max_n_iter = 7  # max_n_iter of the backbone solver
@@ -96,16 +97,20 @@ class DDIKSolver(object):
             print("Rebuilding the database. It starts a new evolution and is costly.")
             y_or_n = bu.get_yesno()
             if y_or_n == 'y':
-                self.query_tree, self.jnt_data, self.tcp_data, self.jinv_data = self._build_data()
+                self.query_tree, self.q_query_tree, self.jnt_data, self.tcp_data, self.jinv_data = self._build_data()
                 self.persist_data()
         else:
             try:
-                with open(self._fname_tree, 'rb') as f_tree:
+                with open(self._fname_x_tree, 'rb') as f_tree:
                     self.query_tree = pickle.load(f_tree)
+                with open(self._fname_q_tree, 'rb') as f_tree:
+                    self.q_query_tree = pickle.load(f_tree)
                 with open(self._fname_jnt, 'rb') as f_jnt:
-                    self.jnt_data, self.tcp_data, self.jinv_data = pickle.load(f_jnt)
+                    self.jnt_data, self.tcp_data, self.jinv_data, self.pos_data, self.rotmat_data, self.jmat_data = pickle.load(f_jnt)
             except FileNotFoundError:
-                self.query_tree, self.jnt_data, self.tcp_data, self.jinv_data = self._build_data()
+                (self.query_tree, self.q_query_tree, 
+                 self.jnt_data, self.tcp_data, self.jinv_data, 
+                 self.pos_data, self.rotmat_data, self.jmat_data) = self._build_data()
                 self.persist_data()
 
     def __call__(self,
@@ -164,8 +169,12 @@ class DDIKSolver(object):
         sampled_qs = np.vstack([x.ravel() for x in grid]).T
         # gen sampled qs and their correspondent flange poses
         query_data = []
+        q_query_data = []
         jnt_data = []
         jinv_data = []
+        pos_data = []
+        rotmat_data = []
+        jmat_data = []
         for id in tqdm(range(len(sampled_qs))):
             jnt_values = sampled_qs[id]
             # pinv of jacobian
@@ -180,15 +189,25 @@ class DDIKSolver(object):
             query_data.append(rel_pos.tolist() + rel_rotvec.tolist())
             jnt_data.append(jnt_values)
             jinv_data.append(jinv)
-        query_tree = scipy.spatial.cKDTree(query_data)
+            '''add q tree'''
+            q_query_data.append(((jnt_values - self.jlc.jnt_ranges[:, 0]) / 
+                                 (self.jlc.jnt_ranges[:, 1] - self.jlc.jnt_ranges[:, 0] + 1e-8)).tolist())
+            pos_data.append(flange_pos)
+            rotmat_data.append(flange_rotmat)
+            jmat_data.append(j_mat)
+        x_query_tree = scipy.spatial.cKDTree(query_data)
+        q_query_tree = scipy.spatial.cKDTree(q_query_data)
 
-        return query_tree, np.asarray(jnt_data), np.asarray(query_data), np.asarray(jinv_data)
+        return (x_query_tree, q_query_tree, np.asarray(jnt_data), np.asarray(query_data), np.asarray(jinv_data), 
+                np.asarray(pos_data), np.asarray(rotmat_data), np.asarray(jmat_data))
 
     def persist_data(self):
-        with open(self._fname_tree, 'wb') as f_tree:
+        with open(self._fname_x_tree, 'wb') as f_tree:
             pickle.dump(self.query_tree, f_tree)
+        with open(self._fname_q_tree, 'wb') as f_tree:
+            pickle.dump(self.q_query_tree, f_tree)
         with open(self._fname_jnt, 'wb') as f_jnt:
-            pickle.dump([self.jnt_data, self.tcp_data, self.jinv_data], f_jnt)
+            pickle.dump([self.jnt_data, self.tcp_data, self.jinv_data, self.pos_data, self.rotmat_data, self.jmat_data], f_jnt)
         print("ddik data file saved.")
 
     def ik(self,
@@ -234,35 +253,14 @@ class DDIKSolver(object):
             sorted_indices = np.argsort(square_sums)
             seed_jnt_array_cad = seed_jnt_array[sorted_indices[:20]]
 
-            '''first iteration'''
-            # first_cad = seed_jnt_array_cad[0]
-            # pos, rotmat, j_mat = self.jlc.fk(jnt_values=first_cad, toggle_jacobian=True)
-            # f2t_pos_err, f2t_rot_err, f2t_err_vec = rm.diff_between_poses(src_pos=pos,
-            #                                                               src_rotmat=rotmat,
-            #                                                               tgt_pos=tgt_pos,
-            #                                                               tgt_rotmat=tgt_rotmat)
-            # clamped_err_vec = clamp_tgt_err(f2t_pos_err, f2t_rot_err, f2t_err_vec)
-            # # delta_jnt_values = np.linalg.lsts
-            # delta_jnt_values = np.linalg.lstsq(j_mat, clamped_err_vec, rcond=1e-4)[0]
-            # next_jnt_values = first_cad + delta_jnt_values
-            # # adjust_array[sorted_indices[0]]
-            
-            '''next iteration'''
-            # pos, rotmat, j_mat = self.jlc.fk(jnt_values=next_jnt_values, toggle_jacobian=True)
-            # f2t_pos_err, f2t_rot_err, f2t_err_vec = rm.diff_between_poses(src_pos=pos,
-            #                                                               src_rotmat=rotmat,
-            #                                                               tgt_pos=tgt_pos,
-            #                                                               tgt_rotmat=tgt_rotmat)
-            # clamped_err_vec = clamp_tgt_err(f2t_pos_err, f2t_rot_err, f2t_err_vec)
-            # delta_jnt_values = np.linalg.lstsq(j_mat, clamped_err_vec, rcond=1e-4)[0]
-            # next2_jnt_values = next_jnt_values + delta_jnt_values
-            # print(f"delta_jnt_values: {delta_jnt_values}")
-
             # === 第一次迭代 ===
             delta_q_list = []
             delta_pose_list = []
             for cad_id, jnt in enumerate(seed_jnt_array_cad):
-                pos, rotmat, j_mat = self.jlc.fk(jnt_values=jnt, toggle_jacobian=True)
+                jnt_idx = self.q_query_tree.query(((jnt - self.jlc.jnt_ranges[:, 0]) / (self.jlc.jnt_ranges[:, 1] - self.jlc.jnt_ranges[:, 0] + 1e-8)), 
+                                                  k=1, workers=-1)[1]
+                pos, rotmat, j_mat = self.pos_data[jnt_idx], self.rotmat_data[jnt_idx], self.jmat_data[jnt_idx]
+                pos1, rotmat1, j_mat1 = self.jlc.fk(jnt_values=jnt, toggle_jacobian=True)
                 f2t_pos_err, f2t_rot_err, f2t_err_vec = rm.diff_between_poses(src_pos=pos,
                                                                               src_rotmat=rotmat,
                                                                               tgt_pos=tgt_pos,
@@ -280,7 +278,9 @@ class DDIKSolver(object):
             mid_delta_q_list = []
             mid_delta_pose_list = []
             for cad_id, jnt in enumerate(middle_jnt_array):
-                pos, rotmat, j_mat = self.jlc.fk(jnt_values=jnt, toggle_jacobian=True)
+                jnt_idx = self.q_query_tree.query(((jnt - self.jlc.jnt_ranges[:, 0]) / (self.jlc.jnt_ranges[:, 1] - self.jlc.jnt_ranges[:, 0] + 1e-8)), 
+                                                  k=1, workers=-1)[1]
+                pos, rotmat, j_mat = self.pos_data[jnt_idx], self.rotmat_data[jnt_idx], self.jmat_data[jnt_idx]
                 f2t_pos_err, f2t_rot_err, f2t_err_vec = rm.diff_between_poses(src_pos=pos,
                                                                               src_rotmat=rotmat,
                                                                               tgt_pos=tgt_pos,
@@ -297,7 +297,9 @@ class DDIKSolver(object):
             final_delta_q_list = []
             final_delta_pose_list = []
             for cad_id, jnt in enumerate(mid_next_jnt_values_array):
-                pos, rotmat, j_mat = self.jlc.fk(jnt_values=jnt, toggle_jacobian=True)
+                jnt_idx = self.q_query_tree.query(((jnt - self.jlc.jnt_ranges[:, 0]) / (self.jlc.jnt_ranges[:, 1] - self.jlc.jnt_ranges[:, 0] + 1e-8)), 
+                                                  k=1, workers=-1)[1]
+                pos, rotmat, j_mat = self.pos_data[jnt_idx], self.rotmat_data[jnt_idx], self.jmat_data[jnt_idx]
                 f2t_pos_err, f2t_rot_err, f2t_err_vec = rm.diff_between_poses(
                     src_pos=pos,
                     src_rotmat=rotmat,
