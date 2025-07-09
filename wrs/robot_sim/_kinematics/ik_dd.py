@@ -279,28 +279,24 @@ class DDIKSolver(object):
 
             # === 第一次迭代 ===
             delta_q_list = []
-            delta_pose_list = []
             for cad_id, jnt in enumerate(seed_jnt_array_cad):
                 jnt_idx = self.q_query_tree.query(((jnt - self.jlc.jnt_ranges[:, 0]) / (self.jlc.jnt_ranges[:, 1] - self.jlc.jnt_ranges[:, 0] + 1e-8)), 
                                                   k=1, workers=-1)[1]
                 pos, rotmat, j_mat = self.pos_data[jnt_idx], self.rotmat_data[jnt_idx], self.jmat_data[jnt_idx]
-                pos1, rotmat1, j_mat1 = self.jlc.fk(jnt_values=jnt, toggle_jacobian=True)
                 f2t_pos_err, f2t_rot_err, f2t_err_vec = rm.diff_between_poses(src_pos=pos,
                                                                               src_rotmat=rotmat,
                                                                               tgt_pos=tgt_pos,
                                                                               tgt_rotmat=tgt_rotmat)
                 clamped_err_vec = clamp_tgt_err(f2t_pos_err, f2t_rot_err, f2t_err_vec)
-                delta_pose_list.append(clamped_err_vec)
                 delta_jnt_values = np.linalg.lstsq(j_mat, clamped_err_vec, rcond=1e-4)[0]
                 delta_q_list.append(delta_jnt_values)
             delta_jnt_values_array = np.array(delta_q_list)
-            delta_pose_array = np.array(delta_pose_list)
             next_jnt_values_array = seed_jnt_array_cad + delta_jnt_values_array
+            delta_jnt_values_squared = np.sum(delta_jnt_values_array ** 2, axis=1)
 
             # === 第二次迭代 ===
             middle_jnt_array = seed_jnt_array_cad + 1.0 * delta_jnt_values_array
             mid_delta_q_list = []
-            mid_delta_pose_list = []
             for cad_id, jnt in enumerate(middle_jnt_array):
                 jnt_idx = self.q_query_tree.query(((jnt - self.jlc.jnt_ranges[:, 0]) / (self.jlc.jnt_ranges[:, 1] - self.jlc.jnt_ranges[:, 0] + 1e-8)), 
                                                   k=1, workers=-1)[1]
@@ -310,16 +306,15 @@ class DDIKSolver(object):
                                                                               tgt_pos=tgt_pos,
                                                                               tgt_rotmat=tgt_rotmat)
                 clamped_err_vec = clamp_tgt_err(f2t_pos_err, f2t_rot_err, f2t_err_vec)
-                mid_delta_pose_list.append(clamped_err_vec)
                 delta_jnt_values = np.linalg.lstsq(j_mat, clamped_err_vec, rcond=1e-4)[0]
                 mid_delta_q_list.append(delta_jnt_values)
             mid_delta_jnt_values_array = np.array(mid_delta_q_list)
             mid_next_jnt_values_array = middle_jnt_array + mid_delta_jnt_values_array
-            mid_delta_pose_array = np.array(mid_delta_pose_list)
+            mid_delta_jnt_values_squared = np.sum(mid_delta_jnt_values_array ** 2, axis=1)
+
 
             # === 第三次迭代 ===
             final_delta_q_list = []
-            final_delta_pose_list = []
             for cad_id, jnt in enumerate(mid_next_jnt_values_array):
                 jnt_idx = self.q_query_tree.query(((jnt - self.jlc.jnt_ranges[:, 0]) / (self.jlc.jnt_ranges[:, 1] - self.jlc.jnt_ranges[:, 0] + 1e-8)), 
                                                   k=1, workers=-1)[1]
@@ -331,13 +326,12 @@ class DDIKSolver(object):
                     tgt_rotmat=tgt_rotmat
                 )
                 clamped_err_vec = clamp_tgt_err(f2t_pos_err, f2t_rot_err, f2t_err_vec)
-                final_delta_pose_list.append(clamped_err_vec)
                 delta_jnt_values = np.linalg.lstsq(j_mat, clamped_err_vec, rcond=1e-4)[0]
                 final_delta_q_list.append(delta_jnt_values)
 
             final_delta_jnt_values_array = np.array(final_delta_q_list)
-            final_delta_pose_array = np.array(final_delta_pose_list)
             final_jnt_values_array = mid_next_jnt_values_array + final_delta_jnt_values_array
+            final_delta_jnt_values_squared = np.sum(final_delta_jnt_values_array ** 2, axis=1)
 
 
             # ratio_array_1 = delta_jnt_values_array / delta_pose_array
@@ -368,14 +362,11 @@ class DDIKSolver(object):
             # seed_jnt_array_cad = final_jnt_values_array[np.argsort(linearity_error)[:20]]
 
             '''sum of three joint adjustment based ranking'''
-            delta_jnt_values_squared = np.sum(delta_jnt_values_array ** 2, axis=1)
-            mid_delta_jnt_values_squared = np.sum(mid_delta_jnt_values_array ** 2, axis=1)
-            final_delta_jnt_values_squared = np.sum(final_delta_jnt_values_array ** 2, axis=1)
             # sum_squared = delta_jnt_values_squared + mid_delta_jnt_values_squared
             # sum_squared = delta_jnt_values_squared + mid_delta_jnt_values_squared+ final_delta_jnt_values_squared
-            sum_squared = delta_jnt_values_squared
+            sum_squared = final_delta_jnt_values_squared
             sorted_indices = np.argsort(sum_squared)
-            seed_jnt_array_cad = next_jnt_values_array[sorted_indices[:20]]
+            seed_jnt_array_cad = final_jnt_values_array[sorted_indices[:20]]
 
             for id, seed_jnt_values in enumerate(seed_jnt_array_cad):
                 if id > best_sol_num:
