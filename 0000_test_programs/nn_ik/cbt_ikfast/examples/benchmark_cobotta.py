@@ -25,7 +25,7 @@ mcm.mgm.gen_frame().attach_to(base)
 # print(f'tgt_pos: {tgt_pos}, tgt_rotmat: {tgt_rotmat}')
 # base.run()
 
-robot_name = 'cvrb1213'  # or 'cvrb1213'
+robot_name = 'cvrb038'  # or 'cvrb1213'
 if robot_name == 'cvrb038':
     robot = cbt.Cobotta(pos=rm.vec(0.1, .3, .5), enable_cc=True)
 elif robot_name == 'cvrb1213':
@@ -33,7 +33,7 @@ elif robot_name == 'cvrb1213':
 
 arm = cvrb_kinematics.CVRBKinematics(robot_name)
 ikfast_res = 0
-total = 10000
+total = 1
 pos_err_list = []
 rot_err_list = []
 time_list = []
@@ -60,6 +60,13 @@ for i in range(total):
         #     ikfast_res += 0
         #     # print(f"IKFAST solution not close to the original joint angles: {repr(joint_angles)} vs {repr(ik_solution)}")
         # # ikfast_res += 1 if np.allclose(joint_angles, ik_solution, rtol=0.01) else 0
+
+        '''evaluate the solution in wrs'''
+        tgt_pos, tgt_rotmat = robot.fk(jnt_values = joint_angles)
+        pred_pos, pred_rotmat = robot.fk(jnt_values = ik_solution)
+        pos_err, rot_err, _ = rm.diff_between_poses(tgt_pos*1000, tgt_rotmat, pred_pos*1000, pred_rotmat)
+
+
         pred_pose = arm.forward(ik_solution, rotation_type='matrix')
         pred_pos, pred_rotmat = pred_pose[:, 3], pred_pose[:, :3]
         pos_err, rot_err, _ = rm.diff_between_poses(tgt_pos*1000, tgt_rotmat, pred_pos*1000, pred_rotmat)
