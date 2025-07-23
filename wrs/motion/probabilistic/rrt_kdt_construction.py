@@ -11,7 +11,7 @@ import wrs.robot_sim.manipulators.ur3.ur3 as ur3
 import wrs.robot_sim.robots.yumi.yumi_single_arm as yumi
 import wrs.robot_sim.robots.cobotta_pro1300.cobotta_pro1300 as cbtpro1300
 import wrs.basis.robot_math as rm
-import wrs.motion.probabilistic.rrt_faiss as rrt
+import wrs.motion.probabilistic.rrt_rtree as rrt
 
 base = wd.World(cam_pos=[2, 0, 1], lookat_pos=[0, 0, 0])
 mgm.gen_frame().attach_to(base)
@@ -27,7 +27,7 @@ def generate_uniform_points_by_rrt_extend(robot, n_points=500, ext_dist=0.3):
     joint_lower, joint_upper = robot.jnt_ranges[:, 0], robot.jnt_ranges[:, 1]
     planner = rrt.RRT(robot)
     planner.roadmap.clear()
-    start_conf = ((joint_lower + joint_upper) / 2).tolist()
+    start_conf = (joint_lower + joint_upper) / 2
     planner.start_conf = start_conf
     planner.roadmap.add_node("start", conf=start_conf)
 
@@ -36,7 +36,7 @@ def generate_uniform_points_by_rrt_extend(robot, n_points=500, ext_dist=0.3):
         prev_n = len(planner.roadmap.nodes)
         rand_conf = extended_rand_conf(robot)
         # planner._extend_roadmap(planner.roadmap, rand_conf, ext_dist, rand_conf, [], [], False)
-        planner._extend_roadmap(rand_conf, ext_dist, rand_conf, [], [], False)
+        planner._extend_roadmap(rand_conf, ext_dist, rand_conf, [], [])
         pbar.update(len(planner.roadmap.nodes) - prev_n)
     pbar.close()
 
@@ -80,7 +80,7 @@ def generate_uniform_points_by_rrt_extend(robot, n_points=500, ext_dist=0.3):
 
 if __name__ == '__main__':
     # robot_name_list = ['cbt','cbtpro1300', 'ur3', 'yumi']  # 支持多个机器人
-    robot_name_list = ['cbtpro1300']
+    robot_name_list = ['ur3']
     for name in robot_name_list:
         if name == 'yumi':
             robot = yumi.YumiSglArm(pos=rm.vec(0.1, .3, .5), enable_cc=True)
@@ -98,7 +98,7 @@ if __name__ == '__main__':
             raise ValueError(f"Invalid robot name: {name}")
         conf_array = generate_uniform_points_by_rrt_extend(robot, n_points=n_points, ext_dist=0.4)
         print(f"Generated {len(conf_array)} configurations for {name}.")
-        save_path = f"wrs/robot_sim/{name}_configs_rrtfaiss.npy"
+        save_path = f"wrs/robot_sim/{name}_configs_rrt_rtree.npy"
         np.save(save_path, conf_array)
         print(f"Configurations saved to {save_path}.")
         print(f'config_array shape: {conf_array.shape}')
