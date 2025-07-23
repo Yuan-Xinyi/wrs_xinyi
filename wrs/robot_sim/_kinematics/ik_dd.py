@@ -119,7 +119,7 @@ class DDIKSolver(object):
 
     def _build_data(self):
         # gen sampled qs
-        sampled_qs = np.load('wrs/robot_sim/cbt_configs.npy')
+        sampled_qs = np.load('wrs/robot_sim/ur3_configs_rrtfaiss.npy')
         query_data = []
         jnt_data = []
         jinv_data = []

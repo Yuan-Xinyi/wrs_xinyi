@@ -11,7 +11,7 @@ import wrs.robot_sim.manipulators.ur3.ur3 as ur3
 import wrs.robot_sim.robots.yumi.yumi_single_arm as yumi
 import wrs.robot_sim.robots.cobotta_pro1300.cobotta_pro1300 as cbtpro1300
 import wrs.basis.robot_math as rm
-import wrs.motion.probabilistic.rrt as rrt
+import wrs.motion.probabilistic.rrt_faiss as rrt
 
 base = wd.World(cam_pos=[2, 0, 1], lookat_pos=[0, 0, 0])
 mgm.gen_frame().attach_to(base)
@@ -35,7 +35,8 @@ def generate_uniform_points_by_rrt_extend(robot, n_points=500, ext_dist=0.3):
     while len(planner.roadmap.nodes) < n_points + 1:
         prev_n = len(planner.roadmap.nodes)
         rand_conf = extended_rand_conf(robot)
-        planner._extend_roadmap(planner.roadmap, rand_conf, ext_dist, rand_conf, [], [], False)
+        # planner._extend_roadmap(planner.roadmap, rand_conf, ext_dist, rand_conf, [], [], False)
+        planner._extend_roadmap(rand_conf, ext_dist, rand_conf, [], [], False)
         pbar.update(len(planner.roadmap.nodes) - prev_n)
     pbar.close()
 
@@ -79,25 +80,25 @@ def generate_uniform_points_by_rrt_extend(robot, n_points=500, ext_dist=0.3):
 
 if __name__ == '__main__':
     # robot_name_list = ['cbt','cbtpro1300', 'ur3', 'yumi']  # 支持多个机器人
-    robot_name_list = ['yumi']
+    robot_name_list = ['cbtpro1300']
     for name in robot_name_list:
         if name == 'yumi':
             robot = yumi.YumiSglArm(pos=rm.vec(0.1, .3, .5), enable_cc=True)
-            n_points = 201600 # 201600
+            n_points = 1814400 # 201600
         elif name == 'cbt':
             robot = cbt.Cobotta(pos=rm.vec(0.1, .3, .5), enable_cc=True)
-            n_points = 40320 # 40320
+            n_points = 259200 # 40320
         elif name == 'ur3':
             robot = ur3.UR3(pos=rm.vec(0.1, .3, .5), enable_cc=True)
-            n_points = 40320 # 40320
+            n_points = 259200 # 40320
         elif name == 'cbtpro1300':
             robot = cbtpro1300.CobottaPro1300WithRobotiq140(pos=rm.vec(0.1, .3, .5), enable_cc=True)
-            n_points = 40320 # 40320
+            n_points = 259200 # 40320
         else:
             raise ValueError(f"Invalid robot name: {name}")
         conf_array = generate_uniform_points_by_rrt_extend(robot, n_points=n_points, ext_dist=0.4)
         print(f"Generated {len(conf_array)} configurations for {name}.")
-        save_path = f"wrs/robot_sim/{name}_configs.npy"
+        save_path = f"wrs/robot_sim/{name}_configs_rrtfaiss.npy"
         np.save(save_path, conf_array)
         print(f"Configurations saved to {save_path}.")
         print(f'config_array shape: {conf_array.shape}')
