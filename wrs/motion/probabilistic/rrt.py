@@ -11,6 +11,46 @@ import wrs.basis.robot_math as rm
 import wrs.motion.motion_data as motd
 import wrs.modeling.geometric_model as mgm
 
+import faiss
+
+
+class FaissRoadmap:
+    def __init__(self, dim):
+        self.dim = dim
+        self.index = faiss.IndexFlatL2(dim)
+        self.conf_list = []
+        self.id_to_index = {}
+        self.index_to_id = []
+        self.counter = 0
+
+    def add_node(self, conf):
+        conf = np.asarray(conf).astype('float32')
+        if conf.ndim == 1:
+            conf = conf.reshape(1, -1)
+
+        self.index.add(conf)
+        self.conf_list.append(conf[0])
+        node_id = f"node_{self.counter}"
+        self.id_to_index[node_id] = len(self.conf_list) - 1
+        self.index_to_id.append(node_id)
+        self.counter += 1
+        return node_id
+
+    def get_nearest(self, conf, k=1):
+        conf = np.asarray(conf).astype('float32').reshape(1, -1)
+        distances, indices = self.index.search(conf, k)
+        nearest_ids = [self.index_to_id[i] for i in indices[0]]
+        return nearest_ids[0] if k == 1 else nearest_ids
+
+    def get_conf(self, node_id):
+        index = self.id_to_index[node_id]
+        return self.conf_list[index]
+
+    def __len__(self):
+        return len(self.conf_list)
+
+    def items(self):
+        return [(node_id, {"conf": self.conf_list[i]}) for i, node_id in enumerate(self.index_to_id)]
 
 class RRT(object):
     """
@@ -20,7 +60,8 @@ class RRT(object):
 
     def __init__(self, robot):
         self.robot = robot
-        self.roadmap = nx.Graph()
+        self.roadmap = FaissRoadmap(dim=len(start_conf))
+        start_id = self.roadmap.add_node(start_conf)
         self.start_conf = None
         self.goal_conf = None
         # define data type
@@ -162,7 +203,10 @@ class RRT(object):
         author: weiwei
         date: 20201228
         """
-        nearest_nid = self._get_nearest_nid(roadmap, conf)
+        # nearest_nid = self._get_nearest_nid(roadmap, conf)
+        nearest_id = self.roadmap.get_nearest(conf)
+        nearest_conf = self.roadmap.get_conf(nearest_id)
+
         new_conf_list = self._extend_conf(roadmap.nodes[nearest_nid]["conf"], conf, ext_dist)[1:]
         for new_conf in new_conf_list:
             if self._is_collided(new_conf, obstacle_list, other_robot_list):
