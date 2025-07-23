@@ -338,7 +338,7 @@ class JLChain(object):
             raise ValueError(f"The given joint values do not match n_dof: {len(jnt_values)} vs. {self.n_dof}")
         jnt_values = np.asarray(jnt_values)
         if np.any(jnt_values < self.jnt_ranges[:, 0]) or np.any(jnt_values > self.jnt_ranges[:, 1]):
-            print("Joints are out of ranges!")
+            # print("Joints are out of ranges!")
             return False
         else:
             return True

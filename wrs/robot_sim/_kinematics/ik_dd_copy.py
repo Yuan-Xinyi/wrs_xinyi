@@ -152,51 +152,16 @@ class DDIKSolver(object):
         if method == '-':
             return np.array([0])
 
-
     def _build_data(self):
-
-        def _generate_uniform_points_by_rrt_extend(self, n_points=500, ext_dist=0.3):
-            def _extended_rand_conf(self, expand_ratio=0.2):
-                jnt_min, jnt_max = self.jnt_ranges[:, 0], self.jnt_ranges[:, 1]
-                jnt_range = jnt_max - jnt_min
-                return np.random.uniform(jnt_min - expand_ratio * jnt_range,
-                                        jnt_max + expand_ratio * jnt_range)
-
-            joint_lower, joint_upper = self.jlc.jnt_ranges[:, 0], self.jlc.jnt_ranges[:, 1]
-            import wrs.motion.probabilistic.rrt as rrt
-            planner = rrt.RRT(self.jlc)
-            planner.roadmap.clear()
-            start_conf = ((joint_lower + joint_upper) / 2).tolist()
-            planner.start_conf = start_conf
-            planner.roadmap.add_node("start", conf=start_conf)
-
-            pbar = tqdm(total=n_points, desc=f"[{type(self.jlc).__name__}] Sampling")
-            while len(planner.roadmap.nodes) < n_points + 1:
-                prev_n = len(planner.roadmap.nodes)
-                rand_conf = _extended_rand_conf(self.jlc)
-                planner._extend_roadmap(planner.roadmap, rand_conf, ext_dist, rand_conf, [], [], False)
-                pbar.update(len(planner.roadmap.nodes) - prev_n)
-            pbar.close()
-
-            print(f"[{type(self.jlc).__name__}] Generated {len(planner.roadmap.nodes) - 1} configurations.")
-            conf_array = np.array([data["conf"] for nid, data in planner.roadmap.nodes.items() if nid != "start"])
-            np.save(f"{type(self.jlc).__name__}_configs.npy", conf_array)
-
-            sampled_min, sampled_max = np.min(conf_array, axis=0), np.max(conf_array, axis=0)
-            print('for robot:', type(self.jlc).__name__)
-            print("\n=== Joint Ranges (robot vs. sampled data) ===")
-            print(f"Sampled {len(conf_array)} configurations from RRT.")
-            for i, (jmin, jmax, smin, smax) in enumerate(zip(joint_lower, joint_upper, sampled_min, sampled_max)):
-                print(f"Joint {i}: range = [{jmin:.3f}, {jmax:.3f}], sampled = [{smin:.3f}, {smax:.3f}]")
-
-            return conf_array
-
-        if self.jlc.name in ['cobotta_arm', 'cobotta_pro_1300_manipulator', 'ur3']:
-            n_points = 40320
-        elif self.jlc.name in ['irb14050_sglarm_yumi']:
-            n_points = 201600
-
-        sampled_qs = _generate_uniform_points_by_rrt_extend(self, n_points=n_points, ext_dist=0.4)
+        # gen sampled qs
+        sampled_jnts = []
+        n_intervals = np.linspace(8, 4, self.jlc.n_dof, endpoint=False) # 6,8,10
+        print(f"Buidling Data for DDIK using the following joint granularity: {n_intervals.astype(int)}...")
+        for i in range(self.jlc.n_dof):
+            sampled_jnts.append(
+                np.linspace(self.jlc.jnt_ranges[i][0], self.jlc.jnt_ranges[i][1], int(n_intervals[i] + 2))[1:-1])
+        grid = np.meshgrid(*sampled_jnts)
+        sampled_qs = np.vstack([x.ravel() for x in grid]).T
         # gen sampled qs and their correspondent flange poses
         query_data = []
         jnt_data = []

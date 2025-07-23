@@ -74,7 +74,7 @@ class RRT(object):
             #     angle = rm.angle_between_vectors(self.robot.oiee_list[-1].gl_rotmat[:,2], np.array([0,0,1]))
             #     if angle > np.radians(10):
             #         return True
-            collision_info = self.robot.is_collided(obstacle_list=obstacle_list, otherrobot_list=other_robot_list,
+            collision_info = self.robot.is_collided(obstacle_list=obstacle_list, other_robot_list=other_robot_list,
                                                     toggle_contacts=toggle_contacts)
             # if toggle_contacts:
             #     if collision_info[0]:
@@ -89,7 +89,7 @@ class RRT(object):
             #         base.run()
             return collision_info
         else:
-            print("The given joint angles are out of joint limits.")
+            # print("The given joint angles are out of joint limits.")
             return (True, []) if toggle_contacts else True
 
     def _sample_conf(self, rand_rate, default_conf):

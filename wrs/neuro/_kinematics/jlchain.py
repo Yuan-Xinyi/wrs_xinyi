@@ -234,7 +234,7 @@ class JLChain(object):
         below_lower_bound = jnt_values < self.jnt_ranges[:, 0]
         above_upper_bound = jnt_values > self.jnt_ranges[:, 1]
         if torch.any(below_lower_bound) or torch.any(above_upper_bound):
-            print("Joints are out of ranges!")
+            # print("Joints are out of ranges!")
             return False
         else:
             return True
