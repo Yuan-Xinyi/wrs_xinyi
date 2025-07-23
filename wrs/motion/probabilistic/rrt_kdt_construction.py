@@ -50,45 +50,54 @@ def generate_uniform_points_by_rrt_extend(robot, n_points=500, ext_dist=0.3):
     for i, (jmin, jmax, smin, smax) in enumerate(zip(joint_lower, joint_upper, sampled_min, sampled_max)):
         print(f"Joint {i}: range = [{jmin:.3f}, {jmax:.3f}], sampled = [{smin:.3f}, {smax:.3f}]")
 
-    fig, axes = plt.subplots(nrows=2, ncols=3, figsize=(15, 8))
+    import math
+
+    n_joints = conf_array.shape[1]
+    n_cols = 3  # 每行 3 个子图
+    n_rows = math.ceil(n_joints / n_cols)  # 自动计算行数
+
+    fig, axes = plt.subplots(nrows=n_rows, ncols=n_cols, figsize=(5 * n_cols, 4 * n_rows))
     axes = axes.flatten()
-    for i in range(conf_array.shape[1]):
+
+    for i in range(n_joints):
         ax = axes[i]
         ax.hist(conf_array[:, i], bins=50, alpha=0.7, color='steelblue')
         ax.set_title(f"Joint {i}")
         ax.set_xlabel("Joint Value")
         ax.set_ylabel("Count")
         ax.grid(True)
-    for j in range(conf_array.shape[1], 6):
+
+    for j in range(n_joints, len(axes)):
         axes[j].axis('off')
     plt.tight_layout()
-    # plt.show()
     fig_path = '0000_test_programs/nn_ik/res_figs/0723_save'
-    if not os.path.exists(fig_path):
-        os.makedirs(fig_path)
+    os.makedirs(fig_path, exist_ok=True)
     fig.savefig(os.path.join(fig_path, f"{type(robot).__name__}_joint_histograms.png"), dpi=300)
 
     return conf_array
 
 
 if __name__ == '__main__':
-    robot_name_list = ['cbt','cbtpro1300', 'ur3', 'yumi']  # 支持多个机器人
+    # robot_name_list = ['cbt','cbtpro1300', 'ur3', 'yumi']  # 支持多个机器人
+    robot_name_list = ['yumi']
     for name in robot_name_list:
         if name == 'yumi':
             robot = yumi.YumiSglArm(pos=rm.vec(0.1, .3, .5), enable_cc=True)
-            n_points = 201600
+            n_points = 201600 # 201600
         elif name == 'cbt':
             robot = cbt.Cobotta(pos=rm.vec(0.1, .3, .5), enable_cc=True)
-            n_points = 40320
+            n_points = 40320 # 40320
         elif name == 'ur3':
             robot = ur3.UR3(pos=rm.vec(0.1, .3, .5), enable_cc=True)
-            n_points = 40320
+            n_points = 40320 # 40320
         elif name == 'cbtpro1300':
             robot = cbtpro1300.CobottaPro1300WithRobotiq140(pos=rm.vec(0.1, .3, .5), enable_cc=True)
-            n_points = 40320
+            n_points = 40320 # 40320
         else:
             raise ValueError(f"Invalid robot name: {name}")
         conf_array = generate_uniform_points_by_rrt_extend(robot, n_points=n_points, ext_dist=0.4)
         print(f"Generated {len(conf_array)} configurations for {name}.")
-        save_path = f"wrs/robot_sim/_kinematics/{name}_configs.npy"
+        save_path = f"wrs/robot_sim/{name}_configs.npy"
         np.save(save_path, conf_array)
+        print(f"Configurations saved to {save_path}.")
+        print(f'config_array shape: {conf_array.shape}')

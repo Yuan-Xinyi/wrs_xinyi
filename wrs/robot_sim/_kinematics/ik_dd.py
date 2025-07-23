@@ -24,42 +24,8 @@ from sklearn.linear_model import RANSACRegressor
 from scipy.spatial.distance import cdist
 from sklearn.cluster import MeanShift, estimate_bandwidth
 
-import numpy as np
 
-import numpy as np
-
-import numpy as np
-import numpy as np
-
-import numpy as np
-
-def damped_pinv(J, damping=1e-4):
-    m, n = J.shape
-    if m >= n:
-        # "Tall" or square Jacobian: (JᵗJ + λ²I)⁻¹ Jᵗ
-        JTJ = J.T @ J
-        damped_term = damping ** 2 * np.eye(n)
-        return np.linalg.inv(JTJ + damped_term) @ J.T
-    else:
-        # "Wide" Jacobian: Jᵗ (JJᵗ + λ²I)⁻¹
-        JJT = J @ J.T
-        damped_term = damping ** 2 * np.eye(m)
-        return J.T @ np.linalg.inv(JJT + damped_term)
-
-def clamp_tgt_err(f2t_pos_err, f2t_rot_err, f2t_err_vec):
-    clamp_pos_err = .1
-    clamp_rot_err = np.pi / 10.0
-    clamped_vec = np.copy(f2t_err_vec)
-    if f2t_pos_err >= clamp_pos_err:
-        clamped_vec[:3] = clamp_pos_err * f2t_err_vec[:3] / f2t_pos_err
-    if f2t_rot_err >= clamp_rot_err:
-        clamped_vec[3:6] = clamp_rot_err * f2t_err_vec[3:6] / f2t_rot_err
-    return clamped_vec
-
-def cosine_similarity(a, b, eps=1e-8):
-    dot = np.sum(a * b, axis=1)
-    norm = np.linalg.norm(a, axis=1) * np.linalg.norm(b, axis=1)
-    return dot / (norm + eps)
+# for debugging purpose
 
 
 class DDIKSolver(object):
@@ -82,7 +48,6 @@ class DDIKSolver(object):
         self._fname_jnt = os.path.join(path, f"{identifier_str}_jnt_data.pkl")
         self._k_max = 1000  # maximum nearest neighbours examined by the backbone solver
         self._max_n_iter = 7  # max_n_iter of the backbone solver
-        
         if backbone_solver == 'n':
             self._backbone_solver = ikn.NumIKSolver(self.jlc)
             print("Using NumIKSolver as the backbone solver.")
@@ -152,52 +117,9 @@ class DDIKSolver(object):
         if method == '-':
             return np.array([0])
 
-
     def _build_data(self):
-
-        def _generate_uniform_points_by_rrt_extend(self, n_points=500, ext_dist=0.3):
-            def _extended_rand_conf(self, expand_ratio=0.2):
-                jnt_min, jnt_max = self.jnt_ranges[:, 0], self.jnt_ranges[:, 1]
-                jnt_range = jnt_max - jnt_min
-                return np.random.uniform(jnt_min - expand_ratio * jnt_range,
-                                        jnt_max + expand_ratio * jnt_range)
-
-            joint_lower, joint_upper = self.jlc.jnt_ranges[:, 0], self.jlc.jnt_ranges[:, 1]
-            import wrs.motion.probabilistic.rrt as rrt
-            planner = rrt.RRT(self.jlc)
-            planner.roadmap.clear()
-            start_conf = ((joint_lower + joint_upper) / 2).tolist()
-            planner.start_conf = start_conf
-            planner.roadmap.add_node("start", conf=start_conf)
-
-            pbar = tqdm(total=n_points, desc=f"[{type(self.jlc).__name__}] Sampling")
-            while len(planner.roadmap.nodes) < n_points + 1:
-                prev_n = len(planner.roadmap.nodes)
-                rand_conf = _extended_rand_conf(self.jlc)
-                planner._extend_roadmap(planner.roadmap, rand_conf, ext_dist, rand_conf, [], [], False)
-                pbar.update(len(planner.roadmap.nodes) - prev_n)
-            pbar.close()
-
-            print(f"[{type(self.jlc).__name__}] Generated {len(planner.roadmap.nodes) - 1} configurations.")
-            conf_array = np.array([data["conf"] for nid, data in planner.roadmap.nodes.items() if nid != "start"])
-            np.save(f"{type(self.jlc).__name__}_configs.npy", conf_array)
-
-            sampled_min, sampled_max = np.min(conf_array, axis=0), np.max(conf_array, axis=0)
-            print('for robot:', type(self.jlc).__name__)
-            print("\n=== Joint Ranges (robot vs. sampled data) ===")
-            print(f"Sampled {len(conf_array)} configurations from RRT.")
-            for i, (jmin, jmax, smin, smax) in enumerate(zip(joint_lower, joint_upper, sampled_min, sampled_max)):
-                print(f"Joint {i}: range = [{jmin:.3f}, {jmax:.3f}], sampled = [{smin:.3f}, {smax:.3f}]")
-
-            return conf_array
-
-        if self.jlc.name in ['cobotta_arm', 'cobotta_pro_1300_manipulator', 'ur3']:
-            n_points = 40320
-        elif self.jlc.name in ['irb14050_sglarm_yumi']:
-            n_points = 201600
-
-        sampled_qs = _generate_uniform_points_by_rrt_extend(self, n_points=n_points, ext_dist=0.4)
-        # gen sampled qs and their correspondent flange poses
+        # gen sampled qs
+        sampled_qs = np.load('wrs/robot_sim/cbt_configs.npy')
         query_data = []
         jnt_data = []
         jinv_data = []
@@ -210,8 +132,6 @@ class DDIKSolver(object):
             # relative to base
             rel_pos, rel_rotmat = rm.rel_pose(self.jlc.pos, self.jlc.rotmat, flange_pos, flange_rotmat)
             rel_rotvec = self._rotmat_to_vec(rel_rotmat)
-
-            '''baseline query data'''
             query_data.append(rel_pos.tolist() + rel_rotvec.tolist())
             jnt_data.append(jnt_values)
             jinv_data.append(jinv)
@@ -254,7 +174,6 @@ class DDIKSolver(object):
             rel_pos, rel_rotmat = rm.rel_pose(self.jlc.pos, self.jlc.rotmat, tgt_pos, tgt_rotmat)
             rel_rotvec = self._rotmat_to_vec(rel_rotmat)
             query_point = np.concatenate((rel_pos, rel_rotvec))
-            import time
             dist_value_list, nn_indx_list = self.query_tree.query(query_point, k=self._k_max, workers=-1)
             if type(nn_indx_list) is int:
                 nn_indx_list = [nn_indx_list]
@@ -262,142 +181,10 @@ class DDIKSolver(object):
             seed_tcp_array = self.tcp_data[nn_indx_list]
             seed_jinv_array = self.jinv_data[nn_indx_list]
             seed_posrot_diff_array = query_point - seed_tcp_array
-            
-            '''original ranking by distance'''
             adjust_array = np.einsum('ijk,ik->ij', seed_jinv_array, seed_posrot_diff_array)
             square_sums = np.sum((adjust_array) ** 2, axis=1)
             sorted_indices = np.argsort(square_sums)
             seed_jnt_array_cad = seed_jnt_array[sorted_indices[:20]]
-
-            '''first iteration'''
-            # first_cad = seed_jnt_array_cad[0]
-            # pos, rotmat, j_mat = self.jlc.fk(jnt_values=first_cad, toggle_jacobian=True)
-            # f2t_pos_err, f2t_rot_err, f2t_err_vec = rm.diff_between_poses(src_pos=pos,
-            #                                                               src_rotmat=rotmat,
-            #                                                               tgt_pos=tgt_pos,
-            #                                                               tgt_rotmat=tgt_rotmat)
-            # clamped_err_vec = clamp_tgt_err(f2t_pos_err, f2t_rot_err, f2t_err_vec)
-            # # delta_jnt_values = np.linalg.lsts
-            # delta_jnt_values = np.linalg.lstsq(j_mat, clamped_err_vec, rcond=1e-4)[0]
-            # next_jnt_values = first_cad + delta_jnt_values
-            # # adjust_array[sorted_indices[0]]
-            
-            '''next iteration'''
-            # pos, rotmat, j_mat = self.jlc.fk(jnt_values=next_jnt_values, toggle_jacobian=True)
-            # f2t_pos_err, f2t_rot_err, f2t_err_vec = rm.diff_between_poses(src_pos=pos,
-            #                                                               src_rotmat=rotmat,
-            #                                                               tgt_pos=tgt_pos,
-            #                                                               tgt_rotmat=tgt_rotmat)
-            # clamped_err_vec = clamp_tgt_err(f2t_pos_err, f2t_rot_err, f2t_err_vec)
-            # delta_jnt_values = np.linalg.lstsq(j_mat, clamped_err_vec, rcond=1e-4)[0]
-            # next2_jnt_values = next_jnt_values + delta_jnt_values
-            # print(f"delta_jnt_values: {delta_jnt_values}")
-
-            # === 第一次迭代 ===
-            delta_q_list = []
-            for cad_id, jnt in enumerate(seed_jnt_array_cad):
-                pos, rotmat, j_mat = self.jlc.fk(jnt_values=jnt, toggle_jacobian=True)
-                f2t_pos_err, f2t_rot_err, f2t_err_vec = rm.diff_between_poses(src_pos=pos,
-                                                                              src_rotmat=rotmat,
-                                                                              tgt_pos=tgt_pos,
-                                                                              tgt_rotmat=tgt_rotmat)
-                clamped_err_vec = clamp_tgt_err(f2t_pos_err, f2t_rot_err, f2t_err_vec)
-                delta_jnt_values = np.linalg.lstsq(j_mat, clamped_err_vec, rcond=1e-4)[0]
-                delta_q_list.append(delta_jnt_values)
-            delta_jnt_values_array = np.array(delta_q_list)
-            next_jnt_values_array = seed_jnt_array_cad + delta_jnt_values_array
-            delta_jnt_values_squared = np.sum(delta_jnt_values_array ** 2, axis=1)
-
-            # === 第二次迭代 ===
-            middle_jnt_array = seed_jnt_array_cad + 1.0 * delta_jnt_values_array
-            mid_delta_q_list = []
-            for cad_id, jnt in enumerate(middle_jnt_array):
-                pos, rotmat, j_mat = self.jlc.fk(jnt_values=jnt, toggle_jacobian=True)
-                f2t_pos_err, f2t_rot_err, f2t_err_vec = rm.diff_between_poses(src_pos=pos,
-                                                                              src_rotmat=rotmat,
-                                                                              tgt_pos=tgt_pos,
-                                                                              tgt_rotmat=tgt_rotmat)
-                clamped_err_vec = clamp_tgt_err(f2t_pos_err, f2t_rot_err, f2t_err_vec)
-                delta_jnt_values = np.linalg.lstsq(j_mat, clamped_err_vec, rcond=1e-4)[0]
-                mid_delta_q_list.append(delta_jnt_values)
-            mid_delta_jnt_values_array = np.array(mid_delta_q_list)
-            mid_next_jnt_values_array = middle_jnt_array + mid_delta_jnt_values_array
-            mid_delta_jnt_values_squared = np.sum(mid_delta_jnt_values_array ** 2, axis=1)
-
-            # === 第三次迭代 ===
-            final_delta_q_list = []
-            for cad_id, jnt in enumerate(mid_next_jnt_values_array):
-                pos, rotmat, j_mat = self.jlc.fk(jnt_values=jnt, toggle_jacobian=True)
-                f2t_pos_err, f2t_rot_err, f2t_err_vec = rm.diff_between_poses(
-                    src_pos=pos,
-                    src_rotmat=rotmat,
-                    tgt_pos=tgt_pos,
-                    tgt_rotmat=tgt_rotmat
-                )
-                clamped_err_vec = clamp_tgt_err(f2t_pos_err, f2t_rot_err, f2t_err_vec)
-                delta_jnt_values = np.linalg.lstsq(j_mat, clamped_err_vec, rcond=1e-4)[0]
-                final_delta_q_list.append(delta_jnt_values)
-
-            final_delta_jnt_values_array = np.array(final_delta_q_list)
-            final_jnt_values_array = mid_next_jnt_values_array + final_delta_jnt_values_array
-            final_delta_jnt_values_squared = np.sum(final_delta_jnt_values_array ** 2, axis=1)
-
-            # 第四次迭代
-            fourth_delta_q_list = []
-            for cad_id, jnt in enumerate(final_jnt_values_array):
-                pos, rotmat, j_mat = self.jlc.fk(jnt_values=jnt, toggle_jacobian=True)
-                f2t_pos_err, f2t_rot_err, f2t_err_vec = rm.diff_between_poses(
-                    src_pos=pos,
-                    src_rotmat=rotmat,
-                    tgt_pos=tgt_pos,
-                    tgt_rotmat=tgt_rotmat
-                )
-                clamped_err_vec = clamp_tgt_err(f2t_pos_err, f2t_rot_err, f2t_err_vec)
-                delta_jnt_values = np.linalg.lstsq(j_mat, clamped_err_vec, rcond=1e-4)[0]
-                fourth_delta_q_list.append(delta_jnt_values)
-            fourth_delta_jnt_values_array = np.array(fourth_delta_q_list)
-            final_jnt_values_array = final_jnt_values_array + fourth_delta_jnt_values_array
-            final_delta_jnt_values_squared = np.sum(fourth_delta_jnt_values_array ** 2, axis=1)
-
-
-            # ratio_array_1 = delta_jnt_values_array / delta_pose_array
-            # ratio_array_2 = mid_delta_jnt_values_array / mid_delta_pose_array
-            # ratio_array_3 = final_delta_jnt_values_array / final_delta_pose_array
-            
-            # # # print(f"ratio_array_1: {ratio_array_1}")
-            # # # print(f"ratio_array_2: {ratio_array_2}")
-            
-            # # # linearity_error = np.sum((ratio_array_1 - ratio_array_2) ** 2, axis=1)
-            # linearity_error = (np.mean(np.abs(ratio_array_3), axis=1) - np.mean(np.abs(ratio_array_2), axis=1)) ** 2
-            # # # dot_product = np.sum(delta_jnt_values_array * mid_delta_jnt_values_array, axis=1)
-            # # # norm1 = np.linalg.norm(delta_jnt_values_array, axis=1)
-            # # # norm2 = np.linalg.norm(mid_delta_jnt_values_array, axis=1)
-            # # # cos_sim = dot_product / (norm1 * norm2 + 1e-8)
-            # # # linearity_error = 1 - cos_sim
-
-            # # mu_1 = np.mean(np.abs(ratio_array_1), axis=1)
-            # # mu_2 = np.mean(np.abs(ratio_array_2), axis=1)
-            # # mu_3 = np.mean(np.abs(ratio_array_3), axis=1)
-
-            # # linearity_error = (
-            # #     (mu_1 - mu_2) ** 2 +
-            # #     (mu_2 - mu_3) ** 2 +
-            # #     (mu_1 - mu_3) ** 2
-            # # ) / 3
-            
-            # seed_jnt_array_cad = final_jnt_values_array[np.argsort(linearity_error)[:20]]
-
-            '''sum of three joint adjustment based ranking'''
-            # sum_squared = delta_jnt_values_squared + mid_delta_jnt_values_squared
-            # sum_squared = delta_jnt_values_squared + mid_delta_jnt_values_squared+ final_delta_jnt_values_squared
-            sum_squared = final_delta_jnt_values_squared
-            sorted_indices = np.argsort(sum_squared)
-            seed_jnt_array_cad = final_jnt_values_array[sorted_indices[:20]]
-
-            
-
-
-
             for id, seed_jnt_values in enumerate(seed_jnt_array_cad):
                 if id > best_sol_num:
                     return None
@@ -412,8 +199,7 @@ class DDIKSolver(object):
                                                toggle_dbg=toggle_dbg)
                 if result is None:
                     nid = id+1
-                    distances = np.linalg.norm(nid*seed_jnt_array_cad[nid:] - np.sum(seed_jnt_array_cad[:nid], axis=0), axis=1) # 和的差的平方
-                    # distances = np.sum(np.sum((seed_jnt_array_cad[nid:, None, :] - seed_jnt_array_cad[:nid][None, :, :])**2, axis=2),axis=1)  # 差的平方和
+                    distances = np.linalg.norm(nid*seed_jnt_array_cad[nid:] - np.sum(seed_jnt_array_cad[:nid], axis=0), axis=1)
                     sorted_cad_indices = np.argsort(-distances)
                     seed_jnt_array_cad[nid:] = seed_jnt_array_cad[nid:][sorted_cad_indices]
                     continue

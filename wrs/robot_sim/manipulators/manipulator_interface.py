@@ -268,7 +268,7 @@ class ManipulatorInterface(object):
 
     ## member functions for cdprimit collisions
 
-    def is_collided(self, obstacle_list=[], otherrobot_list=[], toggle_contacts=False):
+    def is_collided(self, obstacle_list=[], other_robot_list=[], toggle_contacts=False):
         """
         Interface for "is cdprimit collided", must be implemented in child class
         :param obstacle_list:
@@ -281,7 +281,7 @@ class ManipulatorInterface(object):
         if self.cc is None:  # TODO assertion decorator
             raise ValueError("Collision checker is not enabled!")
         return self.cc.is_collided(obstacle_list=obstacle_list,
-                                   other_robot_list=otherrobot_list, toggle_contacts=toggle_contacts)
+                                   other_robot_list=other_robot_list, toggle_contacts=toggle_contacts)
 
     def show_cdprim(self):
         """
