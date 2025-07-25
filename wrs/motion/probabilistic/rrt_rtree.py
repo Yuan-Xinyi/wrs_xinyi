@@ -114,21 +114,24 @@ class RRT:
         nearest_nid = self.roadmap.nearest(q_rand)
         q_near = self.roadmap.get_conf(nearest_nid)
 
-        # 沿 (near → rand) 每 ext_dist 插值
-        for q_new in self._interpolate(q_near, q_rand, ext_dist)[1:]:
+        # 只取一个新点：从插值结果里拿第二个点（第一个是 q_near 本身）
+        for q_new in self._interpolate(q_near, q_rand, ext_dist, include_dst=False)[1:2]:
+        # for q_new in self._interpolate(q_near, q_rand, ext_dist, include_dst=False)[1:]:
             if self._is_collided(q_new, obstacles, others):
-                return nearest_nid            # 碰撞，停止扩展
+                return nearest_nid
+
             new_nid = uuid.uuid4()
             self.roadmap.add_node(new_nid, q_new)
             self.roadmap.add_edge(nearest_nid, new_nid)
             nearest_nid = new_nid
 
-            # 到达目标半径
             if np.linalg.norm(q_new - q_goal) <= ext_dist:
                 self.roadmap.add_node("goal", q_goal)
                 self.roadmap.add_edge(nearest_nid, "goal")
                 return "goal"
+
         return nearest_nid
+
 
     # ---- 主入口 ----
     @keep_states

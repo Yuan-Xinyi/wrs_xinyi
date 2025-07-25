@@ -147,6 +147,7 @@ class RRT:
                 self.roadmap.add_node("goal", goal_conf)
                 self.roadmap.add_edge(nearest, "goal")
                 return "goal"
+            break
         return nearest
 
     # ------------------ 主要入口 ------------------

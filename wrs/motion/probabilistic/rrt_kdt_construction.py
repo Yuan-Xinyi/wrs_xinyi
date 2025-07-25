@@ -34,7 +34,7 @@ def generate_uniform_points_by_rrt_extend(robot, n_points=500, ext_dist=0.3):
     pbar = tqdm(total=n_points, desc=f"[{type(robot).__name__}] Sampling")
     while len(planner.roadmap.nodes) < n_points + 1:
         prev_n = len(planner.roadmap.nodes)
-        rand_conf = extended_rand_conf(robot)
+        rand_conf = extended_rand_conf(robot, expand_ratio=1.0)
         # planner._extend_roadmap(planner.roadmap, rand_conf, ext_dist, rand_conf, [], [], False)
         planner._extend_roadmap(rand_conf, ext_dist, rand_conf, [], [])
         pbar.update(len(planner.roadmap.nodes) - prev_n)
@@ -90,7 +90,7 @@ if __name__ == '__main__':
             n_points = 259200 # 40320
         elif name == 'ur3':
             robot = ur3.UR3(pos=rm.vec(0.1, .3, .5), enable_cc=True)
-            n_points = 259200 # 40320
+            n_points = 40320 # 259200 # 40320
         elif name == 'cbtpro1300':
             robot = cbtpro1300.CobottaPro1300WithRobotiq140(pos=rm.vec(0.1, .3, .5), enable_cc=True)
             n_points = 259200 # 40320
@@ -98,7 +98,7 @@ if __name__ == '__main__':
             raise ValueError(f"Invalid robot name: {name}")
         conf_array = generate_uniform_points_by_rrt_extend(robot, n_points=n_points, ext_dist=0.4)
         print(f"Generated {len(conf_array)} configurations for {name}.")
-        save_path = f"wrs/robot_sim/{name}_configs_rrt_rtree.npy"
+        save_path = f"wrs/robot_sim/{name}_configs_rrt_rtree_0724.npy"
         np.save(save_path, conf_array)
         print(f"Configurations saved to {save_path}.")
         print(f'config_array shape: {conf_array.shape}')
