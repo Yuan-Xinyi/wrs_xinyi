@@ -12,127 +12,70 @@ from tqdm import tqdm
 import numpy as np
 import json
 from scipy.signal import savgol_filter
+from collections import defaultdict
 
-with open("seed_range_reatt_new.jsonl", "r", encoding="utf-8") as f:
+with open("seed_range_reatt_new_new.jsonl", "r", encoding="utf-8") as f:
     seed_reatt = [json.loads(line) for line in f]
-with open("seed_range_woreatt_new.jsonl", "r", encoding="utf-8") as f:
-    seed_adjust = [json.loads(line) for line in f]
-with open("seed_range_kdt_new.jsonl", "r", encoding="utf-8") as f:
+with open("seed_range_kdt_new_new.jsonl", "r", encoding="utf-8") as f:
     seed_kdt = [json.loads(line) for line in f]
 
-'''reatt'''
-sr_reatt = [float(item["success_rate"].replace("%", "")) for item in seed_reatt]
-yumi_sr_reatt = sr_reatt[:20]
-cbt_sr_reatt = sr_reatt[20:40]
-ur3_sr_reatt = sr_reatt[40:60]
-cbtpro1300_sr_reatt = sr_reatt[60:80]
+def load_jsonl_as_numpy_by_robot(file_path):
+    robot_data = defaultdict(list)
 
-mean_time_reatt = [float(item["time_statistics"]['mean'].replace(" ms", "")) for item in seed_reatt]
-yumi_mean_time_reatt = mean_time_reatt[:20]
-cbt_mean_time_reatt = mean_time_reatt[20:40]
-ur3_mean_time_reatt = mean_time_reatt[40:60]
-cbtpro1300_mean_time_reatt = mean_time_reatt[60:80]
+    with open(file_path, 'r', encoding='utf-8') as f:
+        for line in f:
+            try:
+                entry = json.loads(line.strip())
+                robot = entry["robot"]
 
-std_time_reatt = [float(item["time_statistics"]['std'].replace(" ms", "")) for item in seed_reatt]
-yumi_std_time_reatt = std_time_reatt[:20]
-cbt_std_time_reatt = std_time_reatt[20:40]
-ur3_std_time_reatt = std_time_reatt[40:60]
-cbtpro1300_std_time_reatt = std_time_reatt[60:80]
+                # 提取你想转成 array 的字段
+                row = [
+                    float(entry["success_rate"].strip('%')),
+                    float(entry["t_mean"].strip(' ms')),
+                    float(entry["t_std"].strip(' ms'))
+                ]
+                robot_data[robot].append(row)
 
-'''woreatt'''
-sr_adjust = [float(item["success_rate"].replace("%", "")) for item in seed_adjust]
-yumi_sr_adjust = sr_adjust[:20]
-cbt_sr_adjust = sr_adjust[20:40]
-ur3_sr_adjust = sr_adjust[40:60]
-cbtpro1300_sr_adjust = sr_adjust[60:80]
+            except (json.JSONDecodeError, KeyError, ValueError) as e:
+                print(f"Skipped line due to error: {e}")
 
-mean_time_adjust = [float(item["time_statistics"]['mean'].replace(" ms", "")) for item in seed_adjust]
-yumi_mean_time_adjust = mean_time_adjust[:20]
-cbt_mean_time_adjust = mean_time_adjust[20:40]
-ur3_mean_time_adjust = mean_time_adjust[40:60]
-cbtpro1300_mean_time_adjust = mean_time_adjust[60:80]
+    # 转为 numpy.ndarray
+    for robot in robot_data:
+        robot_data[robot] = np.array(robot_data[robot])
 
-std_time_adjust = [float(item["time_statistics"]['std'].replace(" ms", "")) for item in seed_adjust]
-yumi_std_time_adjust = std_time_adjust[:20]
-cbt_std_time_adjust = std_time_adjust[20:40]
-ur3_std_time_adjust = std_time_adjust[40:60]
-cbtpro1300_std_time_adjust = std_time_adjust[60:80]
+    return robot_data
 
-'''kdt'''
-sr_kdt = [float(item["success_rate"].replace("%", "")) for item in seed_kdt]
-yumi_sr_kdt = sr_kdt[:20]
-cbt_sr_kdt = sr_kdt[20:40]
-ur3_sr_kdt = sr_kdt[40:60]
-cbtpro1300_sr_kdt = sr_kdt[60:80]
-
-mean_time_kdt = [float(item["time_statistics"]['mean'].replace(" ms", "")) for item in seed_kdt]
-yumi_mean_time_kdt = mean_time_kdt[:20]
-cbt_mean_time_kdt = mean_time_kdt[20:40]
-ur3_mean_time_kdt = mean_time_kdt[40:60]
-cbtpro1300_mean_time_kdt = mean_time_kdt[60:80]
-
-std_time_kdt = [float(item["time_statistics"]['std'].replace(" ms", "")) for item in seed_kdt]
-yumi_std_time_kdt = std_time_kdt[:20]
-cbt_std_time_kdt = std_time_kdt[20:40]
-ur3_std_time_kdt = std_time_kdt[40:60]
-cbtpro1300_std_time_kdt = std_time_kdt[60:80]
-
-
-red = (250/255, 127/255, 111/255)
-yellow = (255/255, 190/255, 122/255)
-blue = (130/255, 176/255, 210/255)
-
-nupdate = 10000
+reatt = load_jsonl_as_numpy_by_robot("seed_range_reatt_new_new.jsonl")
+kdt = load_jsonl_as_numpy_by_robot("seed_range_kdt_new_new.jsonl")
 best_sol_num_list = range(1,21)
 
 
 colors = ["#FF9F57", "#6BAFAD", "#6498B7", "#E75A4E"]
 linewidth = 5
+markers = ['o', 's', '^', 'd']  # 图标样式依次对应 C0, C1, UR3, IRB
+labels = ['C0', 'UR3', 'C1', 'IRB']
+markersize = 12
+keys = ['Cobotta', 'CobottaPro1300WithRobotiq140', 'UR3', 'YumiSglArm']
 
 '''success rate'''
-linestyles = ['-', '--', ':']
+linestyles = ['-', '--']
 for color_id, color in enumerate(colors):
     plt.figure(figsize=(10, 8))
-    if color_id == 0:
-        sr_list = [cbt_sr_reatt, cbt_sr_adjust, cbt_sr_kdt]
-        name = 'cbt'
-        seed_100 = 97.26
-        ylim = 60
-    elif color_id == 1:
-        sr_list = [ur3_sr_reatt, ur3_sr_adjust, ur3_sr_kdt]
-        name = 'ur3'
-        seed_100 = 97.69
-        ylim = 50
-    elif color_id == 2:
-        sr_list = [cbtpro1300_sr_reatt, cbtpro1300_sr_adjust, cbtpro1300_sr_kdt]
-        name = 'cbtpro1300'
-        seed_100 = 99.58
-        ylim = 75
-    elif color_id == 3:
-        sr_list = [yumi_sr_reatt, yumi_sr_adjust, yumi_sr_kdt]
-        name = 'yumi'
-        seed_100 = 99.89
-        ylim = 80
-    reatt_5 = 0
-    plt.axhline(y=seed_100, color='grey', linewidth=3, linestyle=':')
+    sr_list = [reatt[keys[color_id]][:,0], kdt[keys[color_id]][:,0]]
+    marker = markers[color_id]
+    label = labels[color_id]
     for id, sr in enumerate(sr_list):
-        plt.plot(best_sol_num_list, sr, color = color, linewidth=5, linestyle=linestyles[id])
         if id == 0:
-            plt.axhline(y=sr[4], color=color, linewidth=3, linestyle=':')
-            reatt_5 = sr[4]
-
-        if id in [1, 2]:
-            y_diff = np.abs(np.array(sr) - reatt_5)
-            closest_idx = np.argmin(y_diff) 
-            closest_x = best_sol_num_list[closest_idx] 
-            if np.min(y_diff) < 1:
-                plt.plot([closest_x, closest_x], [ylim, reatt_5], color=color, linewidth=3, linestyle=':')
+            plt.plot(best_sol_num_list, sr, marker=marker, label=label, color=colors[color_id], linewidth=4, markersize=markersize)
+        if id == 1:
+            plt.plot(best_sol_num_list, sr, marker=marker, label=label,
+                 color=colors[color_id], linewidth=4, linestyle='--',
+                 markersize=markersize, markerfacecolor='white')
         # plt.grid(True)
-        plt.xlim(0.8, 20.2)
-        plt.ylim(ylim, 100) 
+        plt.xlim(0.5, 20.5)
         plt.xticks([1, 5, 10, 15, 20])
-        # plt.savefig(f'0000_test_programs/nn_ik/res_figs/0318_save/{name}_sr.png', dpi = 600, bbox_inches='tight')
-    plt.show()
+        plt.savefig(f'0000_test_programs/nn_ik/res_figs/0730_save/{label}_sr.png', dpi = 600, bbox_inches='tight')
+    # plt.show()
 
 '''mean time'''
 # linestyles = ['-', '--', ':']
@@ -199,31 +142,69 @@ for color_id, color in enumerate(colors):
 - 重新绘制了成功率和平均时间的图表
 回应审稿人的不清晰的图
 '''
-for fig_id in range(3):
+# for fig_id in range(2):
+#     if fig_id == 0:
+#         mean_list = [cbt_mean_time_reatt, ur3_mean_time_reatt, cbtpro1300_mean_time_reatt, yumi_mean_time_reatt]
+#         std_list = [cbt_std_time_reatt, ur3_std_time_reatt, cbtpro1300_std_time_reatt, yumi_std_time_reatt]
+#         name = 'reatt_std'
+#     elif fig_id == 1:
+#         mean_list = [cbt_mean_time_kdt, ur3_mean_time_kdt, cbtpro1300_mean_time_kdt, yumi_mean_time_kdt]
+#         std_list = [cbt_std_time_kdt, ur3_std_time_kdt, cbtpro1300_std_time_kdt, yumi_std_time_kdt]
+#         name = 'kdt_std'
+    
+#     plt.figure(figsize=(14, 8))
+#     for id, color in enumerate(colors):
+#         plt.plot(best_sol_num_list, mean_list[id], color = color, linewidth=5)
+#         plt.plot(best_sol_num_list, std_list[id], color = color, linewidth=3, linestyle='--',alpha=0.6)
+#         # plt.axhline(y=0, color='gray', linewidth=3, linestyle=':')
+#         plt.ylim([0, 12]) 
+#         plt.xlim(0.8, 20.2)
+#         plt.xticks([1, 5, 10, 15, 20])
+#         plt.yticks([0,3,6,9,12])
+#         plt.grid(axis='y', linestyle='--', alpha=0.6)
+#     # plt.savefig(f'0000_test_programs/nn_ik/res_figs/0621_save/{name}_std_t.png', dpi = 600, bbox_inches='tight')
+#     plt.show()
+
+cbt_mean_time_reatt = reatt['Cobotta'][:,1]
+ur3_mean_time_reatt = reatt['UR3'][:,1]
+cbtpro1300_mean_time_reatt = reatt['CobottaPro1300WithRobotiq140'][:,1]
+yumi_mean_time_reatt = reatt['YumiSglArm'][:,1]
+cbt_std_time_reatt = reatt['Cobotta'][:,2]
+ur3_std_time_reatt = reatt['UR3'][:,2]
+cbtpro1300_std_time_reatt = reatt['CobottaPro1300WithRobotiq140'][:,2]
+yumi_std_time_reatt = reatt['YumiSglArm'][:,2]
+cbt_mean_time_kdt = kdt['Cobotta'][:,1]
+ur3_mean_time_kdt = kdt['UR3'][:,1]
+cbtpro1300_mean_time_kdt = kdt['CobottaPro1300WithRobotiq140'][:,1]
+yumi_mean_time_kdt = kdt['YumiSglArm'][:,1]
+cbt_std_time_kdt = kdt['Cobotta'][:,2]
+ur3_std_time_kdt = kdt['UR3'][:,2]
+cbtpro1300_std_time_kdt = kdt['CobottaPro1300WithRobotiq140'][:,2]
+yumi_std_time_kdt = kdt['YumiSglArm'][:,2]  
+for fig_id in range(2):
     if fig_id == 0:
         mean_list = [cbt_mean_time_reatt, ur3_mean_time_reatt, cbtpro1300_mean_time_reatt, yumi_mean_time_reatt]
         std_list = [cbt_std_time_reatt, ur3_std_time_reatt, cbtpro1300_std_time_reatt, yumi_std_time_reatt]
         name = 'reatt_std'
     elif fig_id == 1:
-        mean_list = [cbt_mean_time_adjust, ur3_mean_time_adjust, cbtpro1300_mean_time_adjust, yumi_mean_time_adjust]
-        std_list = [cbt_std_time_adjust, ur3_std_time_adjust, cbtpro1300_std_time_adjust, yumi_std_time_adjust]
-        name = 'woreatt_std'
-    elif fig_id == 2:
         mean_list = [cbt_mean_time_kdt, ur3_mean_time_kdt, cbtpro1300_mean_time_kdt, yumi_mean_time_kdt]
         std_list = [cbt_std_time_kdt, ur3_std_time_kdt, cbtpro1300_std_time_kdt, yumi_std_time_kdt]
         name = 'kdt_std'
     
-    plt.figure(figsize=(14, 8))
+    plt.figure(figsize=(10, 8))
     for id, color in enumerate(colors):
         plt.plot(best_sol_num_list, mean_list[id], color = color, linewidth=5)
         plt.plot(best_sol_num_list, std_list[id], color = color, linewidth=3, linestyle='--',alpha=0.6)
         # plt.axhline(y=0, color='gray', linewidth=3, linestyle=':')
-        plt.ylim([0, 12]) 
         plt.xlim(0.8, 20.2)
         plt.xticks([1, 5, 10, 15, 20])
-        plt.yticks([0,3,6,9,12])
+        if fig_id == 0:
+            plt.ylim([0, 3]) 
+            plt.yticks([0,1,2,3])
+        elif fig_id == 1:
+            # plt.axhline(y=3, color='gray', linewidth=3, linestyle=':')
+            plt.ylim([0, 7]) 
+            plt.yticks([0,2,4,6])            
         plt.grid(axis='y', linestyle='--', alpha=0.6)
-    # plt.savefig(f'0000_test_programs/nn_ik/res_figs/0621_save/{name}_std_t.png', dpi = 600, bbox_inches='tight')
-    plt.show()
-
-
+    plt.savefig(f'0000_test_programs/nn_ik/res_figs/0730_save/{name}_std_t.png', dpi = 600, bbox_inches='tight')
+    # plt.show()

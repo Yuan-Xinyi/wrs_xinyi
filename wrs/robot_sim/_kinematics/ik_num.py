@@ -39,7 +39,7 @@ class NumIKSolver(object):
                  seed_jnt_values=None,
                  max_n_iter=100,
                  toggle_dbg=False):
-        return self.dls(tgt_pos=tgt_pos,
+        return self.pinv_cw(tgt_pos=tgt_pos,
                          tgt_rotmat=tgt_rotmat,
                          seed_jnt_values=seed_jnt_values,
                          max_n_iter=max_n_iter,

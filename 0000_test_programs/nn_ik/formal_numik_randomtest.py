@@ -27,16 +27,17 @@ mcm.mgm.gen_frame().attach_to(base)
 
 
 nupdate = 10000
-best_sol_num_list = [1,3,5,10,20]
-# best_sol_num_list = [3]
-# best_sol_num_list = np.arange(1, 21, 1).tolist() # [1,2,3,...,30]
+# best_sol_num_list = [3,5]
+best_sol_num_list = [0, 1, 3, 5, 10, 20]
+best_sol_num_list = [1]
+# best_sol_num_list = np.arange(7, 21, 1).tolist() # [1,2,3,...,30]
 robot_list = ['cbt','cbtpro1300', 'ur3', 'yumi']
-# robot_list = ['cbt','cbtpro1300']
-robot_list = ['ur3']
-json_file = "metrics_robot_result.jsonl"
+# robot_list = ['cbt']
+json_file = "metrics_robot_result_0730.jsonl"
 
 if __name__ == '__main__':
 # while True:
+
 
     for robot in robot_list:
         if robot == 'yumi':
@@ -50,8 +51,7 @@ if __name__ == '__main__':
             robot = cbtpro1300.CobottaPro1300WithRobotiq140(pos=rm.vec(0.1, .3, .5), enable_cc=True)
         else:
             print("Invalid robot name")
-        
-        for best_sol_num in best_sol_num_list:
+        for best_sol_num in best_sol_num_list:            
             success_num = 0
             time_list = []
             pos_err_list = []
@@ -126,7 +126,6 @@ if __name__ == '__main__':
                 'rot_err_q1': f"{np.percentile(rot_err_list, 25)*180/np.pi:.2f} deg",
                 'rot_err_q3': f"{np.percentile(rot_err_list, 75)*180/np.pi:.2f} deg",
                 'rot_err_max': f"{np.max(rot_err_list)*180/np.pi:.2f} deg"
-
             }
 
             with open(json_file, "a") as f:
