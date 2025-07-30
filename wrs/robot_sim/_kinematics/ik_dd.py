@@ -24,10 +24,6 @@ from sklearn.linear_model import RANSACRegressor
 from scipy.spatial.distance import cdist
 from sklearn.cluster import MeanShift, estimate_bandwidth
 
-
-# for debugging purpose
-json_file = "kdt_query_time.jsonl"
-
 class DDIKSolver(object):
     def __init__(self, jlc, path=None, identifier_str='test', backbone_solver='n', rebuild=False):
         """
@@ -176,16 +172,9 @@ class DDIKSolver(object):
             rel_pos, rel_rotmat = rm.rel_pose(self.jlc.pos, self.jlc.rotmat, tgt_pos, tgt_rotmat)
             rel_rotvec = self._rotmat_to_vec(rel_rotmat)
             query_point = np.concatenate((rel_pos, rel_rotvec))
-            import time
-            import json
-            tic = time.time()
             dist_value_list, nn_indx_list = self.query_tree.query(query_point, k=self._k_max, workers=-1)
-            toc = time.time()
-            with open(json_file, "a") as f:
-                f.write(json.dumps((toc - tic) * 1_000_000) + "\n")
             if type(nn_indx_list) is int:
                 nn_indx_list = [nn_indx_list]
-            # seed_jnt_array_cad = self.jnt_data[nn_indx_list]
             seed_jnt_array = self.jnt_data[nn_indx_list]
             seed_tcp_array = self.tcp_data[nn_indx_list]
             seed_jinv_array = self.jinv_data[nn_indx_list]
