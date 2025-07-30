@@ -22,9 +22,9 @@ robot_constructors = {
 
 for name, ctor in robot_constructors.items():
     if name == 'yumi':
-        n_samples = 1814400*2
+        n_samples = 201600
     else:
-        n_samples = 2592000
+        n_samples = 40320
 
     robot = ctor()
     jnt_ranges = robot.jnt_ranges  # list of (low, high)
@@ -37,7 +37,7 @@ for name, ctor in robot_constructors.items():
     high = np.array([rng[1] for rng in jnt_ranges])
     scaled = low + (high - low) * points  # 映射到真实角度范围
     print(f"[{name}] Scaled samples shape:", scaled.shape)
-    fname = f'cvt_joint_samples_{name}_largest.npy'
+    fname = f'cvt_joint_samples_{name}_scale5.npy'
     np.save(fname, scaled)
     print(f"[{name}] Saved joint samples to `{fname}`\n")
 

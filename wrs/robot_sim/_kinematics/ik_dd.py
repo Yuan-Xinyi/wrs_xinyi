@@ -24,43 +24,82 @@ from sklearn.linear_model import RANSACRegressor
 from scipy.spatial.distance import cdist
 from sklearn.cluster import MeanShift, estimate_bandwidth
 
-import numpy as np
+class MinMaxNormalizer:
+    """
+    Normalizes 6D pose vectors (position + rotation vector) into [-1, 1] range,
+    using user-provided min and max values.
+    """
 
-import numpy as np
+    def __init__(self, min_vals, max_vals):
+        self.min = np.array(min_vals, dtype=np.float32)
+        self.max = np.array(max_vals, dtype=np.float32)
+        self.range = self.max - self.min
 
-import numpy as np
-import numpy as np
+    def normalize(self, x):
+        x = np.asarray(x, dtype=np.float32)
+        nx = (x - self.min) / self.range
+        return nx * 2.0 - 1.0
 
-import numpy as np
+    def unnormalize(self, x):
+        x = np.asarray(x, dtype=np.float32)
+        nx = (x + 1.0) / 2.0
+        return nx * self.range + self.min
 
-def damped_pinv(J, damping=1e-4):
-    m, n = J.shape
-    if m >= n:
-        # "Tall" or square Jacobian: (JᵗJ + λ²I)⁻¹ Jᵗ
-        JTJ = J.T @ J
-        damped_term = damping ** 2 * np.eye(n)
-        return np.linalg.inv(JTJ + damped_term) @ J.T
-    else:
-        # "Wide" Jacobian: Jᵗ (JJᵗ + λ²I)⁻¹
-        JJT = J @ J.T
-        damped_term = damping ** 2 * np.eye(m)
-        return J.T @ np.linalg.inv(JJT + damped_term)
+class ZScoreNormalizer:
+    """
+    Normalizes 6D pose vectors (position + rotation vector) using z-score normalization,
+    based on user-provided mean and standard deviation values.
+    """
 
-def clamp_tgt_err(f2t_pos_err, f2t_rot_err, f2t_err_vec):
-    clamp_pos_err = .1
-    clamp_rot_err = np.pi / 10.0
-    clamped_vec = np.copy(f2t_err_vec)
-    if f2t_pos_err >= clamp_pos_err:
-        clamped_vec[:3] = clamp_pos_err * f2t_err_vec[:3] / f2t_pos_err
-    if f2t_rot_err >= clamp_rot_err:
-        clamped_vec[3:6] = clamp_rot_err * f2t_err_vec[3:6] / f2t_rot_err
-    return clamped_vec
+    def __init__(self, mean_vals, std_vals):
+        self.mean = np.array(mean_vals, dtype=np.float32)
+        self.std = np.array(std_vals, dtype=np.float32)
+        # 防止除以0
+        self.std[self.std == 0] = 1.0
 
-def cosine_similarity(a, b, eps=1e-8):
-    dot = np.sum(a * b, axis=1)
-    norm = np.linalg.norm(a, axis=1) * np.linalg.norm(b, axis=1)
-    return dot / (norm + eps)
+    def normalize(self, x):
+        x = np.asarray(x, dtype=np.float32)
+        return (x - self.mean) / self.std
 
+    def unnormalize(self, x):
+        x = np.asarray(x, dtype=np.float32)
+        return x * self.std + self.mean
+
+
+# normalizer_type = 'zscore'  # 'zscore' or 'minmax'
+# if normalizer_type == 'zscore':
+#     c0_normalizer = ZScoreNormalizer(mean_vals = np.array([5.65921551e-02, 1.67266481e-03, 2.85319569e-01, 1.93198632e-16,
+#        1.78358029e-01, 1.54329812e-16]),
+#                                     std_vals = np.array([0.12539669, 0.16988069, 0.16742596, 1.36795728, 1.40832485,
+#        1.26668143]))
+    
+#     c1_normalizer = ZScoreNormalizer(mean_vals = np.array([ 1.76125770e-02,  1.68238884e-02,  4.47239188e-01, -1.01616511e-03,
+#        -2.64338815e-18, -1.96951692e-16]),
+#                                     std_vals = np.array([0.50326296, 0.56435419, 0.59201299, 1.3336131 , 1.34351365,
+#        1.33506408])) 
+    
+#     ur3_normalizer = ZScoreNormalizer(mean_vals = np.array([-4.98556548e-03,  1.19962500e-02,  1.51562500e-01,  3.76800431e-02,
+#        -1.64033249e-16, -4.68967347e-17]),
+#                                     std_vals = np.array([0.18314669, 0.19923094, 0.26765431, 1.32520244, 1.30989798,
+#        1.32732863]))
+    
+#     yumi_normalizer = ZScoreNormalizer(mean_vals = np.array([-3.55909486e-02,  9.58674278e-17,  2.99653529e-01,  1.88154019e-04,
+#        -1.19320080e-02, -5.24688667e-04]),
+#                                         std_vals = np.array([0.24727049, 0.27174006, 0.2298521 , 1.23108923, 1.23141579,
+#        1.39932997])) 
+    
+# elif normalizer_type == 'minmax':
+#     c0_normalizer = MinMaxNormalizer(min_vals = np.array([-0.2383036, -0.38786122, -0.02182429, -3.12729207, -3.10317142, -3.0540088], dtype=np.float32),
+#                                     max_vals = np.array([0.38708663, 0.39260529, 0.56706232, 3.12729207, 3.11187487, 3.0540088], dtype=np.float32))
+
+#     c1_normalizer = MinMaxNormalizer(min_vals = np.array([-1.44785728, -1.34219186, -0.81410117, -3.12488023, -3.13203112, -3.11153799]),
+#                                     max_vals = np.array([1.44785728, 1.34219186, 1.67651439, 3.1374543 , 3.13203112, 3.11153799]))
+
+#     ur3_normalizer = MinMaxNormalizer(min_vals = np.array([-0.55385525, -0.55059487, -0.39459894, -2.95688735, -2.97838964, -3.00194667]),
+#                                     max_vals = np.array([0.55385525, 0.54633171, 0.69839894, 2.9248206 , 2.97838964, 3.00194667]))
+
+#     yumi_normalizer = MinMaxNormalizer(min_vals = np.array([-0.59054252, -0.60083072, -0.25625469, -3.12602102, -3.12559121, -3.13713925]),
+#                                     max_vals = np.array([0.52477136, 0.60083072, 0.66554782, 3.13087534, 3.12721132, 3.13891262]))
 
 class DDIKSolver(object):
     def __init__(self, jlc, path=None, identifier_str='test', backbone_solver='n', rebuild=False):
@@ -83,6 +122,32 @@ class DDIKSolver(object):
         self._k_max = 1000  # maximum nearest neighbours examined by the backbone solver
         self._max_n_iter = 7  # max_n_iter of the backbone solver
         
+        '''normlization'''
+        # if identifier_str == 'irb14050_sglarm_yumi':
+        #     self._normalizer = yumi_normalizer
+        #     print("Using yumi_minmax_normalizer for irb14050_sglarm_yumi.")
+        # elif identifier_str == 'ur3':
+        #     self._normalizer = ur3_normalizer
+        #     print("Using ur3_minmax_normalizer for ur3.")
+        # elif identifier_str == 'cobotta_arm':
+        #     self._normalizer = c0_normalizer
+        #     print("Using c0_minmax_normalizer for cobotta_arm.")
+        # elif identifier_str == 'cobotta_pro_1300_manipulator':
+        #     self._normalizer = c1_normalizer
+        #     print("Using c1_minmax_normalizer for cobotta_pro_1300_manipulator.")
+        # else:
+        #     raise ValueError(f"Unknown identifier_str: {identifier_str}. Please use 'test', 'ur3', 'c0', or 'c1'.")
+        
+        '''weighted l2 norm'''
+        # self._weights = np.array([3, 3, 3, 1, 1, 1], dtype=np.float32)
+        # self._weights = np.array([5, 5, 5, 1, 1, 1], dtype=np.float32)
+        # self._weights = np.array([10, 10, 10, 1, 1, 1], dtype=np.float32)
+        # self._weights = np.array([15, 15, 15, 1, 1, 1], dtype=np.float32)
+        # self._weights = np.array([20, 20, 20, 1, 1, 1], dtype=np.float32)
+        self._weights = np.array([1, 1, 1, 10, 10, 10], dtype=np.float32)
+        self._sqrt_weights = np.sqrt(self._weights)
+
+
         if backbone_solver == 'n':
             self._backbone_solver = ikn.NumIKSolver(self.jlc)
             print("Using NumIKSolver as the backbone solver.")
@@ -154,15 +219,19 @@ class DDIKSolver(object):
 
     def _build_data(self):
         # gen sampled qs
-        sampled_jnts = []
-        n_intervals = np.linspace(8, 4, self.jlc.n_dof, endpoint=False) # 6,8,10
-        print(f"Buidling Data for DDIK using the following joint granularity: {n_intervals.astype(int)}...")
-        for i in range(self.jlc.n_dof):
-            sampled_jnts.append(
-                np.linspace(self.jlc.jnt_ranges[i][0], self.jlc.jnt_ranges[i][1], int(n_intervals[i] + 2))[1:-1])
-        grid = np.meshgrid(*sampled_jnts)
-        sampled_qs = np.vstack([x.ravel() for x in grid]).T
-        # gen sampled qs and their correspondent flange poses
+        scale = 'scale5'  # 'scale9', 'scale7', 'largest'
+        if self.jlc.name == 'cobotta_arm':
+            rbt_name = 'cobotta' # [cobotta, cobotta_pro1300, yumi, ur3]
+        elif self.jlc.name == 'cobotta_pro_1300_manipulator':
+            rbt_name = 'cobotta_pro1300'
+        elif self.jlc.name == 'irb14050_sglarm_yumi':
+            rbt_name = 'yumi'
+        elif self.jlc.name == 'ur3':
+            rbt_name = 'ur3'
+        else:
+            raise ValueError(f"Unknown robot name: {self.jlc.robot_name}. Please use 'cobotta_arm', 'cobotta_pro_1300_manipulator', 'irb14050_sglarm_yumi', or 'ur3'.")
+        sampled_qs = np.load(f'cvt_joint_samples_{rbt_name}_{scale}.npy') # [cobotta, cobotta_pro1300, yumi, ur3]
+        
         query_data = []
         jnt_data = []
         jinv_data = []
@@ -177,7 +246,18 @@ class DDIKSolver(object):
             rel_rotvec = self._rotmat_to_vec(rel_rotmat)
 
             '''baseline query data'''
-            query_data.append(rel_pos.tolist() + rel_rotvec.tolist())
+            # query_data.append(rel_pos.tolist() + rel_rotvec.tolist())
+
+            '''add normalization'''
+            # query = np.array(rel_pos.tolist() + rel_rotvec.tolist())
+            # query = self._normalizer.normalize(query)
+            # query_data.append(query)
+
+            '''weighted l2 norm'''
+            query = np.array(rel_pos.tolist() + rel_rotvec.tolist())
+            query = query * self._sqrt_weights
+            query_data.append(query)
+
             jnt_data.append(jnt_values)
             jinv_data.append(jinv)
         query_tree = scipy.spatial.cKDTree(query_data)
@@ -219,7 +299,13 @@ class DDIKSolver(object):
             rel_pos, rel_rotmat = rm.rel_pose(self.jlc.pos, self.jlc.rotmat, tgt_pos, tgt_rotmat)
             rel_rotvec = self._rotmat_to_vec(rel_rotmat)
             query_point = np.concatenate((rel_pos, rel_rotvec))
-            import time
+            
+            '''normalize the query point'''
+            # query_point = self._normalizer.normalize(query_point)
+
+            '''weighted l2 norm'''
+            query_point = query_point * self._sqrt_weights
+            
             dist_value_list, nn_indx_list = self.query_tree.query(query_point, k=self._k_max, workers=-1)
             if type(nn_indx_list) is int:
                 nn_indx_list = [nn_indx_list]
@@ -227,87 +313,10 @@ class DDIKSolver(object):
             seed_tcp_array = self.tcp_data[nn_indx_list]
             seed_jinv_array = self.jinv_data[nn_indx_list]
             seed_posrot_diff_array = query_point - seed_tcp_array
-            
-            '''original ranking by distance'''
             adjust_array = np.einsum('ijk,ik->ij', seed_jinv_array, seed_posrot_diff_array)
             square_sums = np.sum((adjust_array) ** 2, axis=1)
             sorted_indices = np.argsort(square_sums)
             seed_jnt_array_cad = seed_jnt_array[sorted_indices[:20]]
-
-            # === 第一次迭代 ===
-            delta_q_list = []
-            for cad_id, jnt in enumerate(seed_jnt_array_cad):
-                pos, rotmat, j_mat = self.jlc.fk(jnt_values=jnt, toggle_jacobian=True)
-                f2t_pos_err, f2t_rot_err, f2t_err_vec = rm.diff_between_poses(src_pos=pos,
-                                                                              src_rotmat=rotmat,
-                                                                              tgt_pos=tgt_pos,
-                                                                              tgt_rotmat=tgt_rotmat)
-                clamped_err_vec = clamp_tgt_err(f2t_pos_err, f2t_rot_err, f2t_err_vec)
-                delta_jnt_values = np.linalg.lstsq(j_mat, clamped_err_vec, rcond=1e-4)[0]
-                delta_q_list.append(delta_jnt_values)
-            delta_jnt_values_array = np.array(delta_q_list)
-            next_jnt_values_array = seed_jnt_array_cad + delta_jnt_values_array
-            delta_jnt_values_squared = np.sum(delta_jnt_values_array ** 2, axis=1)
-
-            # === 第二次迭代 ===
-            middle_jnt_array = seed_jnt_array_cad + 1.0 * delta_jnt_values_array
-            mid_delta_q_list = []
-            for cad_id, jnt in enumerate(middle_jnt_array):
-                pos, rotmat, j_mat = self.jlc.fk(jnt_values=jnt, toggle_jacobian=True)
-                f2t_pos_err, f2t_rot_err, f2t_err_vec = rm.diff_between_poses(src_pos=pos,
-                                                                              src_rotmat=rotmat,
-                                                                              tgt_pos=tgt_pos,
-                                                                              tgt_rotmat=tgt_rotmat)
-                clamped_err_vec = clamp_tgt_err(f2t_pos_err, f2t_rot_err, f2t_err_vec)
-                delta_jnt_values = np.linalg.lstsq(j_mat, clamped_err_vec, rcond=1e-4)[0]
-                mid_delta_q_list.append(delta_jnt_values)
-            mid_delta_jnt_values_array = np.array(mid_delta_q_list)
-            mid_next_jnt_values_array = middle_jnt_array + mid_delta_jnt_values_array
-            mid_delta_jnt_values_squared = np.sum(mid_delta_jnt_values_array ** 2, axis=1)
-
-            # === 第三次迭代 ===
-            final_delta_q_list = []
-            for cad_id, jnt in enumerate(mid_next_jnt_values_array):
-                pos, rotmat, j_mat = self.jlc.fk(jnt_values=jnt, toggle_jacobian=True)
-                f2t_pos_err, f2t_rot_err, f2t_err_vec = rm.diff_between_poses(
-                    src_pos=pos,
-                    src_rotmat=rotmat,
-                    tgt_pos=tgt_pos,
-                    tgt_rotmat=tgt_rotmat
-                )
-                clamped_err_vec = clamp_tgt_err(f2t_pos_err, f2t_rot_err, f2t_err_vec)
-                delta_jnt_values = np.linalg.lstsq(j_mat, clamped_err_vec, rcond=1e-4)[0]
-                final_delta_q_list.append(delta_jnt_values)
-
-            final_delta_jnt_values_array = np.array(final_delta_q_list)
-            final_jnt_values_array = mid_next_jnt_values_array + final_delta_jnt_values_array
-            final_delta_jnt_values_squared = np.sum(final_delta_jnt_values_array ** 2, axis=1)
-
-            # 第四次迭代
-            fourth_delta_q_list = []
-            for cad_id, jnt in enumerate(final_jnt_values_array):
-                pos, rotmat, j_mat = self.jlc.fk(jnt_values=jnt, toggle_jacobian=True)
-                f2t_pos_err, f2t_rot_err, f2t_err_vec = rm.diff_between_poses(
-                    src_pos=pos,
-                    src_rotmat=rotmat,
-                    tgt_pos=tgt_pos,
-                    tgt_rotmat=tgt_rotmat
-                )
-                clamped_err_vec = clamp_tgt_err(f2t_pos_err, f2t_rot_err, f2t_err_vec)
-                delta_jnt_values = np.linalg.lstsq(j_mat, clamped_err_vec, rcond=1e-4)[0]
-                fourth_delta_q_list.append(delta_jnt_values)
-            fourth_delta_jnt_values_array = np.array(fourth_delta_q_list)
-            final_jnt_values_array = final_jnt_values_array + fourth_delta_jnt_values_array
-            final_delta_jnt_values_squared = np.sum(fourth_delta_jnt_values_array ** 2, axis=1)
-
-            '''sum of three joint adjustment based ranking'''
-            # sum_squared = delta_jnt_values_squared + mid_delta_jnt_values_squared
-            # sum_squared = delta_jnt_values_squared + mid_delta_jnt_values_squared+ final_delta_jnt_values_squared
-            sum_squared = final_delta_jnt_values_squared
-            sorted_indices = np.argsort(sum_squared)
-            seed_jnt_array_cad = final_jnt_values_array[sorted_indices[:20]]
-
-        
             for id, seed_jnt_values in enumerate(seed_jnt_array_cad):
                 if id > best_sol_num:
                     return None
@@ -323,6 +332,7 @@ class DDIKSolver(object):
                 if result is None:
                     # nid = id+1
                     # distances = np.linalg.norm(nid*seed_jnt_array_cad[nid:] - np.sum(seed_jnt_array_cad[:nid], axis=0), axis=1) # 和的差的平方
+                    # # distances = np.sum(np.sum((seed_jnt_array_cad[nid:, None, :] - seed_jnt_array_cad[:nid][None, :, :])**2, axis=2),axis=1)  # 差的平方和
                     # sorted_cad_indices = np.argsort(-distances)
                     # seed_jnt_array_cad[nid:] = seed_jnt_array_cad[nid:][sorted_cad_indices]
                     continue
