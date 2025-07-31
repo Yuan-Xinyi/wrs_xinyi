@@ -31,7 +31,7 @@ mcm.mgm.gen_frame().attach_to(base)
 
 
 nupdate = 10000
-best_sol_num_list = [0] # [1,3,5,10,20]
+best_sol_num_list = [1] # [1,3,5,10,20]
 # best_sol_num_list = np.arange(1, 21, 1).tolist() # [1,2,3,...,30]
 robot_list = ['cbt','cbtpro1300', 'ur3', 'yumi']
 # robot_list = ['cbt','cbtpro1300']

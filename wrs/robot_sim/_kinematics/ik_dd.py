@@ -111,6 +111,7 @@ class DDIKSolver(object):
                 (self.query_tree, self.q_query_tree, 
                  self.jnt_data, self.tcp_data, self.jinv_data, 
                  self.pos_data, self.rotmat_data, self.jmat_data) = self._build_data()
+                print("Database files not found. Rebuilding the database.")
                 self.persist_data()
 
     def __call__(self,
@@ -164,16 +165,18 @@ class DDIKSolver(object):
         query_data = []
         jnt_data = []
         jinv_data = []
-
-        n_intervals_x = np.linspace(8, 4, self.jlc.n_dof, endpoint=False)  # coarse
-        print(f"[x_query_tree] Joint granularity: {n_intervals_x.astype(int)}")
-
-        sampled_jnts_x = [
-            np.linspace(self.jlc.jnt_ranges[i][0], self.jlc.jnt_ranges[i][1], int(n_intervals_x[i] + 2))[1:-1]
-            for i in range(self.jlc.n_dof)
-        ]
-        grid_x = np.meshgrid(*sampled_jnts_x)
-        sampled_qs_x = np.vstack([x.ravel() for x in grid_x]).T
+        scale = 'scale5'  # 'scale9', 'scale7', 'largest'
+        if self.jlc.name == 'cobotta_arm':
+            rbt_name = 'cobotta' # [cobotta, cobotta_pro1300, yumi, ur3]
+        elif self.jlc.name == 'cobotta_pro_1300_manipulator':
+            rbt_name = 'cobotta_pro1300'
+        elif self.jlc.name == 'irb14050_sglarm_yumi':
+            rbt_name = 'yumi'
+        elif self.jlc.name == 'ur3':
+            rbt_name = 'ur3'
+        else:
+            raise ValueError(f"Unknown robot name: {self.jlc.robot_name}. Please use 'cobotta_arm', 'cobotta_pro_1300_manipulator', 'irb14050_sglarm_yumi', or 'ur3'.")
+        sampled_qs_x = np.load(f'cvt_joint_samples_{rbt_name}_{scale}.npy') # [cobotta, cobotta_pro1300, yumi, ur3]
 
         for jnt_values in tqdm(sampled_qs_x, desc="x_query_tree sampling"):
             flange_pos, flange_rotmat, j_mat = self.jlc.fk(jnt_values=jnt_values, toggle_jacobian=True)
@@ -183,7 +186,6 @@ class DDIKSolver(object):
             query_data.append(rel_pos.tolist() + rel_rotvec.tolist())
             jnt_data.append(jnt_values)
             jinv_data.append(jinv)
-
         x_query_tree = scipy.spatial.cKDTree(query_data)
 
         # ----------- Part 2: Build q_query_tree (fine) -----------
@@ -192,15 +194,19 @@ class DDIKSolver(object):
         rotmat_data = []
         jmat_data = []
 
-        n_intervals_q = np.linspace(8, 8, self.jlc.n_dof, endpoint=False)  # fine
-        print(f"[q_query_tree] Joint granularity: {n_intervals_q.astype(int)}")
+        scale = 'largest'  # 'scale9', 'scale7', 'largest'
+        if self.jlc.name == 'cobotta_arm':
+            rbt_name = 'cobotta' # [cobotta, cobotta_pro1300, yumi, ur3]
+        elif self.jlc.name == 'cobotta_pro_1300_manipulator':
+            rbt_name = 'cobotta_pro1300'
+        elif self.jlc.name == 'irb14050_sglarm_yumi':
+            rbt_name = 'yumi'
+        elif self.jlc.name == 'ur3':
+            rbt_name = 'ur3'
+        else:
+            raise ValueError(f"Unknown robot name: {self.jlc.robot_name}. Please use 'cobotta_arm', 'cobotta_pro_1300_manipulator', 'irb14050_sglarm_yumi', or 'ur3'.")
+        sampled_qs_q = np.load(f'cvt_joint_samples_{rbt_name}_{scale}.npy') # [cobotta, cobotta_pro1300, yumi, ur3]
 
-        sampled_jnts_q = [
-            np.linspace(self.jlc.jnt_ranges[i][0], self.jlc.jnt_ranges[i][1], int(n_intervals_q[i] + 2))[1:-1]
-            for i in range(self.jlc.n_dof)
-        ]
-        grid_q = np.meshgrid(*sampled_jnts_q)
-        sampled_qs_q = np.vstack([x.ravel() for x in grid_q]).T
 
         for jnt_values in tqdm(sampled_qs_q, desc="q_query_tree sampling"):
             flange_pos, flange_rotmat, j_mat = self.jlc.fk(jnt_values=jnt_values, toggle_jacobian=True)
@@ -339,43 +345,13 @@ class DDIKSolver(object):
             final_delta_pose_array = np.array(final_delta_pose_list)
             final_jnt_values_array = mid_next_jnt_values_array + final_delta_jnt_values_array
 
-
-            # ratio_array_1 = delta_jnt_values_array / delta_pose_array
-            # ratio_array_2 = mid_delta_jnt_values_array / mid_delta_pose_array
-            # ratio_array_3 = final_delta_jnt_values_array / final_delta_pose_array
-            
-            # # # print(f"ratio_array_1: {ratio_array_1}")
-            # # # print(f"ratio_array_2: {ratio_array_2}")
-            
-            # # # linearity_error = np.sum((ratio_array_1 - ratio_array_2) ** 2, axis=1)
-            # linearity_error = (np.mean(np.abs(ratio_array_3), axis=1) - np.mean(np.abs(ratio_array_2), axis=1)) ** 2
-            # # # dot_product = np.sum(delta_jnt_values_array * mid_delta_jnt_values_array, axis=1)
-            # # # norm1 = np.linalg.norm(delta_jnt_values_array, axis=1)
-            # # # norm2 = np.linalg.norm(mid_delta_jnt_values_array, axis=1)
-            # # # cos_sim = dot_product / (norm1 * norm2 + 1e-8)
-            # # # linearity_error = 1 - cos_sim
-
-            # # mu_1 = np.mean(np.abs(ratio_array_1), axis=1)
-            # # mu_2 = np.mean(np.abs(ratio_array_2), axis=1)
-            # # mu_3 = np.mean(np.abs(ratio_array_3), axis=1)
-
-            # # linearity_error = (
-            # #     (mu_1 - mu_2) ** 2 +
-            # #     (mu_2 - mu_3) ** 2 +
-            # #     (mu_1 - mu_3) ** 2
-            # # ) / 3
-            
-            # seed_jnt_array_cad = final_jnt_values_array[np.argsort(linearity_error)[:20]]
-
             '''sum of three joint adjustment based ranking'''
-            delta_jnt_values_squared = np.sum(delta_jnt_values_array ** 2, axis=1)
-            mid_delta_jnt_values_squared = np.sum(mid_delta_jnt_values_array ** 2, axis=1)
+            # delta_jnt_values_squared = np.sum(delta_jnt_values_array ** 2, axis=1)
+            # mid_delta_jnt_values_squared = np.sum(mid_delta_jnt_values_array ** 2, axis=1)
             final_delta_jnt_values_squared = np.sum(final_delta_jnt_values_array ** 2, axis=1)
-            # sum_squared = delta_jnt_values_squared + mid_delta_jnt_values_squared
-            # sum_squared = delta_jnt_values_squared + mid_delta_jnt_values_squared+ final_delta_jnt_values_squared
-            sum_squared = delta_jnt_values_squared
+            sum_squared = final_delta_jnt_values_squared
             sorted_indices = np.argsort(sum_squared)
-            seed_jnt_array_cad = next_jnt_values_array[sorted_indices[:20]]
+            seed_jnt_array_cad = final_jnt_values_array[sorted_indices[:20]]
 
             for id, seed_jnt_values in enumerate(seed_jnt_array_cad):
                 if id > best_sol_num:
