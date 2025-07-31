@@ -43,7 +43,7 @@ class DDIKSolver(object):
         self._fname_tree = os.path.join(path, f"{identifier_str}_ikdd_tree.pkl")
         self._fname_jnt = os.path.join(path, f"{identifier_str}_jnt_data.pkl")
         self._k_max = 1000  # maximum nearest neighbours examined by the backbone solver
-        self._max_n_iter = 7  # max_n_iter of the backbone solver
+        self._max_n_iter = 15  # max_n_iter of the backbone solver
         if backbone_solver == 'n':
             self._backbone_solver = ikn.NumIKSolver(self.jlc)
             print("Using NumIKSolver as the backbone solver.")
@@ -183,7 +183,9 @@ class DDIKSolver(object):
             square_sums = np.sum((adjust_array) ** 2, axis=1)
             sorted_indices = np.argsort(square_sums)
             seed_jnt_array_cad = seed_jnt_array[sorted_indices[:20]]
-            for id, seed_jnt_values in enumerate(seed_jnt_array_cad):
+            seed_list = [seed_jnt_array[0], seed_jnt_array_cad[0]]
+            print(repr(seed_list))
+            for id, seed_jnt_values in enumerate(seed_list):
                 if id > best_sol_num:
                     return None
                 if toggle_dbg:
@@ -196,6 +198,7 @@ class DDIKSolver(object):
                                                max_n_iter=max_n_iter,
                                                toggle_dbg=toggle_dbg)
                 if result is None:
+                    print(f"Backbone solver failed for seed {id}.")
                     # nid = id+1
                     # distances = np.linalg.norm(nid*seed_jnt_array_cad[nid:] - np.sum(seed_jnt_array_cad[:nid], axis=0), axis=1)
                     # sorted_cad_indices = np.argsort(distances)
@@ -203,6 +206,7 @@ class DDIKSolver(object):
                     # # seed_jnt_array_cad[nid] = seed_jnt_array_cad[5]
                     continue
                 else:
+                    print(f"Backbone solver succeeded for seed {id}.")
                     return result
             return None
 

@@ -39,7 +39,7 @@ class NumIKSolver(object):
                  seed_jnt_values=None,
                  max_n_iter=100,
                  toggle_dbg=False):
-        return self.pinv_cw(tgt_pos=tgt_pos,
+        return self.dls(tgt_pos=tgt_pos,
                          tgt_rotmat=tgt_rotmat,
                          seed_jnt_values=seed_jnt_values,
                          max_n_iter=max_n_iter,
@@ -252,8 +252,8 @@ class NumIKSolver(object):
                                                                           src_rotmat=flange_rotmat,
                                                                           tgt_pos=tgt_pos,
                                                                           tgt_rotmat=tgt_rotmat)
-            if f2t_pos_err > last_pos_err and f2t_rot_err > last_rot_err:
-                return None
+            # if f2t_pos_err > last_pos_err and f2t_rot_err > last_rot_err:
+            #     return None
             last_pos_err = f2t_pos_err
             last_rot_err = f2t_rot_err
             if f2t_pos_err < 1e-4 and f2t_rot_err < 1e-3 and self.jlc.are_jnts_in_ranges(iter_jnt_values):
@@ -264,6 +264,7 @@ class NumIKSolver(object):
             #                     j_mat.T @ clamped_err_vec)
             if abs(np.sum(delta_jnt_values)) < 1e-6: # local minima
                 return None
+            print(repr(iter_jnt_values))
             iter_jnt_values = iter_jnt_values + delta_jnt_values
             if toggle_dbg:
                 print("f2t_pos_err ", f2t_pos_err, " f2t_rot_err ", f2t_rot_err)
