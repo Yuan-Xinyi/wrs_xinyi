@@ -231,7 +231,7 @@ def visualize_anime_path(base, robot, path):
         return task.again
 
     def start_animation(task):
-        taskMgr.doMethodLater(0.2, update, "update",
+        taskMgr.doMethodLater(0.1, update, "update",
                               extraArgs=[robot, anime_data],
                               appendTask=True)
         return task.done

@@ -286,14 +286,14 @@ if config['mode'] == "inference":
 
     '''randomly generate a complex trajectory and single visulization'''
     # pos_list = []
-    # traj_length = 16
-    # while len(pos_list) < 16:
+    # traj_length = 32
+    # while len(pos_list) < traj_length:
     #     init_jnt = robot_s.rand_conf()
     #     pos_init, rotmat_init = robot_s.fk(jnt_values=init_jnt)
     #     # scale = np.random.choice([0.1, 0.2, 0.3, 0.4, 0.5])
     #     scale = np.random.choice([0.1, 0.2, 0.3])
     #     import mp_datagen_curveline as datagen
-    #     workspace_points, coeffs = datagen.generate_random_cubic_curve(num_points=16, scale=scale, center=pos_init)
+    #     workspace_points, coeffs = datagen.generate_random_cubic_curve(num_points=traj_length, scale=scale, center=pos_init)
         
     #     pos_list, success_count = datagen.gen_jnt_list_from_pos_list(init_jnt=init_jnt,
     #         pos_list=workspace_points, robot=robot_s, obstacle_list=None, base=base,
@@ -413,7 +413,7 @@ if config['mode'] == "inference":
     '''if you need to visualize the seeds'''
     # for jnt in jnt_seed:
     #     robot_s.goto_given_conf(jnt)
-    #     robot_s.gen_meshmodel(rgb=[1,0,0], alpha=0.1).attach_to(base)
+    #     robot_s.gen_meshmodel(alpha=0.1).attach_to(base)
     # base.run()
 
     '''
@@ -461,10 +461,11 @@ if config['mode'] == "inference":
     In this section, we individually check each seed and generate the trajectory.
     If the trajectory is valid, we save it.
     '''
-    n_samples = 20
-    testing_num = 100
+    n_samples = 1
+    testing_num = 1000
     time_list = []
     success = 0
+    traj_length = 128
 
     opt_time_list = []
     opt_success = 0
@@ -477,14 +478,13 @@ if config['mode'] == "inference":
     
     for test_id in range(testing_num):
         pos_list = []
-        traj_length = 16
-        while len(pos_list) < 16:
+        while len(pos_list) < traj_length:
             init_jnt = robot_s.rand_conf()
             pos_init, rotmat_init = robot_s.fk(jnt_values=init_jnt)
             # scale = np.random.choice([0.1, 0.2, 0.3, 0.4, 0.5])
             scale = np.random.choice([0.1, 0.2, 0.3])
             import mp_datagen_curveline as datagen
-            workspace_points, coeffs = datagen.generate_random_cubic_curve(num_points=16, scale=scale, center=pos_init)
+            workspace_points, coeffs = datagen.generate_random_cubic_curve(num_points=traj_length, scale=scale, center=pos_init)
             
             pos_list, success_count = datagen.gen_jnt_list_from_pos_list(init_jnt=init_jnt,
                 pos_list=workspace_points, robot=robot_s, obstacle_list=None, base=base,
@@ -494,32 +494,32 @@ if config['mode'] == "inference":
         trajectory_window = torch.tensor(workspace_points[:config['horizon']]).to(config['device'])
 
         '''seed from diffusion model'''
-        # if visualization == 'dynamic':
-        #     AttachTraj2base(workspace_points, radius=0.0025)
-        #     robot_s.goto_given_conf(pos_list[0])
-        #     robot_s.gen_meshmodel(rgb=[0,1,0], alpha=0.2).attach_to(base)
-        #     robot_s.goto_given_conf(pos_list[-1])
-        #     robot_s.gen_meshmodel(rgb=[0,1,0], alpha=0.2).attach_to(base)
+        if testing_num == 1 and visualization == 'dynamic':
+            AttachTraj2base(workspace_points, radius=0.0025)
+            robot_s.goto_given_conf(pos_list[0])
+            robot_s.gen_meshmodel(rgb=[0,1,0], alpha=0.2).attach_to(base)
+            robot_s.goto_given_conf(pos_list[-1])
+            robot_s.gen_meshmodel(rgb=[0,1,0], alpha=0.2).attach_to(base)
 
-        # if config['condition'] == "mlp":
-        #     condition = torch.tensor(trajectory_window, device=config['device']).unsqueeze(0).float()
-        #     condition = condition.flatten(start_dim=1)
-        # prior = torch.zeros((n_samples, config['horizon'], config['action_dim']), device=config['device'])
-        # if n_samples != 1:
-        #     condition = condition.repeat(n_samples, 1)
-        # with torch.no_grad():
-        #     action, _ = agent.sample(prior=prior, n_samples=n_samples, sample_steps=config['sample_steps'], temperature=1.0,
-        #                             solver=solver, condition_cfg=condition, w_cfg = 1.0, use_ema=True)
-        # if config['normalize']:
-        #     action = dataset.normalizer['obs']['jnt_pos'].unnormalize(np.array(action.to('cpu')))
-        # jnt_seed = action[:, 0, :]
+        if config['condition'] == "mlp":
+            condition = torch.tensor(trajectory_window, device=config['device']).unsqueeze(0).float()
+            condition = condition.flatten(start_dim=1)
+        prior = torch.zeros((n_samples, config['horizon'], config['action_dim']), device=config['device'])
+        if n_samples != 1:
+            condition = condition.repeat(n_samples, 1)
+        with torch.no_grad():
+            action, _ = agent.sample(prior=prior, n_samples=n_samples, sample_steps=config['sample_steps'], temperature=1.0,
+                                    solver=solver, condition_cfg=condition, w_cfg = 1.0, use_ema=True)
+        if config['normalize']:
+            action = dataset.normalizer['obs']['jnt_pos'].unnormalize(np.array(action.to('cpu')))
+        jnt_seed = action[:, 0, :]
 
         '''randomly generate the seeds'''
-        jnt_seed = []
-        for _ in range(n_samples):
-            seed = robot_s.rand_conf()
-            jnt_seed.append(seed)
-        jnt_seed = np.array(jnt_seed)
+        # jnt_seed = []
+        # for _ in range(n_samples):
+        #     seed = robot_s.rand_conf()
+        #     jnt_seed.append(seed)
+        # jnt_seed = np.array(jnt_seed)
 
         tic = time.time()
         for id, seed in enumerate(jnt_seed):
@@ -554,10 +554,12 @@ if config['mode'] == "inference":
                 time_list.append(toc - tic)
                 success += 1
                 print(f'success count: {success}, test_id: {test_id}, success_id: {id}, time: {(toc - tic)*1000:.2f} ms, waypoints: {len(path)}')
-        
-        # '''
-        # use the optimization method to solve the trajectory
-        # '''
+        if visualization == 'dynamic' and testing_num == 1:
+            hf.visualize_anime_path(base, robot_s, path)
+
+        '''
+        use the optimization method to solve the trajectory
+        '''
         # import time
         # from scipy.optimize import minimize
         # start_time = time.time()
@@ -579,10 +581,12 @@ if config['mode'] == "inference":
         
     
     print('='*80)
+    time_list = np.array(time_list) * 1000  # convert to milliseconds
     print(f"Inference Mode: Diffusion seed + IK")
+    print(f'trajectory length: {traj_length}, n_samples: {n_samples}')
     print(f"Total {testing_num} trajectories generated, {success} successful.")
     print(f"Success rate: {success / testing_num * 100:.2f}%")
-    print(f"Average time taken: {np.mean(time_list):.2f} s, std: {np.std(time_list):.2f} s, min: {np.min(time_list):.2f} s, max: {np.max(time_list):.2f} s")
+    print(f"Average time taken: {np.mean(time_list):.2f} ms, std: {np.std(time_list):.2f} ms, min: {np.min(time_list):.2f} ms, max: {np.max(time_list):.2f} ms")
     print('='*80)
 
     # print("Now start the optimization process...")
