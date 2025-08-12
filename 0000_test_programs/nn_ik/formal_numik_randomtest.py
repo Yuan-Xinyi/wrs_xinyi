@@ -26,13 +26,14 @@ mcm.mgm.gen_frame().attach_to(base)
 # robot = cbtpro900.CobottaPro900Spine(pos=rm.vec(0.1, .3, .5), enable_cc=True)
 
 
-nupdate = 10000
+nupdate = 1
 # best_sol_num_list = [3,5]
 best_sol_num_list = [0, 1, 3, 5, 10, 20]
+# best_sol_num_list = [3, 5, 10, 20]
 best_sol_num_list = [1]
 # best_sol_num_list = np.arange(7, 21, 1).tolist() # [1,2,3,...,30]
 robot_list = ['cbt','cbtpro1300', 'ur3', 'yumi']
-# robot_list = ['cbt']
+robot_list = ['cbt']
 json_file = "metrics_robot_result_0730.jsonl"
 
 if __name__ == '__main__':
@@ -59,7 +60,9 @@ if __name__ == '__main__':
 
             for i in tqdm(range(nupdate)):
                 jnt_values = robot.rand_conf()
-                # print(f'jnt_values: {repr(jnt_values)}')
+                jnt_values = [ 2.46465061, -0.03160745,  0.54272041, -1.63604277,  1.34401953,
+        1.51478841]
+                print(f'jnt_values: {repr(jnt_values)}')
                 # jnt_values = np.array([ 1.36875765, -0.62576553,  1.32609601, -0.42831308,  1.16467815, -0.06658116]) # for testing
                 tgt_pos, tgt_rotmat = robot.fk(jnt_values = jnt_values)
                 tic = time.time()

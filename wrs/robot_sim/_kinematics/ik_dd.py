@@ -196,6 +196,9 @@ class DDIKSolver(object):
                                                max_n_iter=max_n_iter,
                                                toggle_dbg=toggle_dbg)
                 if result is None:
+                    print('-' * 50)
+                    print(f"Failed to find a solution for seed {id+1} with jnt values: {repr(seed_jnt_values)}")
+                    print('-' * 50)
                     # nid = id+1
                     # distances = np.linalg.norm(nid*seed_jnt_array_cad[nid:] - np.sum(seed_jnt_array_cad[:nid], axis=0), axis=1)
                     # sorted_cad_indices = np.argsort(distances)
@@ -203,6 +206,9 @@ class DDIKSolver(object):
                     # # seed_jnt_array_cad[nid] = seed_jnt_array_cad[5]
                     continue
                 else:
+                    print('=' * 50)
+                    print('success seed_jnt_values:', repr(seed_jnt_values))
+                    print('=' * 50)
                     return result
             return None
 
