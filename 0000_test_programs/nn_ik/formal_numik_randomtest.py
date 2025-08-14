@@ -26,10 +26,10 @@ mcm.mgm.gen_frame().attach_to(base)
 # robot = cbtpro900.CobottaPro900Spine(pos=rm.vec(0.1, .3, .5), enable_cc=True)
 
 
-nupdate = 10000
+# nupdate = 10000
 # best_sol_num_list = [3,5]
 best_sol_num_list = [0, 1, 3, 5, 10, 20]
-best_sol_num_list = [1]
+best_sol_num_list = [3, 5]
 # best_sol_num_list = np.arange(7, 21, 1).tolist() # [1,2,3,...,30]
 robot_list = ['cbt','cbtpro1300', 'ur3', 'yumi']
 # robot_list = ['cbt']
@@ -42,15 +42,22 @@ if __name__ == '__main__':
     for robot in robot_list:
         if robot == 'yumi':
             robot = yumi.YumiSglArm(pos=rm.vec(0.1, .3, .5),enable_cc=True)
+            data = np.load('workspace_refined_yumi.npz', allow_pickle=True)
         elif robot == 'cbt':
             robot = cbt.Cobotta(pos=rm.vec(0.1,.3,.5), enable_cc=True)
+            data = np.load('workspace_refined_cbt.npz', allow_pickle=True)
         elif robot == 'ur3':
             robot = ur3.UR3(pos=rm.vec(0.1, .3, .5), enable_cc=True)
             # robot = ur3e.UR3e(pos=rm.vec(0.1, .3, .5), enable_cc=True)
+            data = np.load('workspace_refined_ur3.npz', allow_pickle=True)
         elif robot == 'cbtpro1300':
             robot = cbtpro1300.CobottaPro1300WithRobotiq140(pos=rm.vec(0.1, .3, .5), enable_cc=True)
+            data = np.load('workspace_refined_cbtpro.npz', allow_pickle=True)
         else:
             print("Invalid robot name")
+        ik_query = data['q']
+        print(f'ik_query shape: {ik_query.shape}')
+        nupdate = ik_query.shape[0]
         for best_sol_num in best_sol_num_list:            
             success_num = 0
             time_list = []
@@ -58,7 +65,7 @@ if __name__ == '__main__':
             rot_err_list = []
 
             for i in tqdm(range(nupdate)):
-                jnt_values = robot.rand_conf()
+                jnt_values = ik_query[i]
                 # print(f'jnt_values: {repr(jnt_values)}')
                 # jnt_values = np.array([ 1.36875765, -0.62576553,  1.32609601, -0.42831308,  1.16467815, -0.06658116]) # for testing
                 tgt_pos, tgt_rotmat = robot.fk(jnt_values = jnt_values)

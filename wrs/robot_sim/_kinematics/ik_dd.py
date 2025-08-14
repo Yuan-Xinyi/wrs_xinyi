@@ -115,8 +115,8 @@ class DDIKSolver(object):
 
     def _build_data(self):
         # gen sampled qs
-        scale = 'largest'  # 'scale9', 'scale7', 'largest'
-        rbt_name = 'yumi' # [cobotta, cobotta_pro1300, yumi, ur3]
+        scale = 'scale5'  # 'scale9', 'scale7', 'largest'
+        rbt_name = 'cobotta' # [cobotta, cobotta_pro1300, yumi, ur3]
         sampled_qs = np.load(f'cvt_joint_samples_{rbt_name}_{scale}.npy') # [cobotta, cobotta_pro1300, yumi, ur3]
         query_data = []
         jnt_data = []
