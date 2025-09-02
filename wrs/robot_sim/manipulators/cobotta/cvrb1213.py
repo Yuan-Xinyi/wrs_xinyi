@@ -67,7 +67,7 @@ class CVRB1213(mi.ManipulatorInterface):
         # tcp
         self.loc_tcp_pos = rm.vec(0, 0, 0)
         self.loc_tcp_rotmat = rm.np.eye(3)
-        self.jlc.finalize(ik_solver='dr', identifier_str=name+"r")
+        self.jlc.finalize(ik_solver='s', identifier_str=name+"r")
         # set up cc
         if self.cc is not None:
             self.setup_cc()

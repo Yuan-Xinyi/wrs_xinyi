@@ -125,6 +125,7 @@ class SELIKSolver(object):
         return query_tree, np.asarray(jnt_data), np.asarray(query_data), np.asarray(jinv_data)
 
     def persist_data(self):
+        os.makedirs(os.path.dirname(self._fname_tree), exist_ok=True)
         with open(self._fname_tree, 'wb') as f_tree:
             pickle.dump(self.query_tree, f_tree)
         with open(self._fname_jnt, 'wb') as f_jnt:
@@ -170,7 +171,7 @@ class SELIKSolver(object):
             sorted_indices = np.argsort(square_sums)
             seed_jnt_array_cad = seed_jnt_array[sorted_indices[:20]]
             for id, seed_jnt_values in enumerate(seed_jnt_array_cad):
-                if id > 1:
+                if id > 3:
                     return None
                 if toggle_dbg:
                     rkmg.gen_jlc_stick_by_jnt_values(self.jlc,

@@ -134,28 +134,6 @@ class NumIKSolver(object):
                 return None
             counter += 1
 
-    '''only consider the position error, no rotation error'''
-    # def pinv(self, tgt_pos, tgt_rotmat, seed_jnt_values=None, max_n_iter=100, toggle_dbg=False, pos_err_threshold=1e-4):
-    #     iter_jnt_values = seed_jnt_values if seed_jnt_values is not None else self.jlc.get_jnt_values()
-    #     counter, last_pos_err = 0, 1e6
-    #     while True:
-    #         flange_pos, _, j_mat = self.jlc.fk(jnt_values=iter_jnt_values, toggle_jacobian=True, update=False)
-    #         pos_err_vec = tgt_pos - flange_pos
-    #         pos_err_norm = np.linalg.norm(pos_err_vec)
-    #         if pos_err_norm < pos_err_threshold and self.jlc.are_jnts_in_ranges(iter_jnt_values):
-    #             return np.asarray(iter_jnt_values)
-    #         if pos_err_norm > last_pos_err or counter > max_n_iter or abs(np.sum(pos_err_vec)) < 1e-6:
-    #             return None
-    #         last_pos_err = pos_err_norm
-    #         j_mat_pos = j_mat[:3, :]
-    #         delta_jnt_values = np.linalg.pinv(j_mat_pos, rcond=1e-4) @ pos_err_vec
-    #         iter_jnt_values += delta_jnt_values
-    #         if toggle_dbg:
-    #             print("iter:", counter, "pos_err:", pos_err_norm, "delta_q:", delta_jnt_values)
-    #         counter += 1
-
-
-
     def pinv_rr(self,
                 tgt_pos,
                 tgt_rotmat,
@@ -169,6 +147,9 @@ class NumIKSolver(object):
         last_pos_err = 1e6
         last_rot_err = 1e6
         while True:
+            if counter > max_n_iter:
+                return None
+            counter += 1
             flange_pos, flange_rotmat, j_mat = self.jlc.fk(jnt_values=iter_jnt_values,
                                                            toggle_jacobian=True,
                                                            update=False)
@@ -179,7 +160,8 @@ class NumIKSolver(object):
             if f2t_pos_err < 1e-4 and f2t_rot_err < 1e-3 and self.jlc.are_jnts_in_ranges(iter_jnt_values):
                 return iter_jnt_values
             if f2t_pos_err > last_pos_err and f2t_rot_err > last_rot_err:
-                return None
+                iter_jnt_values = self.jlc.rand_conf()
+                continue
             last_pos_err = f2t_pos_err
             last_rot_err = f2t_rot_err
             clamped_err_vec = self._clamp_tgt_err(f2t_pos_err, f2t_rot_err, f2t_err_vec)
@@ -202,9 +184,6 @@ class NumIKSolver(object):
                 print("f2t_pos_err ", f2t_pos_err, " f2t_rot_err ", f2t_rot_err)
                 print("clamped_tgt_err ", clamped_err_vec)
                 print(counter, max_n_iter)
-            if counter > max_n_iter:
-                return None
-            counter += 1
 
     def dls(self,
             tgt_pos,
@@ -269,6 +248,9 @@ class NumIKSolver(object):
         last_pos_err = 1e6
         last_rot_err = 1e6
         while True:
+            if counter > max_n_iter:
+                return None
+            counter += 1
             flange_pos, flange_rotmat, j_mat = self.jlc.fk(jnt_values=iter_jnt_values,
                                                            toggle_jacobian=True,
                                                            update=False)
@@ -279,7 +261,8 @@ class NumIKSolver(object):
             if f2t_pos_err < 1e-4 and f2t_rot_err < 1e-3 and self.jlc.are_jnts_in_ranges(iter_jnt_values):
                 return iter_jnt_values
             if f2t_pos_err > last_pos_err and f2t_rot_err > last_rot_err:
-                return None
+                iter_jnt_values = self.jlc.rand_conf()
+                continue
             last_pos_err = f2t_pos_err
             last_rot_err = f2t_rot_err
             clamped_err_vec = self._clamp_tgt_err(f2t_pos_err, f2t_rot_err, f2t_err_vec)
@@ -300,9 +283,6 @@ class NumIKSolver(object):
                 self.jlc.goto_given_conf(jnt_values=jnt_values)
                 mgm.gen_arrow(spos=flange_pos, epos=tgt_pos).attach_to(base)
                 print("f2t_pos_err ", f2t_pos_err, " f2t_rot_err ", f2t_rot_err)
-            if counter > max_n_iter:
-                return None
-            counter += 1
 
     def jt(self,
            tgt_pos,
@@ -383,6 +363,9 @@ class NumIKSolver(object):
         last_pos_err = 1e6
         last_rot_err = 1e6
         while True:
+            if counter > max_n_iter:
+                return None
+            counter += 1
             flange_pos, flange_rotmat, j_mat = self.jlc.fk(jnt_values=iter_jnt_values,
                                                            toggle_jacobian=True,
                                                            update=False)
@@ -393,7 +376,8 @@ class NumIKSolver(object):
             if f2t_pos_err < 1e-4 and f2t_rot_err < 1e-3 and self.jlc.are_jnts_in_ranges(iter_jnt_values):
                 return iter_jnt_values
             if f2t_pos_err > last_pos_err and f2t_rot_err > last_rot_err:
-                return None
+                iter_jnt_values = self.jlc.rand_conf()
+                continue
             last_pos_err = f2t_pos_err
             last_rot_err = f2t_rot_err
             jjt = j_mat @ j_mat.T
@@ -414,9 +398,6 @@ class NumIKSolver(object):
                 self.jlc.goto_given_conf(jnt_values=jnt_values)
                 mgm.gen_arrow(spos=flange_pos, epos=tgt_pos).attach_to(base)
                 print("f2t_pos_err ", f2t_pos_err, "f2t_rot_err ", f2t_rot_err)
-            if counter > max_n_iter:
-                return None
-            counter += 1
 
     def pinv_cw(self,
                 tgt_pos,

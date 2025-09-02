@@ -30,7 +30,7 @@ nupdate = 10000
 # best_sol_num_list = [1] # [1,3,5,10,20]
 best_sol_num_list = [1]
 robot_list = ['cbt','cbtpro1300', 'ur3', 'yumi']
-# robot_list = ['cbtpro1300']
+robot_list = ['yumi']
 json_file = "metrics_robot_result.jsonl"
 
 if __name__ == '__main__':
