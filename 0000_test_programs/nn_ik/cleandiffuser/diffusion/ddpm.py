@@ -131,6 +131,7 @@ class DDPM(DiffusionModel):
         with torch.set_grad_enabled(requires_grad):
             if w_cfg != 0.0 and w_cfg != 1.0:
                 repeat_dim = [2 if i == 0 else 1 for i in range(x.dim())]
+                print('CFG condition shape: ', condition_vec_cfg.shape)
                 condition_vec_cfg = torch.cat([condition_vec_cfg, torch.zeros_like(condition_vec_cfg)], 0)
                 pred = model["diffusion"](
                     x.repeat(*repeat_dim), t.repeat(2), condition_vec_cfg)

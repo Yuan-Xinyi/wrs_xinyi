@@ -31,7 +31,7 @@ seed = 0
 
 # diffuser parameters
 backbone = 'unet' # ['transformer', 'unet']
-mode = 'train'  # ['train', 'inference', 'loop_inference']
+mode = 'inference'  # ['train', 'inference', 'loop_inference']
 train_batch_size = 64
 test_batch_size = 1
 solver = 'ddpm'
@@ -43,6 +43,7 @@ action_loss_weight = 10.0
 dim_mult = [1, 4, 2]
 model_dim = 32
 use_norm = True
+resume_training = True
 
 # Training
 device = 'cuda'
@@ -53,13 +54,13 @@ lr = 0.00001
 horizon = 4
 use_group_norm = True
 ema_rate = 0.9999
-condition = 'identity'  # ['identity', 'mlp', None]
+cond_type = 'identity'  # ['identity', 'mlp', None]
 cond_code = 'cfg' # [none, cfg, cg, gg]
 
 # inference parameters
-sampling_steps = 10
-w_cg = 1.0 # 0.0001
-temperature = 1.0
+sampling_steps = 25
+w_cfg = 1.0 # 0.0001
+temperature = 0.0
 use_ema = False
 
 
@@ -103,13 +104,37 @@ def update_log(log, time_list, pos_err_list, rot_err_list):
     log['rot_err_q3'].append(np.percentile(rot_err_list, 75) * 180 / np.pi)
 
 
-def minmax_normalize(X):
-    X = np.asarray(X, dtype=float)
-    min_val = X.min(axis=0)
-    max_val = X.max(axis=0)
-    X_01 = (X - min_val) / (max_val - min_val + 1e-8)
-    X_norm = X_01 * 2 - 1
-    return X_norm
+class MinMaxScaler:
+    def __init__(self, X):
+        """
+        初始化时直接根据输入 X 计算每个维度的 (min, max)
+        """
+        X = np.asarray(X, dtype=float)
+        min_val = X.min(axis=0)
+        max_val = X.max(axis=0)
+        self.ranges = np.stack([min_val, max_val], axis=1)  # shape (n_features, 2)
+
+    def normalize(self, X):
+        """
+        将 X 归一化到 [-1, 1]
+        """
+        X = np.asarray(X, dtype=float)
+        min_val = self.ranges[:, 0]
+        max_val = self.ranges[:, 1]
+        
+        X_01 = (X - min_val) / (max_val - min_val + 1e-8)
+        return X_01 * 2 - 1
+
+    def unnormalize(self, X_norm):
+        """
+        将 [-1, 1] 空间的 X 恢复到原始范围
+        """
+        X_norm = np.asarray(X_norm, dtype=float)
+        min_val = self.ranges[:, 0]
+        max_val = self.ranges[:, 1]
+        
+        return (X_norm + 1) / 2 * (max_val - min_val) + min_val
+
 
 
 base = wd.World(cam_pos=[1, 1.7, 1.7], lookat_pos=[0, 0, .3])
@@ -142,7 +167,8 @@ if __name__ == '__main__':
     action_dim, obs_dim = jnt_values.shape[1], pos_rot.shape[1]
 
     if use_norm == True:
-        traj = minmax_normalize(traj)
+        scaler = MinMaxScaler(traj)
+        traj = scaler.normalize(traj)
         print('*'*100)
         print("Using min-max normalization on the dataset")
         print('*'*100)
@@ -151,7 +177,7 @@ if __name__ == '__main__':
 
     
     # --------------- Network Architecture -----------------
-    if condition == "identity":
+    if cond_type == "identity":
         nn_condition = IdentityCondition(dropout=0.0).to(device)
         print("Using Identity Condition")
     else:
@@ -166,10 +192,10 @@ if __name__ == '__main__':
     print(f"===================================================================================")
 
     # ----------------- Masking -------------------
-    fix_mask = torch.zeros((horizon, obs_dim + action_dim))
-    fix_mask[0, action_dim:] = 1.
-    loss_weight = torch.ones((horizon, obs_dim + action_dim))
-    loss_weight[0, :action_dim] = action_loss_weight
+    # fix_mask = torch.zeros((horizon, obs_dim + action_dim))
+    # fix_mask[0, action_dim:] = 1.
+    # loss_weight = torch.ones((horizon, obs_dim + action_dim))
+    # loss_weight[0, :action_dim] = action_loss_weight
 
     # --------------- Diffusion Model --------------------
     x_max = torch.ones((1, horizon, action_dim), device=device) * +1.0
@@ -183,14 +209,18 @@ if __name__ == '__main__':
     if mode == 'train':
         # --------------- Data Loading -----------------
         '''prepare the save path'''
-        TimeCode = ((datetime.now()).strftime("%m%d_%H%M")).replace(" ", "")
-        rootpath = f'{TimeCode}_{current_rbt}_{use_norm}_{cond_code}'
-        current_file_dir = os.path.dirname(__file__)
-        save_path = os.path.join(current_file_dir, 'results', rootpath)
-        if not os.path.exists(save_path):
-            os.makedirs(save_path)
+        if not resume_training:
+            TimeCode = ((datetime.now()).strftime("%m%d_%H%M")).replace(" ", "")
+            rootpath = f'{TimeCode}_{current_rbt}_{use_norm}_{cond_code}'
+            current_file_dir = os.path.dirname(__file__)
+            save_path = os.path.join(current_file_dir, 'results', rootpath)
+            if not os.path.exists(save_path):
+                os.makedirs(save_path)
+            wandb.init(project="ikdpg", name=rootpath)
+        else:
+            model_path = '0000_test_programs/nn_ik/results/0902_2154_cbt_True_cfg/diffusion_ckpt_latest.pt'
+            agent.load(model_path)
 
-        wandb.init(project="ikdpg", name=rootpath)
         # ---------------------- Training ----------------------
         agent.train()
         n_gradient_step = 0
@@ -200,6 +230,7 @@ if __name__ == '__main__':
 
         for batch in loop_dataloader(traj_loader):
             jnt = batch[:, :action_dim]
+            tgt = batch[:, action_dim:]
             x = jnt.unsqueeze(1).expand(train_batch_size, horizon, action_dim)
             if condition == "identity":
                 condition = batch[:, action_dim:]
@@ -232,20 +263,10 @@ if __name__ == '__main__':
     elif mode == 'inference':
 
         '''load the model'''
-        model_path = '0000_test_programs/nn_ik/results/saved_model/cobotta_diffusion_ik.pt'
-        '''ur3'''
-        # model_path = '0000_test_programs/nn_ik/results/saved_model/ur3_diffusion_ik.pt'
-        '''rs007l'''
-        # model_path = '0000_test_programs/nn_ik/results/0217_2100_khi_rs007l_h4_steps20_train/diffusion_ckpt_latest.pt'
-        '''yumi'''
-        model_path = '0000_test_programs/nn_ik/results/0217_2056_unet1d_h4_steps20_train/diffusion_ckpt_1000000.pt'
-        '''cobotta pro 1300'''
-        # model_path = '0000_test_programs/nn_ik/results/0224_1614_cobotta_pro_1300_h4_steps20_train/diffusion_ckpt_latest.pt'
-
-
+        model_path = '0000_test_programs/nn_ik/results/0902_2154_cbt_True_cfg/diffusion_ckpt_latest.pt'
         agent.load(model_path)
         agent.eval()
-        prior = torch.zeros((1, horizon, obs_dim + action_dim)).to(device)
+        prior = torch.zeros((1, horizon, action_dim)).to(device)
 
         '''inference the ik solution'''
         log = reset_log()
@@ -267,31 +288,38 @@ if __name__ == '__main__':
                     tgt_pos, tgt_rotmat = robot.fk(jnt_values = jnt_values)
                     tgt_rotq = rm.rotmat_to_quaternion(tgt_rotmat)
                     tgt = torch.tensor(np.concatenate((tgt_pos.flatten(), tgt_rotq.flatten())), dtype=torch.float32).to(device)
-                    
+                    if use_norm == True:
+                        query = np.concatenate((jnt_values.flatten(), tgt.cpu().flatten()))
+                        normalized_query = scaler.normalize(query)
+
                     for _ in range(infer_batch):
                         tic = time.time()
-                        prior[0, :, action_dim:] = tgt
-                        
-                        trajectory, _ = agent.sample(prior, solver=solver, n_samples = 1,
-                                                    sample_steps=sampling_steps,
-                                                    use_ema=use_ema, w_cg=w_cg, temperature=temperature)
-                        result = trajectory[:, 0, :action_dim]
-                        
+                        if cond_type == "identity":
+                            condition = torch.tensor(normalized_query[action_dim:], dtype=torch.float32, device=device).unsqueeze(0).unsqueeze(0)
+
+                        else:
+                            condition = None
+                        prior = torch.zeros((1, horizon, action_dim)).to(device)
+                        with torch.no_grad():
+                            trajectory, _ = agent.sample(prior, solver=solver, n_samples = 1,
+                                                         x_max = x_max, x_min = x_min,
+                                                        sample_steps=sampling_steps, condition_cfg=condition,
+                                                        use_ema=use_ema, w_cfg=w_cfg, temperature=temperature) 
+                        result = trajectory[0, 0, :]
+                        jnt = (result.cpu() + 1) / 2 * (robot.jnt_ranges[:, 1] - robot.jnt_ranges[:, 0]) + robot.jnt_ranges[:, 0]
                         toc = time.time()
                         time_list.append(toc-tic)
 
-                        pred_pos, pred_rotmat = robot.fk(jnt_values=result[0])
+                        pred_pos, pred_rotmat = robot.fk(jnt_values=jnt)
                         pos_err, rot_err, _ = rm.diff_between_poses(tgt_pos*1000, tgt_rotmat, pred_pos*1000, pred_rotmat)
                         # print(f'pos err: {pos_err:.2f} mm, rot err: {rot_err:.2f} degree')
                         pos_err_list.append(pos_err), rot_err_list.append(rot_err)
 
-                        robot.goto_given_conf(jnt_values=result[0])
-                        arm_mesh = robot.gen_meshmodel(alpha=0.1, rgb=[0,0,1])
+                        robot.goto_given_conf(jnt_values=jnt)
+                        arm_mesh = robot.gen_meshmodel(alpha=0.1, rgb=[1,0,0])
                         arm_mesh.attach_to(base)
                     
                     update_log(log, time_list, pos_err_list, rot_err_list)
-
-                    
                     
             print('==========================================================')
             print('current robot: ', robot.name)
@@ -326,7 +354,7 @@ if __name__ == '__main__':
 
             #     base.run()
             robot.goto_given_conf(jnt_values=jnt_values)
-            arm_mesh = robot.gen_meshmodel(alpha=0.25, rgb=[1,0,0])
+            arm_mesh = robot.gen_meshmodel(alpha=0.25, rgb=[0,1,0])
             arm_mesh.attach_to(base)
 
             base.run()
