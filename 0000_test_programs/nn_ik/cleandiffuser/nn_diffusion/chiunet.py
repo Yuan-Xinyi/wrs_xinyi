@@ -30,6 +30,7 @@ class ChiResidualBlock(nn.Module):
         self.residual_conv = nn.Conv1d(in_dim, out_dim, 1) if in_dim != out_dim else nn.Identity()
 
     def forward(self, x, emb):
+        x = x.float()
         out = self.conv1(x)
         embed = self.cond_encoder(emb)
         if self.cond_predict_scale:
@@ -137,17 +138,19 @@ class ChiUNet1d(BaseNNDiffusion):
             y:          (b, Ta, act_dim)
         """
         # check Ta dimension
+        # x = pad_to_power_of_two(x)
         assert x.shape[1] & (x.shape[1] - 1) == 0, "Ta dimension must be 2^n"
 
         x = x.permute(0, 2, 1)
 
         emb = self.map_noise(noise)
-        emb = self.map_emb(emb)
+        emb = self.map_emb(emb)  # (64,256)
 
         # If obs_as_global_cond, concatenate obs and emb
         if self.obs_as_global_cond:
-            condition = self.global_cond_encoder(torch.flatten(condition, 1))
+
             if condition is not None:
+                condition = self.global_cond_encoder(torch.flatten(condition, 1))
                 emb = torch.cat([emb, condition], dim=-1)
             else:
                 emb = torch.cat([emb, torch.zeros_like(emb)], dim=-1)

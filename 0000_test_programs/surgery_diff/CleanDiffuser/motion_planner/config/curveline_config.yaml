@@ -1,5 +1,5 @@
 abs_action: false
-mode: inference  # train or inference
+mode: train  # train or inference
 obs_keys: ['jnt_pos', 'position', 'rotation', 'coef']
 dataset_name: 0616_curvelineIK.zarr
 action_dim: 6
@@ -17,7 +17,7 @@ horizon: 16
 nn: chi_unet
 diffusion: ddpm
 diffusion_steps: 25
-condition: mlp  # identity, None, mlp
+condition: None  # identity, None, mlp
 normalize: True
 action_loss_weight: 10.0
 
