@@ -67,6 +67,13 @@ class ChiUNet1d(BaseNNDiffusion):
         self.model_dim = model_dim
         self.emb_dim = emb_dim
 
+        '''xinyi: revise to support horizon = 1'''
+        if To == 1:
+            print("⚠️ Warning: To=1, forcing kernel_size=1 and disabling Down/Upsample")
+            kernel_size = 1
+            Downsample1d = lambda dim: nn.Identity()
+            Upsample1d   = lambda dim: nn.Identity()
+
         dims = [act_dim] + [model_dim * m for m in np.cumprod(dim_mult)]
 
         self.map_emb = nn.Sequential(

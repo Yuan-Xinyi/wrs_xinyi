@@ -31,7 +31,7 @@ seed = 0
 
 # diffuser parameters
 backbone = 'unet' # ['transformer', 'unet']
-mode = 'inference'  # ['train', 'inference', 'loop_inference']
+mode = 'train'  # ['train', 'inference', 'loop_inference']
 train_batch_size = 64
 test_batch_size = 1
 solver = 'ddpm'
@@ -43,24 +43,24 @@ action_loss_weight = 10.0
 dim_mult = [1, 4, 2]
 model_dim = 32
 use_norm = True
-resume_training = True
+resume_training = False
 
 # Training
 device = 'cuda'
 diffusion_gradient_steps = 1000000
 log_interval = 100
 save_interval = 50000
-lr = 0.00001
-horizon = 4
+lr = 0.0001
+horizon = 1
 use_group_norm = True
 ema_rate = 0.9999
-cond_type = 'identity'  # ['identity', 'mlp', None]
-cond_code = 'cfg' # [none, cfg, cg, gg]
+cond_type = None  # ['identity', 'mlp', None]
+cond_code = 'inpainting' # [none, cfg, cg, gg]
 
 # inference parameters
-sampling_steps = 25
+sampling_steps = 50
 w_cfg = 1.0 # 0.0001
-temperature = 0.0
+temperature = 1.0
 use_ema = False
 
 
@@ -183,28 +183,29 @@ if __name__ == '__main__':
     else:
         nn_condition = None
         print("Using No Condition")
+        
     nn_diffusion = ChiUNet1d(
-        action_dim, obs_dim, obs_steps, model_dim=256, emb_dim=256, dim_mult=dim_mult,
+        action_dim + obs_dim, obs_dim, obs_steps, model_dim=256, emb_dim=256, dim_mult=dim_mult,
         obs_as_global_cond=True, timestep_emb_type="positional").to(device)
 
-    print(f"======================= Parameter Report of Diffusion Model =======================")
-    report_parameters(nn_diffusion)
-    print(f"===================================================================================")
-
     # ----------------- Masking -------------------
-    # fix_mask = torch.zeros((horizon, obs_dim + action_dim))
-    # fix_mask[0, action_dim:] = 1.
-    # loss_weight = torch.ones((horizon, obs_dim + action_dim))
-    # loss_weight[0, :action_dim] = action_loss_weight
+    fix_mask = torch.zeros((horizon, obs_dim + action_dim))
+    fix_mask[0, action_dim:] = 1.
+    loss_weight = torch.ones((horizon, obs_dim + action_dim))
+    loss_weight[0, :action_dim] = action_loss_weight
 
     # --------------- Diffusion Model --------------------
     x_max = torch.ones((1, horizon, action_dim), device=device) * +1.0
     x_min = torch.ones((1, horizon, action_dim), device=device) * -1.0
     agent = DDPM(
-        nn_diffusion=nn_diffusion, nn_condition=nn_condition, loss_weight=None,
+        nn_diffusion=nn_diffusion, nn_condition=nn_condition, loss_weight=loss_weight, fix_mask=fix_mask,
         device=device, diffusion_steps=diffusion_steps, x_max=x_max, x_min=x_min,
-        optim_params={"lr": 1e-4}, predict_noise=predict_noise)
+        optim_params={"lr": lr}, predict_noise=predict_noise)
     diffusion_lr_scheduler = CosineAnnealingLR(agent.optimizer, T_max=diffusion_gradient_steps)
+
+    print(f"======================= Parameter Report of Diffusion Model =======================")
+    report_parameters(nn_diffusion)
+    print(f"===================================================================================")
 
     if mode == 'train':
         # --------------- Data Loading -----------------
@@ -229,13 +230,13 @@ if __name__ == '__main__':
 
 
         for batch in loop_dataloader(traj_loader):
-            jnt = batch[:, :action_dim]
-            tgt = batch[:, action_dim:]
-            x = jnt.unsqueeze(1).expand(train_batch_size, horizon, action_dim)
-            if condition == "identity":
+            batch = batch.unsqueeze(1)
+            if cond_type == "identity":
                 condition = batch[:, action_dim:]
                 print("Using Identity Condition")
-            current_loss = agent.update(x, condition)['loss']
+            else:
+                condition = None
+            current_loss = agent.update(batch, condition)['loss']
             log["avg_loss_diffusion"] += current_loss  # BaseDiffusionSDE.update
             diffusion_lr_scheduler.step()
 
@@ -303,8 +304,8 @@ if __name__ == '__main__':
                         with torch.no_grad():
                             trajectory, _ = agent.sample(prior, solver=solver, n_samples = 1,
                                                          x_max = x_max, x_min = x_min,
-                                                        sample_steps=sampling_steps, condition_cfg=condition,
-                                                        use_ema=use_ema, w_cfg=w_cfg, temperature=temperature) 
+                                                         sample_steps=sampling_steps, condition_cfg=condition,
+                                                         use_ema=use_ema, w_cfg=w_cfg, temperature=temperature) 
                         result = trajectory[0, 0, :]
                         jnt = (result.cpu() + 1) / 2 * (robot.jnt_ranges[:, 1] - robot.jnt_ranges[:, 0]) + robot.jnt_ranges[:, 0]
                         toc = time.time()
