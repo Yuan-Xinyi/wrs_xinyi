@@ -239,7 +239,13 @@ def visualize_anime_path(base, robot, path):
     taskMgr.doMethodLater(1.0, start_animation, "start_animation_delay")
     base.run()
 
-
+def visualize_static_path(base, robot, path):
+    for jnt in path:
+        robot.goto_given_conf(jnt)
+        pos, rot = robot.fk(jnt)
+        mcm.mgm.gen_frame(pos=pos, rotmat=rot).attach_to(base)
+        robot.gen_meshmodel(alpha=.2).attach_to(base)
+    base.run()
 
 def workspace_plot(robot, jnt_path):
     # 计算关节路径对应的末端执行器的位置
