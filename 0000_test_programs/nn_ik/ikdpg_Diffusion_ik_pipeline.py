@@ -31,7 +31,7 @@ seed = 0
 
 # diffuser parameters
 backbone = 'unet' # ['transformer', 'unet']
-mode = 'train'  # ['train', 'inference', 'loop_inference']
+mode = 'inference'  # ['train', 'inference', 'loop_inference']
 train_batch_size = 64
 test_batch_size = 1
 solver = 'ddpm'
@@ -195,8 +195,8 @@ if __name__ == '__main__':
     loss_weight[0, :action_dim] = action_loss_weight
 
     # --------------- Diffusion Model --------------------
-    x_max = torch.ones((1, horizon, action_dim), device=device) * +1.0
-    x_min = torch.ones((1, horizon, action_dim), device=device) * -1.0
+    x_max = torch.ones((1, horizon, action_dim + obs_dim), device=device) * +1.0
+    x_min = torch.ones((1, horizon, action_dim + obs_dim), device=device) * -1.0
     agent = DDPM(
         nn_diffusion=nn_diffusion, nn_condition=nn_condition, loss_weight=loss_weight, fix_mask=fix_mask,
         device=device, diffusion_steps=diffusion_steps, x_max=x_max, x_min=x_min,
@@ -264,7 +264,9 @@ if __name__ == '__main__':
     elif mode == 'inference':
 
         '''load the model'''
-        model_path = '0000_test_programs/nn_ik/results/0902_2154_cbt_True_cfg/diffusion_ckpt_latest.pt'
+        # model_path = '0000_test_programs/nn_ik/results/0902_2154_cbt_True_cfg/diffusion_ckpt_latest.pt'
+        model_path = '0000_test_programs/nn_ik/results/0903_1707_cbt_True_inpainting/diffusion_ckpt_latest.pt'
+                                                                                   
         agent.load(model_path)
         agent.eval()
         prior = torch.zeros((1, horizon, action_dim)).to(device)
@@ -275,7 +277,7 @@ if __name__ == '__main__':
         plot = True
         nupdate = 1 if plot else 2000
         trails = 1  # repeat the experiment for n trails
-        infer_batch = 32
+        infer_batch = 1
 
         for _ in range(trails):
             with torch.no_grad():
@@ -294,22 +296,27 @@ if __name__ == '__main__':
                         normalized_query = scaler.normalize(query)
 
                     for _ in range(infer_batch):
-                        tic = time.time()
                         if cond_type == "identity":
                             condition = torch.tensor(normalized_query[action_dim:], dtype=torch.float32, device=device).unsqueeze(0).unsqueeze(0)
 
                         else:
                             condition = None
-                        prior = torch.zeros((1, horizon, action_dim)).to(device)
+                        prior = torch.zeros((1, horizon, action_dim+obs_dim)).to(device)
+                        if cond_code == 'inpainting':
+                            prior[:, :, action_dim:] = torch.tensor(normalized_query[action_dim:], dtype=torch.float32, device=device)
+                        tic = time.time()
                         with torch.no_grad():
                             trajectory, _ = agent.sample(prior, solver=solver, n_samples = 1,
                                                          x_max = x_max, x_min = x_min,
                                                          sample_steps=sampling_steps, condition_cfg=condition,
                                                          use_ema=use_ema, w_cfg=w_cfg, temperature=temperature) 
-                        result = trajectory[0, 0, :]
-                        jnt = (result.cpu() + 1) / 2 * (robot.jnt_ranges[:, 1] - robot.jnt_ranges[:, 0]) + robot.jnt_ranges[:, 0]
                         toc = time.time()
                         time_list.append(toc-tic)
+                        result = trajectory[0, 0, :]
+                        if use_norm == True:
+                            result = scaler.unnormalize(result.cpu().numpy())
+                        # jnt = (result.cpu() + 1) / 2 * (robot.jnt_ranges[:, 1] - robot.jnt_ranges[:, 0]) + robot.jnt_ranges[:, 0]
+                        jnt = result[:action_dim]
 
                         pred_pos, pred_rotmat = robot.fk(jnt_values=jnt)
                         pos_err, rot_err, _ = rm.diff_between_poses(tgt_pos*1000, tgt_rotmat, pred_pos*1000, pred_rotmat)
