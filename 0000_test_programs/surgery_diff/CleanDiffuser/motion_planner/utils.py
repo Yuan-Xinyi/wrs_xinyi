@@ -40,14 +40,11 @@ def gen_jnt_list_from_pos_list(init_jnt, pos_list, robot, obstacle_list, base,
 
 def plot_joint_trajectories(jnt_list):
     jnt_array = np.array(jnt_list)
-    if jnt_array.ndim != 2 or jnt_array.shape[1] != 7:
-        raise ValueError("Expected jnt_list to be of shape (n, 7)")
+    fig, axes = plt.subplots(jnt_array.shape[1], 1, figsize=(10, 14), sharex=True)
+    fig.suptitle("Joint Value Trajectories (Line Plot)", fontsize=16)
 
-    fig, axes = plt.subplots(7, 1, figsize=(10, 14), sharex=True)
-    fig.suptitle("Joint Value Trajectories (Scatter)", fontsize=16)
-
-    for i in range(7):
-        axes[i].scatter(range(len(jnt_array)), jnt_array[:, i], s=20)
+    for i in range(jnt_array.shape[1]):
+        axes[i].plot(range(len(jnt_array)), jnt_array[:, i], marker="o", markersize=4, linewidth=1.5)
         axes[i].set_ylabel(f"Joint {i+1}")
         axes[i].grid(True)
 

@@ -1,5 +1,6 @@
 # import wrs.robot_con.xarm_lite6.xarm_lite6_x as xarm_x
 import wrs.robot_sim.robots.xarmlite6_wg.x6wg2 as xarm_s
+import wrs.robot_sim.robots.cobotta.cobotta as cbt
 import wrs.visualization.panda.world as wd
 from wrs import wd, rm, mcm
 import wrs.modeling.geometric_model as mgm
@@ -18,6 +19,7 @@ import numpy as np
 import zarr
 import os
 from tqdm import tqdm
+from scipy.spatial.transform import Rotation as sR
 
 
 def _orthonormal_basis_of_axis(a: np.ndarray):
@@ -72,95 +74,113 @@ def _sample_rotations_in_cone(a_axis, alpha_max_rad, n_alpha=3, n_psi=12, bias_u
     R_list = [_rot_from_tool_z(u, a_axis=a) for u in candidates]
     return R_list
 
+from scipy.spatial.transform import Rotation as sR
+import numpy as np
+import time
+
+def _sample_similar_rotations(R_prev, max_rot_diff, n_samples=20):
+    """
+    在上一帧旋转矩阵 R_prev 的基础上，采样若干旋转矩阵，
+    每个姿态与 R_prev 的旋转差异 <= max_rot_diff。
+    """
+    R_list = []
+    for _ in range(n_samples):
+        # 随机旋转轴
+        axis = np.random.randn(3)
+        axis /= (np.linalg.norm(axis) + 1e-12)
+        # 随机旋转角度
+        theta = np.random.uniform(0, max_rot_diff)
+        # 构造旋转
+        R_delta = sR.from_rotvec(axis * theta).as_matrix()
+        # 新姿态
+        R_cand = R_prev @ R_delta
+        R_list.append(R_cand)
+    return R_list
+
 
 def gen_jnt_list_from_pos_list_relaxed(
         init_jnt, pos_list, robot, obstacle_list, base,
-        alpha_max_rad,                 # 允许的最大偏转角（相对初始姿态的工具轴）
+        alpha_max_rad,
         n_alpha=3, n_psi=12,
         tool_axis='z',
+        plane_normal=None,            
         max_try_time=5.0,
+        max_rot_diff=np.deg2rad(15.0),   # 最大允许旋转差异
         check_collision=True,
         visualize=False):
     """
-    放宽姿态为“相对初始姿态的旋转锥”：
-    对每个目标点，在以初始工具轴为锥轴、半角 alpha_max_rad 的锥内采样若干候选姿态求 IK。
-    返回:
-        jnt_list: 成功解的关节角列表
-        success_count: 成功点数
-        deviations: 偏差角列表 (弧度)，第一个元素为 0.0
+    在平面法线约束下的 relaxed 逆解轨迹生成：
+    - 第一个点：基于 plane_normal/tool_axis 做 cone 采样；
+    - 后续点：基于 R_prev 邻域做采样，确保旋转差异 ≤ max_rot_diff。
     """
     jnt_list = []
     success_count = 0
     deviations = []
+    R_prev = None
 
-    # 固定锥轴 = 初始工具轴方向
-    _, rot0 = robot.fk(jnt_values=init_jnt)
-    if tool_axis == 'z':
-        u_ref = rot0[:, 2]
-    elif tool_axis == 'x':
-        u_ref = rot0[:, 0]
-    elif tool_axis == 'y':
-        u_ref = rot0[:, 1]
+    # 1. 确定锥轴（只用于第一个点）
+    if plane_normal is not None:
+        a_axis = plane_normal / (np.linalg.norm(plane_normal) + 1e-12)
     else:
-        raise ValueError("tool_axis must be one of {'x','y','z'}")
+        _, rot0 = robot.fk(jnt_values=init_jnt)
+        if tool_axis == 'z':
+            a_axis = rot0[:, 2]
+        elif tool_axis == 'x':
+            a_axis = rot0[:, 0]
+        elif tool_axis == 'y':
+            a_axis = rot0[:, 1]
+        else:
+            raise ValueError("tool_axis must be one of {'x','y','z'}")
+        a_axis = a_axis / (np.linalg.norm(a_axis) + 1e-12)
 
-    # 偏差计算时用
-    prev_u = None
-
-    for pos in pos_list:
+    # 2. 遍历所有目标位置
+    for idx, pos in enumerate(pos_list):
         jnt = None
         start_time = time.time()
 
-        # 在固定锥轴 u_ref 下采样候选姿态
-        R_cands = _sample_rotations_in_cone(
-            a_axis=u_ref,
-            alpha_max_rad=alpha_max_rad,
-            n_alpha=n_alpha,
-            n_psi=n_psi
-        )
+        # 采样候选旋转
+        if idx == 0:  # 第一个点：用锥体采样
+            R_cands = _sample_rotations_in_cone(
+                a_axis=a_axis,
+                alpha_max_rad=alpha_max_rad,
+                n_alpha=n_alpha,
+                n_psi=n_psi
+            )
+        else:  # 后续点：在 R_prev 附近采样
+            R_cands = _sample_similar_rotations(R_prev, max_rot_diff, n_samples=30)
 
-        for R in R_cands:
+        for R_cand in R_cands:
             if time.time() - start_time >= max_try_time:
                 break
+
             seed = jnt_list[-1] if jnt_list else init_jnt
-            j = robot.ik(tgt_pos=pos, tgt_rotmat=R, seed_jnt_values=seed)
+            j = robot.ik(tgt_pos=pos, tgt_rotmat=R_cand, seed_jnt_values=seed)
             if j is None:
                 continue
             robot.goto_given_conf(j)
             if check_collision and robot.cc.is_collided(obstacle_list=obstacle_list):
                 continue
 
+            # 旋转差异（与上一帧比）
+            if R_prev is not None:
+                R_delta = sR.from_matrix(R_prev.T @ R_cand)
+                theta = R_delta.magnitude()
+            else:
+                theta = 0.0
+
             # 成功
             jnt = j
             success_count += 1
             jnt_list.append(jnt)
-
-            # 当前真实工具轴方向
-            _, R_now = robot.fk(jnt_values=jnt)
-            if tool_axis == 'z':
-                u_now = R_now[:, 2]
-            elif tool_axis == 'x':
-                u_now = R_now[:, 0]
-            else:
-                u_now = R_now[:, 1]
-            u_now = u_now / (np.linalg.norm(u_now) + 1e-12)
-
-            # 偏差角计算
-            if prev_u is None:
-                deviations.append(0.0)
-            else:
-                dot = np.clip(np.dot(prev_u, u_now), -1.0, 1.0)
-                theta = float(np.arccos(dot))
-                deviations.append(theta)
-
-            prev_u = u_now
+            deviations.append(theta)
+            R_prev = R_cand.copy()
 
             if visualize:
-                mcm.mgm.gen_frame(pos=pos, rotmat=R_now).attach_to(base)
+                mcm.mgm.gen_frame(pos=pos, rotmat=R_cand).attach_to(base)
                 robot.gen_meshmodel(alpha=.2).attach_to(base)
             break
 
-        if jnt is None:
+        if jnt is None:  # 当前点失败，提前结束
             return [j for j in jnt_list if j is not None], success_count, deviations
 
     return jnt_list, success_count, deviations
@@ -170,30 +190,90 @@ def visualize_workspace_points_in_world(base, points, radius=0.01, rgb=(1,0,0)):
         sphere = mgm.gen_sphere(pos=p, radius=radius, rgb=rgb)
         sphere.attach_to(base)
 
+def plane_normal_from_points(p1: np.ndarray, p2: np.ndarray, p3: np.ndarray) -> np.ndarray:
+    """
+    根据三个点计算平面的法向量（归一化）。
+    参数:
+        p1, p2, p3: np.ndarray, shape=(3,)
+    返回:
+        n: np.ndarray, shape=(3,), 单位法向量
+    """
+    v1 = np.asarray(p2) - np.asarray(p1)
+    v2 = np.asarray(p3) - np.asarray(p1)
+    n = np.cross(v1, v2)
+    norm = np.linalg.norm(n)
+    if norm < 1e-12:
+        raise ValueError("Error: The three points are collinear or too close to each other.")
+    return n / norm
+
+def _generate_paper_plane_from_axis(a_axis, center, size_x=0.3, size_y=0.3, thickness=0.001,
+                                   color=[1.0, 1.0, 1.0], alpha=0.7):
+    """
+    根据平面法线 a_axis 生成一张矩形纸平面。
+
+    参数:
+        a_axis: 平面法向 (3,)
+        center: 平面中心 (3,)
+        size_x, size_y: 平面的长和宽
+        thickness: 厚度
+        color: 颜色
+        alpha: 透明度
+    """
+    normal = a_axis / (np.linalg.norm(a_axis) + 1e-12)
+
+    # 找到和 normal 正交的一个方向作为 x 轴
+    tmp = np.array([1.0, 0.0, 0.0]) if abs(normal[0]) < 0.9 else np.array([0.0, 1.0, 0.0])
+    x_dir = np.cross(normal, tmp)
+    x_dir /= (np.linalg.norm(x_dir) + 1e-12)
+
+    # y 轴 = normal × x_dir
+    y_dir = np.cross(normal, x_dir)
+    y_dir /= (np.linalg.norm(y_dir) + 1e-12)
+
+    # 构造旋转矩阵
+    rotmat = np.stack([x_dir, y_dir, normal], axis=1)
+
+    # 平面位置（稍微往 normal 反方向移半个厚度，保证中心落在平面上）
+    pos = center - normal * (thickness / 2.0)
+
+    # 生成薄片
+    size = np.array([size_x, size_y, thickness])
+    paper = mcm.gen_box(
+        xyz_lengths=size,
+        pos=pos,
+        rotmat=rotmat,
+        rgb=color,
+        alpha=alpha
+    )
+    paper.attach_to(base)
+    return paper
+
 
 MAX_TRY_TIME = 100.0
 alpha_max_rad = np.deg2rad(10.0)
 waypoints_num = 8
-scale = 0.1
+scale = 0.05
+success = False
 
 if __name__ == "__main__":
     '''Initialize the world and robot'''
     base = wd.World(cam_pos=[2, 0, 1], lookat_pos=[0, 0, 0])
     mgm.gen_frame().attach_to(base)
     robot_s = xarm_s.XArmLite6WG2(enable_cc=True)
-    is_collided = True
-
-    while is_collided:
-        print("Initial configuration in collision, sampling a new one...")
-        init_jnt = robot_s.rand_conf()
-        is_collided = robot_s.cc.is_collided(obstacle_list=[])
-
-    pos_init, rotmat_init = robot_s.fk(jnt_values=init_jnt)
-    robot_s.goto_given_conf(init_jnt)
-    robot_s.gen_meshmodel().attach_to(base)
-    success = False
-
+    # robot_s = cbt.Cobotta(enable_cc=True)
+    
     while not success:
+        is_collided = True
+
+        while is_collided:
+            print("Initial configuration in collision, sampling a new one...")
+            init_jnt = robot_s.rand_conf()
+            is_collided = robot_s.cc.is_collided(obstacle_list=[])
+
+        pos_init, rotmat_init = robot_s.fk(jnt_values=init_jnt)
+        robot_s.goto_given_conf(init_jnt)
+        robot_s.gen_meshmodel().attach_to(base)
+
         # workspace_points, coeffs = utils.generate_random_cubic_curve(num_points=waypoints_num, scale=scale, center=pos_init)
         workspace_points, coeffs = utils.generate_random_cubic_curve(
                                                                     num_points=waypoints_num,
@@ -204,14 +284,18 @@ if __name__ == "__main__":
 
         # visualize_workspace_points_in_world(base, workspace_points, radius=0.01, rgb=(1,1,0))
         # base.run()
+        a_axis = plane_normal_from_points(workspace_points[0], workspace_points[1], workspace_points[2])
+        center = np.mean(workspace_points, axis=0)  # 取曲线点的平均值作为纸中心
+        _generate_paper_plane_from_axis(a_axis, center, size_x=0.4, size_y=0.4, thickness=0.001,
+                                        color=[1.0, 1.0, 1.0], alpha=0.7)
         jnt_list, success_count, deviations = gen_jnt_list_from_pos_list_relaxed(
             init_jnt=init_jnt,
             pos_list=workspace_points,
             robot=robot_s,
             obstacle_list=None,
             base=base,
-            alpha_max_rad=alpha_max_rad,
-            max_try_time=MAX_TRY_TIME,
+            alpha_max_rad=np.deg2rad(10),
+            max_rot_diff=np.deg2rad(10),  # 限制相邻姿态旋转差异 ≤ 10°
             check_collision=True,
             visualize=False
         )
@@ -220,8 +304,9 @@ if __name__ == "__main__":
 
     visualize_workspace_points_in_world(base, workspace_points, radius=0.01, rgb=(1,1,0))
     assert len(jnt_list) == len(workspace_points), f"Error: only {len(jnt_list)} waypoints for {len(workspace_points)}"
-    print(f"Average deviations: {np.mean(deviations):.2f} \nwith detailed statistics: {[f'{d:.2f}' for d in deviations]}")
+    print(f"Average deviations: {np.rad2deg(np.mean(deviations)):.2f} \nwith detailed statistics: {[f'{np.rad2deg(d):.2f}' for d in deviations]}")
     hf.workspace_plot(robot_s, jnt_list)
+    utils.plot_joint_trajectories(np.array(jnt_list))
     # hf.visualize_static_path(base, robot_s, jnt_list)
     hf.visualize_anime_path(base, robot_s, jnt_list)
     
