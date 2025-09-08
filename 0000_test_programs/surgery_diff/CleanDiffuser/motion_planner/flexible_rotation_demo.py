@@ -165,26 +165,45 @@ def gen_jnt_list_from_pos_list_relaxed(
 
     return jnt_list, success_count, deviations
 
+def visualize_workspace_points_in_world(base, points, radius=0.01, rgb=(1,0,0)):
+    for p in points:
+        sphere = mgm.gen_sphere(pos=p, radius=radius, rgb=rgb)
+        sphere.attach_to(base)
 
 
 MAX_TRY_TIME = 100.0
 alpha_max_rad = np.deg2rad(10.0)
-waypoints_num = 32
+waypoints_num = 8
+scale = 0.1
 
 if __name__ == "__main__":
     '''Initialize the world and robot'''
     base = wd.World(cam_pos=[2, 0, 1], lookat_pos=[0, 0, 0])
     mgm.gen_frame().attach_to(base)
     robot_s = xarm_s.XArmLite6WG2(enable_cc=True)
+    is_collided = True
 
-    init_jnt = robot_s.rand_conf()
+    while is_collided:
+        print("Initial configuration in collision, sampling a new one...")
+        init_jnt = robot_s.rand_conf()
+        is_collided = robot_s.cc.is_collided(obstacle_list=[])
+
     pos_init, rotmat_init = robot_s.fk(jnt_values=init_jnt)
-    scale = np.random.choice([0.1, 0.2, 0.3])
-    scale = 0.1
+    robot_s.goto_given_conf(init_jnt)
+    robot_s.gen_meshmodel().attach_to(base)
     success = False
 
     while not success:
-        workspace_points, coeffs = utils.generate_random_cubic_curve(num_points=waypoints_num, scale=scale, center=pos_init)
+        # workspace_points, coeffs = utils.generate_random_cubic_curve(num_points=waypoints_num, scale=scale, center=pos_init)
+        workspace_points, coeffs = utils.generate_random_cubic_curve(
+                                                                    num_points=waypoints_num,
+                                                                    scale=scale,
+                                                                    start=pos_init,      # 保证起点是当前正向运动学的位置
+                                                                    equal_arc=True
+                                                                )
+
+        # visualize_workspace_points_in_world(base, workspace_points, radius=0.01, rgb=(1,1,0))
+        # base.run()
         jnt_list, success_count, deviations = gen_jnt_list_from_pos_list_relaxed(
             init_jnt=init_jnt,
             pos_list=workspace_points,
@@ -199,8 +218,10 @@ if __name__ == "__main__":
         print(f"Generated {len(jnt_list)} waypoints for the cubic curve with scale: {scale}")
         success = (success_count == waypoints_num)
 
+    visualize_workspace_points_in_world(base, workspace_points, radius=0.01, rgb=(1,1,0))
     assert len(jnt_list) == len(workspace_points), f"Error: only {len(jnt_list)} waypoints for {len(workspace_points)}"
     print(f"Average deviations: {np.mean(deviations):.2f} \nwith detailed statistics: {[f'{d:.2f}' for d in deviations]}")
     hf.workspace_plot(robot_s, jnt_list)
-    hf.visualize_static_path(base, robot_s, jnt_list)
+    # hf.visualize_static_path(base, robot_s, jnt_list)
+    hf.visualize_anime_path(base, robot_s, jnt_list)
     

@@ -77,16 +77,64 @@ def partiallydiscretize_joint_space(robot, n_intervals=None):
 
     return sampled_qs
 
-def generate_random_cubic_curve(num_points=20, scale=0.1, center=np.array([0.4, 0.2, 0.3])):
-    # 随机生成 4 个三维系数向量
+import numpy as np
+
+def generate_random_cubic_curve(num_points=20, scale=0.1, start=None, equal_arc=False, resolution=1000):
+    """
+    随机生成一条三次多项式曲线，并在空间中采样点。
+    起点锚定为 start（如果给定）。
+    
+    参数:
+        num_points (int): 采样点数量
+        scale (float): 随机系数缩放
+        start (np.ndarray): 曲线起点 (3,)
+        equal_arc (bool): 是否按弧长等间距采样
+        resolution (int): 高分辨率采样数量，用于近似计算弧长
+
+    返回:
+        points (np.ndarray): shape=(num_points, 3)，空间轨迹点
+        coeffs (np.ndarray): shape=(12,)，曲线系数
+    """
+    if start is None:
+        start = np.array([0.4, 0.2, 0.3])  # 默认中心
+
+    # 随机生成三次多项式的系数向量
     a = np.random.randn(3) * scale
     b = np.random.randn(3) * scale
     c = np.random.randn(3) * scale
-    d = center
-    coeffs = np.hstack([a, b, c, d])  # 展平为 shape=(12,)
+    d = start
+    coeffs = np.hstack([a, b, c, d])
 
-    # 生成空间轨迹点
-    t_vals = np.linspace(0, 1, num_points)
-    points = [a * t**3 + b * t**2 + c * t + d for t in t_vals]
+    # 定义曲线函数
+    def curve_func(t):
+        return a * t**3 + b * t**2 + c * t + d
 
-    return np.array(points), coeffs
+    if not equal_arc:
+        t_vals = np.linspace(0, 1, num_points)
+        points = np.array([curve_func(t) for t in t_vals])
+    else:
+        ts = np.linspace(0, 1, resolution)
+        pts = np.array([curve_func(t) for t in ts])
+        seglens = np.linalg.norm(np.diff(pts, axis=0), axis=1)
+        cumlen = np.insert(np.cumsum(seglens), 0, 0.0)
+        total_len = cumlen[-1]
+
+        target_lens = np.linspace(0, total_len, num_points)
+        points = []
+        for tl in target_lens:
+            idx = np.searchsorted(cumlen, tl)
+            if idx == 0:
+                points.append(pts[0])
+            elif idx >= len(ts):
+                points.append(pts[-1])
+            else:
+                ratio = (tl - cumlen[idx-1]) / (cumlen[idx] - cumlen[idx-1] + 1e-12)
+                p = pts[idx-1] * (1-ratio) + pts[idx] * ratio
+                points.append(p)
+        points = np.array(points)
+
+    # 确保第一个点就是 start
+    points[0] = start
+
+    return points, coeffs
+
