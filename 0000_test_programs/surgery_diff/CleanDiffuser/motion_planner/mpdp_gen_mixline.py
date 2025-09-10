@@ -37,18 +37,21 @@ def axis_directions():
     ], dtype=float)
 
 
-def sample_spline_traj(start_pos, n_ctrl=4, n_points=50,
-                       workspace=[(-0.5, 0.5), (-0.5, 0.5), (0.0, 0.6)]):
-    """Randomly generate a B-spline trajectory (workspace range adjustable)"""
-    x_range, y_range, z_range = workspace
-    # Random control points
-    ctrl_points = np.zeros((n_ctrl, 3))
-    ctrl_points[:, 0] = np.random.uniform(*x_range, n_ctrl)
-    ctrl_points[:, 1] = np.random.uniform(*y_range, n_ctrl)
-    ctrl_points[:, 2] = np.random.uniform(*z_range, n_ctrl)
-    # First point fixed as start position
-    ctrl_points[0] = start_pos
-
+def sample_spline_traj(start_pos, n_ctrl=5, n_points=40, radius=0.15):
+    """Generate a local B-spline trajectory around start_pos.
+    
+    Args:
+        start_pos: np.array(3,), start position of trajectory
+        n_ctrl: number of control points
+        n_points: number of sampled points on spline
+        radius: max offset for control points from start_pos
+    """
+    # Random control points around start_pos
+    ctrl_points = start_pos + np.random.uniform(
+        low=-radius, high=radius, size=(n_ctrl, 3)
+    )
+    ctrl_points[0] = start_pos  # ensure starting point fixed
+    
     # B-spline fitting
     tck, _ = interpolate.splprep(
         [ctrl_points[:, 0], ctrl_points[:, 1], ctrl_points[:, 2]], k=3, s=0
@@ -56,7 +59,9 @@ def sample_spline_traj(start_pos, n_ctrl=4, n_points=50,
     u_new = np.linspace(0, 1, n_points)
     x_new, y_new, z_new = interpolate.splev(u_new, tck)
     traj = np.vstack([x_new, y_new, z_new]).T
+    
     return traj
+
 
 def visualize_anime_path_colored(robot, path, colors):
     """Visualization: animate trajectory with colors"""
@@ -121,6 +126,7 @@ if __name__ == '__main__':
     robot = franka.FrankaResearch3(enable_cc=True)
 
     jnt_samples = np.load('cvt_joint_samples_fr3_scale5.npy')
+    jnt_samples = jnt_samples[3956:]
     print(f"[INFO] Total {len(jnt_samples)} joint configurations sampled.")
     print('--' * 100)
 
@@ -174,24 +180,31 @@ if __name__ == '__main__':
 
     '''dataset generation'''
     dataset_name = os.path.join('/home/lqin/zarr_datasets', f'fr3_mixed_trajs_clean.zarr')
-    store = zarr.DirectoryStore(dataset_name)
-    root = zarr.group(store=store)
-    print(f"[INFO] dataset created in: {dataset_name}")
-
-    # meta and data groups
-    meta_group = root.create_group("meta")
-    data_group = root.create_group("data")
-
     dof = robot.n_dof
-    episode_ends_ds = meta_group.create_dataset("episode_ends", shape=(0,), chunks=(1,), dtype=np.int64, append=True)
+    if os.path.exists(dataset_name):
+        root = zarr.open(dataset_name, mode='a')  # Open the dataset in append mode
+        jnt_p = root['data']["jnt_pos"]
+        workspc_pos = root['data']["position"]
+        workspc_rotq = root['data']["rotation"]
+        traj_type = root['data']["traj_type"]
+        episode_ends_ds = root['meta']["episode_ends"]
+        episode_ends_counter = root['meta']['episode_ends'][-1]
+        print(f"[INFO] Dataset opened: {dataset_name}")
+    else:
+        store = zarr.DirectoryStore(dataset_name)
+        root = zarr.group(store=store)
+        # create meta and data groups
+        meta_group = root.create_group("meta")
+        data_group = root.create_group("data")
+        print(f"[INFO] dataset created in: {dataset_name}")
+        jnt_p = data_group.create_dataset("jnt_pos", shape=(0, dof), chunks=(1, dof), dtype=np.float32, append=True)
+        workspc_pos = data_group.create_dataset("position", shape=(0, 3), chunks=(1, 3), dtype=np.float32, append=True)
+        workspc_rotq = data_group.create_dataset("rotation", shape=(0, 4), chunks=(1, 4), dtype=np.float32, append=True)
+        traj_type = data_group.create_dataset("traj_type", shape=(0,), chunks=(1,), dtype=np.int32, append=True)  # 0=line, 1=spline
+        episode_ends_ds = meta_group.create_dataset("episode_ends", shape=(0,), chunks=(1,), dtype=np.int64, append=True)
+        episode_ends_counter = 0
+        print(f"[INFO] New dataset created: {dataset_name}")
 
-    jnt_p = data_group.create_dataset("jnt_pos", shape=(0, dof), chunks=(1, dof), dtype=np.float32, append=True)
-    workspc_pos = data_group.create_dataset("position", shape=(0, 3), chunks=(1, 3), dtype=np.float32, append=True)
-    workspc_rotq = data_group.create_dataset("rotation", shape=(0, 4), chunks=(1, 4), dtype=np.float32, append=True)
-    traj_type = data_group.create_dataset("traj_type", shape=(0,), chunks=(1,), dtype=np.int32, append=True)  # 0=line, 1=spline
-
-    # episode counter
-    episode_ends_counter = 0
     line_success, spline_success = 0, 0  # statistics
 
     # direction set
