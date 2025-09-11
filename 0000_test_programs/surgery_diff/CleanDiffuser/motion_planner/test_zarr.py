@@ -7,9 +7,6 @@ from ruckig import InputParameter, OutputParameter, Result, Ruckig
 import wrs.robot_sim.robots.franka_research_3.franka_research_3 as franka
 from wrs import wd, rm, mcm
 import wrs.modeling.geometric_model as mgm
-robot_s = franka.FrankaResearch3(enable_cc=True)
-base = wd.World(cam_pos=[2, 0, 1], lookat_pos=[0, 0, 0])
-mgm.gen_frame().attach_to(base)
 
 def plot_details(robot_s, jnt_pos_list, jnt_vel_list, jnt_acc_list):
     sampling_interval = 0.001
@@ -50,24 +47,27 @@ def plot_details(robot_s, jnt_pos_list, jnt_vel_list, jnt_acc_list):
 
 # root = zarr.open('/home/lqin/zarr_datasets/franka_kinodyn_obstacles_3.zarr', mode='r')
 # root = zarr.open('/home/lqin/zarr_datasets/franka_ruckig_100hz.zarr', mode='r')
-root = zarr.open('/home/lqin/zarr_datasets/fr3_mixed_trajs_clean.zarr', mode='r+')
+root = zarr.open('/home/lqin/zarr_datasets/fr3_mixed_trajs_clean.zarr', mode='r')
 jnt_p = root['data']["jnt_pos"]
 workspc_pos = root['data']["position"]
 workspc_rotq = root['data']["rotation"]
 traj_type = root['data']["traj_type"]
-
-episode_counter = root['meta']['episode_ends'][-1]
-print('Total traj number:', episode_counter)
-jnt_p.resize((episode_counter, jnt_p.shape[1]))
-workspc_pos.resize((episode_counter, workspc_pos.shape[1]))
-workspc_rotq.resize((episode_counter, workspc_rotq.shape[1]))
-traj_type.resize((episode_counter,))
+episode_ends = root['meta']['episode_ends']
+print('Total traj number:', root['meta']['episode_ends'].shape)
 print('data resized')
 print('jnt_p shape:', jnt_p.shape)
 print('workspc_pos shape:', workspc_pos.shape)
 print('workspc_rotq shape:', workspc_rotq.shape)
 print('traj_type shape:', traj_type.shape)
 
+traj_id = 1
+jnt_list = jnt_p[episode_ends[traj_id-1] if traj_id > 0 else 0:episode_ends[traj_id]]
+jnt_list = jnt_list.tolist()
+base = wd.World(cam_pos=[2, 0, 1], lookat_pos=[0, 0, 0])
+mgm.gen_frame().attach_to(base)
+robot = franka.FrankaResearch3(enable_cc=True)
+import helper_functions as hf
+hf.visualize_anime_path(base, robot, jnt_list)
 # # goal_conf = np.zeros((int(total_length), 7), dtype=np.float32)
 
 # # current_start = 0
