@@ -10,3 +10,4 @@ from .pearcemlp import PearceMlp
 from .pearcetransformer import PearceTransformer
 from .sfbc_unet import SfBCUNet
 from .mlps import MlpNNDiffusion
+from .cloc1d import CloC1d

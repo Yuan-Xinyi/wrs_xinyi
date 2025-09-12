@@ -1,0 +1,63 @@
+# ======================
+# General
+# ======================
+mode: train                # train 或 inference
+device: cuda:0
+seed: 0
+
+# ======================
+# Dataset
+# ======================
+dataset_name: fr3_mixed_trajs_clean.zarr
+state_dim: 7
+action_dim: 7
+state_horizon: 16         
+action_horizon: 8       
+
+# 指定全局态索引（root pos/orient/vel）
+global_state_idx: [0,1,2]
+emphasis_c: 2.0
+
+# ======================
+# Model
+# ======================
+nn: cloc1d
+d_model: 512
+n_heads: 8
+depth: 6
+noise_emb_dim: 64
+state_mlp_hidden: 512
+max_tokens: 128            # 至少覆盖 2*(state_horizon+action_horizon)
+timestep_emb_type: positional
+
+# ======================
+# Diffusion
+# ======================
+diffusion: ddpm
+diffusion_steps: 20        # 论文主实验用 ~20 步
+predict_noise: True
+sample_steps: 10           # inference 加速
+ema_rate: 0.9999
+
+# ======================
+# Training
+# ======================
+gradient_steps: 1000000
+batch_size: 64
+lr: 0.0001
+action_loss_weight: 1.0    # 论文默认 MSE，不单独放大动作
+normalize: True
+
+# ======================
+# Logging / Evaluation
+# ======================
+val_freq: 1000
+log_freq: 100
+save_freq: 50000
+visualization: True
+
+# ======================
+# Inference
+# ======================
+inference_solver: ddpm
+inference_steps: 10000
