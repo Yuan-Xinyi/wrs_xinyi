@@ -26,9 +26,7 @@ import json
 from torch.optim.lr_scheduler import CosineAnnealingLR
 from cleandiffuser.dataset.dataset_utils import loop_dataloader
 from cleandiffuser.utils import report_parameters
-from ruckig_dataset import CurveLineDataset
-from torch.utils.data import random_split
-from generate_complex_trajectory import ComplexTrajectoryGenerator
+from ruckig_dataset import MixLineDataset
 import helper_functions as hf
 
 def AttachTraj2base(path, radius=0.005):
@@ -50,16 +48,18 @@ def set_seed(seed: int):
 '''load the config file'''
 current_file_dir = os.path.dirname(__file__)
 parent_dir = os.path.dirname(os.path.dirname(__file__))
-config_file = os.path.join(current_file_dir,'config', 'curveline_config.yaml')
+config_file = os.path.join(current_file_dir,'config', 'fr3_mixline_chiunet.yaml')
 with open(config_file, "r") as file:
     config = yaml.safe_load(file)
 
 '''dataset loading'''
 dataset_path = os.path.join('/home/lqin', 'zarr_datasets', config['dataset_name'])
-
-dataset = CurveLineDataset(dataset_path, horizon=config['horizon'], obs_keys=config['obs_keys'], 
-                         normalize=config['normalize'], abs_action=config['abs_action'])
+dataset = MixLineDataset(zarr_path = dataset_path, 
+                         obs_keys = config['obs_keys'],
+                         horizon = config['horizon'], 
+                         normalize = config['normalize'])
 print('dataset loaded in:', dataset_path)
+
 if config['mode'] == "train":
     train_loader = torch.utils.data.DataLoader(
         dataset,

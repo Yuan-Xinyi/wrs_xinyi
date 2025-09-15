@@ -115,8 +115,14 @@ else:
 loss_weight = torch.ones((config['state_horizon'], config['action_dim']+config['state_dim']), device=config['device'])
 loss_weight[0, :] = config['action_loss_weight']
 condition = None
+
+fix_mask = torch.zeros(config['state_horizon'], 
+                       config['state_dim']+config['action_dim'], device=config['device'])  # broadcast到batch
+fix_mask[:, :config['state_dim']] = 0  
+fix_mask[config['action_horizon']:, config['state_dim']:] = 1  
+
 agent = DDPM(
-    nn_diffusion=nn_diffusion, nn_condition=condition, loss_weight=loss_weight,
+    nn_diffusion=nn_diffusion, nn_condition=condition, loss_weight=loss_weight, fix_mask=fix_mask,
     device=config['device'], diffusion_steps=config['diffusion_steps'], x_max=x_max, x_min=x_min,
     optim_params={"lr": config['lr']}, predict_noise=config['predict_noise'])
 
