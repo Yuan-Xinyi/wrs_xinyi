@@ -1,0 +1,44 @@
+abs_action: false
+mode: train  # train or inference
+obs_keys: ['jnt_pos', 'position', 'rotation'] 
+dataset_name: fr3_mixed_trajs_clean.zarr
+action_dim: 7
+obs_dim: 3
+obs_steps: 1
+use_group_norm: true
+use_seq: true
+
+# training settings
+device: cuda:0
+seed: 0
+gradient_steps: 1000000
+batch_size: 64
+horizon: 16
+nn: chi_unet
+diffusion: ddpm
+diffusion_steps: 25
+condition: None  # identity, None, mlp
+normalize: True
+action_loss_weight: 10.0
+
+# optimizer
+lr: 0.0001
+dim_mult: [1, 4, 2]
+model_dim: 32
+
+predict_noise: True
+ema_rate: 0.9999
+sample_steps: 10
+val_freq: 1000
+
+# log and inference
+log_freq: 100
+save_freq: 100000
+inference_solver: ddpm
+inference_steps: 10000
+visualization: True
+
+episode_num: 1
+max_pos_err: 0.05
+max_rot_err: 0.1
+max_iter: 10000

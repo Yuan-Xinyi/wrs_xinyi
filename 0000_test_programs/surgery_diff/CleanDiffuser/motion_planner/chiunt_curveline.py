@@ -82,7 +82,7 @@ from cleandiffuser.diffusion.ddpm import DDPM
 
 # --------------- Network Architecture -----------------
 nn_diffusion = ChiUNet1d(
-    config['action_dim'], config['obs_dim'], config['obs_steps'], model_dim=256, emb_dim=256, dim_mult=config['dim_mult'],
+    config['action_dim']+config['obs_dim'], config['obs_dim'], config['obs_steps'], model_dim=256, emb_dim=256, dim_mult=config['dim_mult'],
     obs_as_global_cond=True, timestep_emb_type="positional").to(config['device'])
 
 if config['condition'] == "identity":
@@ -107,8 +107,8 @@ robot_s = xarm_s.XArmLite6WG2(enable_cc=True)
 
 '''define the robot joint limits'''
 if config['normalize']:
-    x_max = torch.ones((1, config['horizon'], config['action_dim']), device=config['device']) * +1.0
-    x_min = torch.ones((1, config['horizon'], config['action_dim']), device=config['device']) * -1.0
+    x_max = torch.ones((1, config['horizon'], config['action_dim']+config['obs_dim']), device=config['device']) * +1.0
+    x_min = torch.ones((1, config['horizon'], config['action_dim']+config['obs_dim']), device=config['device']) * -1.0
     print('*'*100)
     print("Using Normalized Action Space. the action space is normalized to [-1, 1]")
     print('*'*100)
@@ -120,11 +120,16 @@ else:
     print("Using Absolute Action Space. the action space is absolute joint configuration")
     print('*'*50)
 
-loss_weight = torch.ones((config['horizon'], config['action_dim']))
-loss_weight[0, :] = config['action_loss_weight']
+fix_mask = torch.zeros((config['horizon'], config['obs_dim'] + config['action_dim']), device=config['device'])
+fix_mask[:, config['action_dim']:] = 1.
+loss_weight = torch.ones((config['horizon'], config['action_dim']+config['obs_dim']), device=config['device'])
+loss_weight[:, :config['action_dim']] = config['action_loss_weight']
+print(f"======================= Parameter Report of Diffusion Model =======================")
+print("Fix Mask:", fix_mask)
+print("Loss Weight:", loss_weight)
 
 agent = DDPM(
-    nn_diffusion=nn_diffusion, nn_condition=nn_condition, loss_weight=loss_weight,
+    nn_diffusion=nn_diffusion, nn_condition=nn_condition, loss_weight=loss_weight, fix_mask=fix_mask,
     device=config['device'], diffusion_steps=config['diffusion_steps'], x_max=x_max, x_min=x_min,
     optim_params={"lr": config['lr']}, predict_noise=config['predict_noise'])
 
@@ -134,7 +139,7 @@ if config['mode'] == "train":
     # --------------- Data Loading -----------------
     '''prepare the save path'''
     TimeCode = ((datetime.now()).strftime("%m%d_%H%M")).replace(" ", "")
-    rootpath = f"{TimeCode}gostraight_h{config['horizon']}_b{config['batch_size']}_norm{config['normalize']}"
+    rootpath = f"fr3{TimeCode}_{config['nn']}_h{config['horizon']}_norm{config['normalize']}"
     save_path = os.path.join(current_file_dir, 'results', rootpath)
     if not os.path.exists(save_path):
         os.makedirs(save_path)
@@ -158,10 +163,11 @@ if config['mode'] == "train":
             condition = condition.flatten(start_dim=1) # (batch,14)
         else:
             condition = None
-        action = batch['jnt_pos'].to(config['device']) # (batch,horizon,7)
-        
+        jnt_pos = batch['jnt_pos'].to(config['device']).float()
+        position = batch['position'].to(config['device']).float()
+        trajectory = torch.cat([jnt_pos, position], dim=-1)
         # update diffusion
-        diffusion_loss = agent.update(action, condition)['loss']
+        diffusion_loss = agent.update(trajectory, condition)['loss']
         log["avg_loss_diffusion"] += diffusion_loss
         lr_scheduler.step()
         diffusion_loss_list.append(diffusion_loss)
