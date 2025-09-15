@@ -108,16 +108,7 @@ class DDPM(DiffusionModel):
         if self.predict_noise:
             loss = (self.model["diffusion"](xt, t, condition) - eps) ** 2
         else:
-            raw_pred = self.model["diffusion"](xt, t, condition)  # has grad
-            pos_diff = self.condition_info[:, 1, :] - self.condition_info[:, 0, :]  # (B, 7)
-
-            # Fully differentiable fix_sum + normalize pipeline
-            normalizer = self.dataset.normalizer['action']['poly_coef']
-            unnormed_pred = normalizer.unnormalize(raw_pred)
-            corrected_pred = fix_sum_correction(unnormed_pred, pos_diff.to(device=self.device))
-            x_pred = normalizer.normalize(corrected_pred)
-
-            loss = (x_pred - x0) ** 2
+            loss = (self.model["diffusion"](xt, t, condition) - x0) ** 2
 
         return (loss * self.loss_weight * (1 - self.fix_mask)).mean()
 

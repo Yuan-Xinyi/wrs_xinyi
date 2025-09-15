@@ -678,3 +678,75 @@ class CurveLineDataset(BaseDataset):
         data = self._sample_to_data(sample)
         torch_data = dict_apply(data, torch.tensor)
         return torch_data
+    
+
+class MixLineDataset(BaseDataset):
+    def __init__(self,
+            zarr_path,
+            obs_keys=[], 
+            horizon=1,
+            pad_before=0,
+            pad_after=0,
+            normalize=False
+        ):
+        
+        super().__init__()
+        self.replay_buffer = ReplayBuffer.copy_from_path(
+            zarr_path, keys=obs_keys)
+
+        self.sampler = SequenceSampler(
+            replay_buffer=self.replay_buffer, 
+            sequence_length=horizon,
+            pad_before=pad_before, 
+            pad_after=pad_after)
+        
+        self.horizon = horizon
+        self.pad_before = pad_before
+        self.pad_after = pad_after
+        if normalize:
+            self.normalizer = self.get_normalizer()
+        else:
+            self.normalizer = None
+
+
+    def get_normalizer(self):
+        jnt_pos_min_val = np.array([-2.8973, -1.8326, -2.8972, -3.0718, -2.8798,  0.4364, -3.0543])
+        jnt_pos_max_val = np.array([ 2.8973,  1.8326,  2.8972, -0.1222,  2.8798,  4.6251,  3.0543])
+        jnt_pos_normalizer = MinMaxNormalizer(np.array([jnt_pos_min_val, jnt_pos_max_val]))
+
+        print('*' * 100)
+        print('ATTENTION: Normalizer is used in the dataset.')
+        print('*' * 100)
+        
+        return {
+            "obs": {
+                "jnt_pos": jnt_pos_normalizer
+            }
+        }
+
+    def __str__(self) -> str:
+        return f"Keys: {self.replay_buffer.keys()} Steps: {self.replay_buffer.n_steps} Episodes: {self.replay_buffer.n_episodes}"
+    
+    def __len__(self) -> int:
+        return len(self.sampler)
+
+    def _sample_to_data(self, sample):
+        position = sample['position']
+        rotation = sample['rotation']
+        jnt_pos = sample['jnt_pos']
+        
+        if self.normalizer:
+            jnt_pos = self.normalizer['obs']['jnt_pos'].normalize(sample['jnt_pos'])
+    
+        data = {
+            'jnt_pos': jnt_pos,
+            'position': position,
+            'rotation': rotation
+        }
+        return data
+    
+    def __getitem__(self, idx: int) -> Dict[str, torch.Tensor]:
+        sample = self.sampler.sample_sequence(idx)
+        data = self._sample_to_data(sample)
+        torch_data = dict_apply(data, torch.tensor)
+        return torch_data

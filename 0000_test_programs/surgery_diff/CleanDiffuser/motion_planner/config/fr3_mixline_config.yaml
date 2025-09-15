@@ -12,7 +12,9 @@ dataset_name: fr3_mixed_trajs_clean.zarr
 state_dim: 7
 action_dim: 7
 state_horizon: 16         
-action_horizon: 8       
+action_horizon: 8 
+normalize: True    
+obs_keys: ['jnt_pos', 'position', 'rotation'] 
 
 # 指定全局态索引（root pos/orient/vel）
 global_state_idx: [0,1,2]
@@ -35,7 +37,7 @@ timestep_emb_type: positional
 # ======================
 diffusion: ddpm
 diffusion_steps: 20        # 论文主实验用 ~20 步
-predict_noise: True
+predict_noise: False
 sample_steps: 10           # inference 加速
 ema_rate: 0.9999
 
@@ -45,15 +47,14 @@ ema_rate: 0.9999
 gradient_steps: 1000000
 batch_size: 64
 lr: 0.0001
-action_loss_weight: 1.0    # 论文默认 MSE，不单独放大动作
+action_loss_weight: 1.0
 normalize: True
 
 # ======================
 # Logging / Evaluation
 # ======================
-val_freq: 1000
 log_freq: 100
-save_freq: 50000
+save_freq: 100000
 visualization: True
 
 # ======================

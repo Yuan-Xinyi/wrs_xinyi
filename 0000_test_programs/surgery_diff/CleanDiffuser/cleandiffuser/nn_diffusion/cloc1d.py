@@ -86,7 +86,7 @@ class CloC1d(BaseNNDiffusion):
         nn.init.normal_(self.pos, std=0.02)
 
         self.blocks = nn.ModuleList([
-            GPTBlock(d_model, n_heads) for _ in range(depth)
+            GPTBlock(d_model, n_heads, dropout=0.1) for _ in range(depth)
         ])
         self.ln_f = nn.LayerNorm(d_model)
 
@@ -113,8 +113,11 @@ class CloC1d(BaseNNDiffusion):
         s_feat = self.state_enc(states_emph)
         a_feat = self.action_enc(actions)
 
-        s_noise = self.emb_noise_state(k_states)
-        a_noise = self.emb_noise_action(k_actions)
+        s_noise = self.emb_noise_state(k_states)  # (B, 64)
+        s_noise = s_noise.unsqueeze(1).expand(-1, states.size(1), -1)  # (B, T, 64)
+
+        a_noise = self.emb_noise_action(k_actions)  # (B, 64)
+        a_noise = a_noise.unsqueeze(1).expand(-1, actions.size(1), -1)  # (B, T, 64)
 
         s_tok = self.state_tok_proj(torch.cat([s_feat, s_noise], dim=-1))
         a_tok = self.action_tok_proj(torch.cat([a_feat, a_noise], dim=-1))
