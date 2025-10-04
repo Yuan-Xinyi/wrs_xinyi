@@ -38,19 +38,47 @@ def gen_jnt_list_from_pos_list(init_jnt, pos_list, robot, obstacle_list, base,
     return jnt_list, success_count
 
 
-def plot_joint_trajectories(jnt_list):
-    jnt_array = np.array(jnt_list)
-    fig, axes = plt.subplots(jnt_array.shape[1], 1, figsize=(10, 14), sharex=True)
-    fig.suptitle("Joint Value Trajectories (Line Plot)", fontsize=16)
+def plot_joint_and_workspace(robot, *jnt_lists, labels=None):
+    arrays = [np.array(j) for j in jnt_lists]
+    n_joints, T = arrays[0].shape[1], arrays[0].shape[0]
 
-    for i in range(jnt_array.shape[1]):
-        axes[i].plot(range(len(jnt_array)), jnt_array[:, i], marker="o", markersize=4, linewidth=1.5)
-        axes[i].set_ylabel(f"Joint {i+1}")
-        axes[i].grid(True)
+    if labels is None:
+        labels = [f"Traj {i+1}" for i in range(len(arrays))]
+    colors = plt.cm.tab10.colors
 
-    axes[-1].set_xlabel("Index")
+    # 创建子图：关节轨迹 (n_joints) + 工作空间 (3个轴)
+    fig, axes = plt.subplots(n_joints + 3, 1, figsize=(10, 2*(n_joints+3)), sharex=True)
+    fig.suptitle("Joint & Workspace Trajectories", fontsize=16)
+
+    # === Joint trajectories ===
+    for j in range(n_joints):
+        for i, arr in enumerate(arrays):
+            axes[j].plot(range(T), arr[:, j],
+                         marker="o", markersize=3, linewidth=1.2,
+                         color=colors[i % len(colors)],
+                         label=labels[i] if j == 0 else None,
+                         linestyle='-' if i == 0 else '--')
+        axes[j].set_ylabel(f"J{j+1}")
+        axes[j].grid(True)
+
+    # === Workspace trajectories (X/Y/Z) ===
+    pos_lists = [[robot.fk(jnt)[0] for jnt in path] for path in jnt_lists]
+    for axis in range(3):
+        ax_idx = n_joints + axis
+        for i, pos_arr in enumerate(pos_lists):
+            arr = np.array(pos_arr)
+            axes[ax_idx].plot(range(arr.shape[0]), arr[:, axis],
+                              color=colors[i % len(colors)],
+                              label=labels[i] if axis == 0 else None,
+                              linestyle='-' if i == 0 else '--')
+        axes[ax_idx].set_ylabel(["X","Y","Z"][axis])
+        axes[ax_idx].grid(True)
+
+    axes[-1].set_xlabel("Time Step")
+    axes[0].legend(loc="upper right")
     plt.tight_layout(rect=[0, 0.03, 1, 0.97])
     plt.show()
+
 
 
 def partiallydiscretize_joint_space(robot, n_intervals=None):

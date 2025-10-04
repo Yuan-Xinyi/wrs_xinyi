@@ -99,101 +99,27 @@ def _sample_similar_rotations(R_prev, max_rot_diff, n_samples=20):
 
 
 def gen_jnt_list_from_pos_list_relaxed(
-        init_jnt, pos_list, robot, obstacle_list, base,
-        alpha_max_rad,
-        n_alpha=3, n_psi=12,
-        tool_axis='z',
-        plane_normal=None,            
-        max_try_time=20.0,
-        max_rot_diff=np.deg2rad(15.0),   # 最大允许旋转差异
-        check_collision=True,
-        visualize=False):
-    """
-    在平面法线约束下的 relaxed 逆解轨迹生成：
-    - 第一个点：基于 plane_normal/tool_axis 做 cone 采样；
-    - 后续点：基于 R_prev 邻域做采样，确保旋转差异 ≤ max_rot_diff。
-    """
-    jnt_list = []
-    success_count = 0
-    deviations = []
-    R_prev = None
+        init_jnt, pos_list, robot, obstacle_list,
+        alpha_max_rad, n_alpha=3, n_psi=12,
+        plane_normal=None, check_collision=True):
 
-    # 1. 确定锥轴（只用于第一个点）
-    if plane_normal is not None:
-        a_axis = plane_normal / (np.linalg.norm(plane_normal) + 1e-12)
-    else:
-        _, rot0 = robot.fk(jnt_values=init_jnt)
-        if tool_axis == 'z':
-            a_axis = rot0[:, 2]
-        elif tool_axis == 'x':
-            a_axis = rot0[:, 0]
-        elif tool_axis == 'y':
-            a_axis = rot0[:, 1]
-        else:
-            raise ValueError("tool_axis must be one of {'x','y','z'}")
-        a_axis = a_axis / (np.linalg.norm(a_axis) + 1e-12)
+    a_axis = (plane_normal / np.linalg.norm(plane_normal)) if plane_normal is not None else np.array([0, 0, -1])
+    R_cands = sample_rotations_in_cone(a_axis, alpha_max_rad, n_alpha, n_psi)
 
-    # 2. 遍历所有目标位置
-    for idx, pos in enumerate(pos_list):
-        jnt = None
-        start_time = time.time()
+    jnt_list, seed = [], init_jnt
+    for pos in pos_list:
+        for R in R_cands:
+            j = robot.ik(tgt_pos=pos, tgt_rotmat=R, seed_jnt_values=seed)
+            if j is not None:
+                robot.goto_given_conf(j)
+                if not (check_collision and robot.cc.is_collided(obstacle_list=obstacle_list)):
+                    jnt_list.append(j)
+                    seed = j
+                    break
+    return jnt_list
 
-        # 采样候选旋转
-        if idx == 0:  # 第一个点：用锥体采样
-            R_cands = sample_rotations_in_cone(
-                a_axis=a_axis,
-                alpha_max_rad=alpha_max_rad,
-                n_alpha=n_alpha,
-                n_psi=n_psi
-            )
-        else:  # 后续点：在 R_prev 附近采样
-            R_cands = _sample_similar_rotations(R_prev, max_rot_diff, n_samples=30)
-        
-        jnt_list = []
-        for R_cand in R_cands:
-            if time.time() - start_time >= max_try_time:
-                break
-            
-            '''debug'''
-            jnt = robot.ik(tgt_pos=pos, tgt_rotmat=R_cand)
-            if jnt is None:
-                continue
-            else:
-                jnt_list.append(jnt)
-                print('ik soulution found! as {}'.format(jnt))
-        return jnt_list
 
-    #         seed = jnt_list[-1] if jnt_list else init_jnt
-    #         j = robot.ik(tgt_pos=pos, tgt_rotmat=R_cand, seed_jnt_values=seed)
-    #         if j is None:
-    #             continue
-    #         robot.goto_given_conf(j)
-    #         if check_collision and robot.cc.is_collided(obstacle_list=obstacle_list):
-    #             continue
 
-    #         # 旋转差异（与上一帧比）
-    #         if R_prev is not None:
-    #             R_delta = sR.from_matrix(R_prev.T @ R_cand)
-    #             theta = R_delta.magnitude()
-    #         else:
-    #             theta = 0.0
-
-    #         # 成功
-    #         jnt = j
-    #         success_count += 1
-    #         jnt_list.append(jnt)
-    #         deviations.append(theta)
-    #         R_prev = R_cand.copy()
-
-    #         if visualize:
-    #             mcm.mgm.gen_frame(pos=pos, rotmat=R_cand).attach_to(base)
-    #             robot.gen_meshmodel(alpha=.2).attach_to(base)
-    #         break
-
-    #     if jnt is None:  # 当前点失败，提前结束
-    #         return [j for j in jnt_list if j is not None], success_count, deviations
-
-    # return jnt_list, success_count, deviations
 
 def visualize_workspace_points_in_world(base, points, radius=0.01, rgb=(1,0,0)):
     for p in points:
