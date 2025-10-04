@@ -3,11 +3,13 @@ from scipy.optimize import minimize
 import matplotlib.pyplot as plt
 
 import wrs.robot_sim.robots.franka_research_3.franka_research_3 as franka
+import wrs.robot_sim.manipulators.xarm_lite6.xarm_lite6 as xarm6
 from wrs import wd, rm
 import wrs.modeling.geometric_model as mgm
 
 # 初始化机器人和场景
-robot = franka.FrankaResearch3(enable_cc=True)
+# robot = franka.FrankaResearch3(enable_cc=True)
+robot = xarm6.XArmLite6(enable_cc=True) 
 base = wd.World(cam_pos=[2, 0, 1], lookat_pos=[0, 0, 0])
 mgm.gen_frame().attach_to(base)
 
@@ -22,9 +24,13 @@ table = mgm.gen_box(xyz_lengths=table_size,
 table.attach_to(base)
 
 # 画纸参数
-paper_size = np.array([1.0, 1.0, 0.002])  # 薄薄的纸
+paper_size = np.array([1.0, 1.0, 0.002])  # 画纸大小
 paper_pos  = table_pos.copy()
-paper_pos[2] += (table_size[2]/2 + paper_size[2]/2)  # 放到桌面上面
+
+# 画纸中心位置：x方向 = 一半宽度，这样左边缘刚好在 x=0
+paper_pos[0] = paper_size[0] / 2.0
+paper_pos[1] = 0.0
+paper_pos[2] = table_pos[2] + table_size[2]/2 + paper_size[2]/2  # 放在桌面上
 
 paper = mgm.gen_box(xyz_lengths=paper_size,
                     pos=paper_pos,
@@ -42,18 +48,6 @@ fk_call_count = 0
 fk_total_time = 0.0
 
 def generate_circle_path(radius=0.1, num_points=50, plane='xy', center=None, max_attempts=100):
-    """
-    生成圆轨迹对应的关节路径
-    参数:
-        radius: 圆半径 (m)
-        num_points: 圆上采样点数
-        plane: 圆所在平面 ('xy', 'xz', 'yz')
-        center: 圆心坐标 (np.array([x, y, z]))，如果为 None 则从随机初始位姿生成
-        max_attempts: IK 尝试次数上限
-    返回:
-        jnt_list: 关节角列表 (num_points, n_dof)
-        pos_list: 末端位置列表 (num_points, 3)
-    """
     for _ in range(max_attempts):
         # 随机一个起始关节角
         q_start = robot.rand_conf()
@@ -177,7 +171,17 @@ if __name__ == "__main__":
     num_points = 50
 
     # === 生成圆轨迹 ===
-    gth_jnt_path, path_points = generate_circle_path(radius=0.1, num_points=num_points, plane='xy')
+    paper_surface_z = paper_pos[2] + paper_size[2]/2
+    circle_center = np.array([paper_pos[0], paper_pos[1], paper_surface_z])
+    gth_jnt_path, pos_list = generate_circle_path(radius=0.05,
+                                                  num_points=50,
+                                                  plane='xy',
+                                                  center=circle_center)
+    for pos in pos_list:
+        sphere = mgm.gen_sphere(radius=0.005, pos=pos, rgb=[1,0,0], alpha=1)
+        sphere.attach_to(base)
+    import helper_functions as helper
+    helper.visualize_anime_path(base, robot, gth_jnt_path)
 
     # 初始猜测
     q_init = np.zeros((num_points, num_joints))
@@ -192,7 +196,7 @@ if __name__ == "__main__":
     res = minimize(
         cost_fn,
         q_init.flatten(),
-        args=(path_points, num_joints),
+        args=(pos_list, num_joints),
         method='L-BFGS-B',
         bounds=bounds,
         options={'disp': True, 'maxiter': 500, 'gtol': 1e-2}
