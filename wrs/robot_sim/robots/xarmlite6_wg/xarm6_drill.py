@@ -1,22 +1,23 @@
 import numpy as np
 import wrs.robot_sim.manipulators.xarm_lite6 as manipulator
-import wrs.robot_sim.end_effectors.grippers.wrs_gripper.wrs_gripper_v2 as end_effector
+# import wrs.robot_sim.end_effectors.grippers.wrs_gripper.wrs_gripper_v2 as end_effector
+import wrs.robot_sim.end_effectors.single_contact.milling.spine_miller as end_effector
 import wrs.robot_sim.robots.single_arm_robot_interface as sari
 
 
-class XArmLite6WG2(sari.SglArmRobotInterface):
+class XArmLite6Miller(sari.SglArmRobotInterface):
     """
     Simulation for the XArm Lite 6 With the WRS grippers
     Author: Chen Hao (chen960216@gmail.com), Updated by Weiwei
     Date: 20220925osaka, 20240318
     """
 
-    def __init__(self, pos=np.zeros(3), rotmat=np.eye(3), name='xarm_lite6_wrsgripper2', enable_cc=True):
+    def __init__(self, pos=np.zeros(3), rotmat=np.eye(3), name='xarm_lite6_miller', enable_cc=True):
         super().__init__(pos=pos, rotmat=rotmat, name=name, enable_cc=enable_cc)
         self.manipulator = manipulator.XArmLite6(pos=pos, rotmat=rotmat, name="xarmlite6g2_arm",
                                                  enable_cc=False)
-        self.end_effector = end_effector.WRSGripper2(pos=self.manipulator.gl_flange_pos,
-                                                     rotmat=self.manipulator.gl_flange_rotmat, name="xarmlite6g2_hnd")
+        self.end_effector = end_effector.SpineMiller(pos=self.manipulator.gl_flange_pos,
+                                                     rotmat=self.manipulator.gl_flange_rotmat, name="miller")
         # tool center point
         self.manipulator.loc_tcp_pos = self.end_effector.loc_acting_center_pos
         self.manipulator.loc_tcp_rotmat = self.end_effector.loc_acting_center_rotmat
@@ -62,7 +63,7 @@ if __name__ == '__main__':
 
     base = wd.World(cam_pos=[2, 0, 1.5], lookat_pos=[0, 0, .2])
     mgm.gen_frame().attach_to(base)
-    robot = XArmLite6WG2(pos=np.array([0, 0, 0]), enable_cc=True)
+    robot = XArmLite6Miller(pos=np.array([0, 0, 0]), enable_cc=True)
     robot.goto_given_conf(jnt_values=[0, rm.pi/10, rm.pi*.4, 0, rm.pi/4, 0])
     robot.gen_meshmodel(alpha=1).attach_to(base)
     robot.gen_stickmodel(toggle_jnt_frames=True, toggle_tcp_frame=True).attach_to(base)

@@ -262,21 +262,21 @@ if __name__ == '__main__':
     )
     robot.goto_given_conf(jnt)
     robot.gen_meshmodel(alpha=1.0).attach_to(base)
-    base.run()
+    # base.run()
 
     '''dataset generation'''
-    dataset_name = os.path.join('/home/lqin/zarr_datasets', f'fixed_traj.zarr')
-    store = zarr.DirectoryStore(dataset_name)
-    root = zarr.group(store=store)
-    print('dataset created in:', dataset_name)    
-    meta_group = root.create_group("meta")
-    data_group = root.create_group("data")
-    dof = robot.n_dof
-    episode_ends_ds = meta_group.create_dataset("episode_ends", shape=(0,), chunks=(1,), dtype=np.float32, append=True)
-    jnt_p = data_group.create_dataset("jnt_pos", shape=(0, dof), chunks=(1, dof), dtype=np.float32, append=True)
-    jnt_v = data_group.create_dataset("jnt_vel", shape=(0, dof), chunks=(1, dof), dtype=np.float32, append=True)
-    jnt_a = data_group.create_dataset("jnt_acc", shape=(0, dof), chunks=(1, dof), dtype=np.float32, append=True)
-    episode_ends_counter = 0
+    # dataset_name = os.path.join('/home/lqin/zarr_datasets', f'fixed_traj.zarr')
+    # store = zarr.DirectoryStore(dataset_name)
+    # root = zarr.group(store=store)
+    # print('dataset created in:', dataset_name)    
+    # meta_group = root.create_group("meta")
+    # data_group = root.create_group("data")
+    # dof = robot.n_dof
+    # episode_ends_ds = meta_group.create_dataset("episode_ends", shape=(0,), chunks=(1,), dtype=np.float32, append=True)
+    # jnt_p = data_group.create_dataset("jnt_pos", shape=(0, dof), chunks=(1, dof), dtype=np.float32, append=True)
+    # jnt_v = data_group.create_dataset("jnt_vel", shape=(0, dof), chunks=(1, dof), dtype=np.float32, append=True)
+    # jnt_a = data_group.create_dataset("jnt_acc", shape=(0, dof), chunks=(1, dof), dtype=np.float32, append=True)
+    # episode_ends_counter = 0
 
     for waypoint_num in range(5, 31):
         '''generate the waypoints jnt configurations'''
@@ -296,8 +296,8 @@ if __name__ == '__main__':
             visualize=False
             )
         # plot_joint_trajectories(jnt_list)
-        # visualize_anime_path(robot, jnt_list, jnt_list[0], jnt_list[-1])
-        # base.run()
+        visualize_anime_path(robot, jnt_list, jnt_list[0], jnt_list[-1])
+        base.run()
 
         '''generate the trajectory'''
         inp.current_position, inp.target_position = jnt_list[0], jnt_list[-1]
@@ -333,4 +333,4 @@ if __name__ == '__main__':
         if not os.path.exists(os.path.dirname(pdf_path)):
             os.makedirs(os.path.dirname(pdf_path))
         Plotter.plot_trajectory(pdf_path, otg, inp, out_list, plot_jerk=False)
-        # visualize_anime_path(robot, jnt_path, jnt_path[0], jnt_path[-1])
+        visualize_anime_path(robot, jnt_path, jnt_path[0], jnt_path[-1])

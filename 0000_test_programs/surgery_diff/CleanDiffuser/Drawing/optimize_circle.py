@@ -1,23 +1,29 @@
 import numpy as np
 from scipy.optimize import minimize
 import matplotlib.pyplot as plt
-
+from wrs import wd, rm, mcm
 import wrs.robot_sim.robots.franka_research_3.franka_research_3 as franka
-import wrs.robot_sim.manipulators.xarm_lite6.xarm_lite6 as xarm6
+# import wrs.robot_sim.manipulators.xarm_lite6.xarm_lite6 as xarm6
+import wrs.robot_sim.robots.xarmlite6_wg.xarm6_drill as xarm6
 from wrs import wd, rm
 import wrs.modeling.geometric_model as mgm
+import rotation_cone_constraint as cone_constraint
 
 # 初始化机器人和场景
 # robot = franka.FrankaResearch3(enable_cc=True)
-robot = xarm6.XArmLite6(enable_cc=True) 
+robot = xarm6.XArmLite6Miller(enable_cc=True) 
 base = wd.World(cam_pos=[2, 0, 1], lookat_pos=[0, 0, 0])
 mgm.gen_frame().attach_to(base)
+# robot.goto_home_conf()
+# robot.gen_meshmodel().attach_to(base)
+# print(robot.fk(jnt_values=robot.get_jnt_values())[0])
+# base.run()
 
 # 桌面参数
 table_size = np.array([1.5, 1.5, 0.05])   # 桌子大小 (长x宽x厚度)
 table_pos  = np.array([0.6, 0, -0.025])   # 放在机器人前面
 
-table = mgm.gen_box(xyz_lengths=table_size,
+table = mcm.gen_box(xyz_lengths=table_size,
                     pos=table_pos,
                     rgb=np.array([0.6, 0.4, 0.2]),   # 棕色
                     alpha=1)
@@ -32,61 +38,83 @@ paper_pos[0] = paper_size[0] / 2.0
 paper_pos[1] = 0.0
 paper_pos[2] = table_pos[2] + table_size[2]/2 + paper_size[2]/2  # 放在桌面上
 
-paper = mgm.gen_box(xyz_lengths=paper_size,
+paper = mcm.gen_box(xyz_lengths=paper_size,
                     pos=paper_pos,
                     rgb=np.array([1, 1, 1]),         # 白色
                     alpha=1)
 paper.attach_to(base)
 
 '''visualize'''
-robot.goto_given_conf([0.0, -0.7854, 0.0, -2.356, 0.0, 1.57, 0.0])
-robot.gen_meshmodel().attach_to(base)
-base.run()
+# cc_jnt = [-3.1149012366937407, -1.4309495062531088, 4.284456928656966, 
+#           0.27762536280644234, 0.4952422567010116, -2.1941828629110525]
+# robot.goto_given_conf(cc_jnt)
+# pos,rot = robot.fk(jnt_values=cc_jnt)
+# mgm.gen_frame(pos=pos, rotmat=rot).attach_to(base)
+# print(robot.is_collided(obstacle_list=[table, paper], toggle_contacts=True, toggle_dbg=False)[0])
+# robot.gen_meshmodel(toggle_cdprim=True).attach_to(base)
+# # robot.show_cdprim()
+# base.run()
 
 import time
 fk_call_count = 0
 fk_total_time = 0.0
 
-def generate_circle_path(radius=0.1, num_points=50, plane='xy', center=None, max_attempts=100):
+def generate_circle_path(
+        robot,
+        table, paper,
+        radius=0.1,
+        num_points=50,
+        center=None,
+        max_attempts=100,
+        alpha_max_rad=np.deg2rad(30),
+        max_rot_diff=np.deg2rad(30),
+        n_alpha=3,
+        n_psi=12,
+        visualize=False):
+    """
+    生成松弛旋转约束的圆轨迹
+    - 起始点 cone 采样 (基于平面法向/工具轴)
+    - 后续点 基于 R_prev 在邻域采样
+    """
+    thetas = np.linspace(0, 2*np.pi, num_points, endpoint=False)
+
     for _ in range(max_attempts):
-        # 随机一个起始关节角
-        q_start = robot.rand_conf()
-        pos_init, rotmat = robot.fk(jnt_values=q_start)
-
-        # 如果没指定圆心，就用起始位置作为圆心
-        if center is None:
-            center = pos_init.copy()
-
-        # 在圆周上采样
-        thetas = np.linspace(0, 2*np.pi, num_points, endpoint=False)
         pos_list = []
-        jnt_list = []
         for theta in thetas:
-            pos = center.copy()
-            if plane == 'xy':
-                pos[0] += radius * np.cos(theta)
-                pos[1] += radius * np.sin(theta)
-            elif plane == 'xz':
-                pos[0] += radius * np.cos(theta)
-                pos[2] += radius * np.sin(theta)
-            elif plane == 'yz':
-                pos[1] += radius * np.cos(theta)
-                pos[2] += radius * np.sin(theta)
+            pos = circle_center.copy()
+            pos[0] += radius * np.cos(theta)
+            pos[1] += radius * np.sin(theta)
+            pos_list.append(pos)
+            plane_normal = np.array([0, 0, -1])
+
+        # 6. 使用 relaxed 逆解生成路径
+        jnt_list = cone_constraint.gen_jnt_list_from_pos_list_relaxed(
+            init_jnt=None,
+            pos_list=pos_list,
+            robot=robot,
+            obstacle_list=[],  # [table, paper]
+            base=None,  # 不可视化时可设 None
+            alpha_max_rad=alpha_max_rad,
+            n_alpha=n_alpha,
+            n_psi=n_psi,
+            max_rot_diff=max_rot_diff,
+            check_collision=True,
+            visualize=visualize,
+            plane_normal=plane_normal
+        )
+        print('Generated joint path length:', len(jnt_list))
+        for jnt in jnt_list:
+            robot.goto_given_conf(jnt)
+            if not robot.is_collided(obstacle_list=[table, paper], toggle_contacts=False, toggle_dbg=False):
+                robot.gen_meshmodel(rgb=[0,0,1], alpha=0.3).attach_to(base)
             else:
-                raise ValueError("plane 必须是 'xy'、'xz' 或 'yz'")
+                robot.gen_meshmodel(rgb=[1,0,0], alpha=0.3).attach_to(base)
+        base.run()
 
-            # IK 求解
-            seed = jnt_list[-1] if jnt_list else q_start
-            jnt = robot.ik(tgt_pos=pos, tgt_rotmat=rotmat, seed_jnt_values=seed)
-            if jnt is None:
-                break
-            jnt_list.append(jnt)
-            pos_list.append(pos.copy())
+    print("Failed to generate circle after attempts.")
+    return None, None
 
-        if len(jnt_list) == num_points:
-            return np.array(jnt_list), np.array(pos_list)
 
-    raise RuntimeError(f"Failed to generate a valid circle joint path after {max_attempts} attempts.")
 
 def calculate_rot_error(rot1, rot2):
     delta = rm.delta_w_between_rotmat(rot1, rot2)
@@ -166,20 +194,88 @@ def workspace_plot_multi(robot, *jnt_paths, labels=None):
     plt.tight_layout(rect=[0, 0.03, 1, 0.95])
     plt.show()
 
+def visualize_rotation_cone(base, apex, a_axis, alpha_max_rad,
+                            height=0.2, n_alpha=3, n_psi=12,
+                            line_radius=0.002):
+    """
+    可视化旋转锥和旋转候选姿态
+    :param base: PandaWorld/Scene
+    :param apex: 锥顶 (一般是末端执行器位置)
+    :param a_axis: 锥体主轴方向 (例如纸面法向)
+    :param alpha_max_rad: 锥体半角 (rad)
+    :param height: 锥体高度
+    :param n_alpha: alpha 层数 (决定cone里候选点的层数)
+    :param n_psi: 每层的采样数
+    """
+    a_axis = a_axis / (np.linalg.norm(a_axis)+1e-12)
+    center = apex + a_axis * height
+
+    # 局部基向量
+    tmp = np.array([1,0,0]) if abs(a_axis[0]) < 0.9 else np.array([0,1,0])
+    x_dir = np.cross(a_axis, tmp); x_dir /= np.linalg.norm(x_dir)
+    y_dir = np.cross(a_axis, x_dir); y_dir /= np.linalg.norm(y_dir)
+
+    # cone 底面
+    r = np.tan(alpha_max_rad) * height
+    angles = np.linspace(0, 2*np.pi, 36, endpoint=False)
+    circle_pts = []
+    for theta in angles:
+        p = center + r*(np.cos(theta)*x_dir + np.sin(theta)*y_dir)
+        circle_pts.append(p)
+        mgm.gen_sphere(pos=p, radius=0.005, rgb=[1,0,0]).attach_to(base)
+
+    # 底面边
+    for i in range(len(circle_pts)):
+        p1, p2 = circle_pts[i], circle_pts[(i+1)%len(circle_pts)]
+        mgm.gen_stick(spos=p1, epos=p2, radius=line_radius, rgb=[0,0,1]).attach_to(base)
+
+    # 锥体侧边
+    for p in circle_pts:
+        mgm.gen_stick(spos=apex, epos=p, radius=line_radius, rgb=[0,1,0]).attach_to(base)
+
+    # ===== 候选旋转矩阵 (来自旋转锥) =====
+    R_list = cone_constraint.sample_rotations_in_cone(a_axis=a_axis,
+                                       alpha_max_rad=alpha_max_rad,
+                                       n_alpha=n_alpha,
+                                       n_psi=n_psi)
+
+    for R in R_list:
+        # 在 apex 位置画候选姿态坐标系
+        mgm.gen_frame(pos=apex, rotmat=R).attach_to(base)
+        jnt = robot.ik(tgt_pos=apex, tgt_rotmat=R)
+        if jnt is not None:
+            robot.goto_given_conf(jnt)
+            robot.gen_meshmodel(rgb=[1,0,1], alpha=0.3).attach_to(base)
+
+    return R_list
+
+
+
+
+
 if __name__ == "__main__":
     num_joints = robot.n_dof
-    num_points = 50
+    num_points = 15
 
     # === 生成圆轨迹 ===
     paper_surface_z = paper_pos[2] + paper_size[2]/2
-    circle_center = np.array([paper_pos[0], paper_pos[1], paper_surface_z])
-    gth_jnt_path, pos_list = generate_circle_path(radius=0.05,
-                                                  num_points=50,
-                                                  plane='xy',
+    circle_center = np.array([0.2, 0.0, paper_surface_z + 0.01])
+    mgm.gen_sphere(radius=0.005, pos=circle_center, rgb=[0,1,0], alpha=1).attach_to(base)
+    # visualize_rotation_cone(base, apex=circle_center,
+    #                         a_axis=np.array([0,0,-1]),   # 垂直于xy平面
+    #                         alpha_max_rad=np.deg2rad(30),
+    #                         height=0.15)
+    # base.run()
+    gth_jnt_path, pos_list = generate_circle_path(radius=0.1,
+                                                  robot=robot,
+                                                  table=table,
+                                                  paper=paper,
+                                                  num_points=num_points,
                                                   center=circle_center)
     for pos in pos_list:
         sphere = mgm.gen_sphere(radius=0.005, pos=pos, rgb=[1,0,0], alpha=1)
         sphere.attach_to(base)
+    
     import helper_functions as helper
     helper.visualize_anime_path(base, robot, gth_jnt_path)
 
