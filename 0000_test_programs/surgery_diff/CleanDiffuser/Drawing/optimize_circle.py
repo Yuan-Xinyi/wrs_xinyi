@@ -1,175 +1,259 @@
+import os
+import math
 import numpy as np
-from scipy.optimize import minimize
-from wrs import wd, rm, mcm
+import torch
+import torch.nn.functional as F
+
+# ====== 依赖 wrs ======
+from wrs import wd, rm, mcm  # 仅用于取 robot/参数（本脚本不启可视化）
 import wrs.modeling.geometric_model as mgm
 import wrs.robot_sim.robots.xarmlite6_wg.xarm6_drill as xarm6
-import wrs.robot_sim.robots.franka_research_3.franka_research_3 as franka
 
-import json, time, os, atexit
-from pathlib import Path
+# -------------------- 基本设置 --------------------
+device = torch.device("cuda" if torch.cuda.is_available() else "cpu")
+DTYPE = torch.float32
+torch.manual_seed(0)
+np.random.seed(0)
 
-start_time = time.time()
-
-# Determine script directory robustly
-try:
-    SCRIPT_DIR = Path(__file__).resolve().parent
-except NameError:
-    SCRIPT_DIR = Path.cwd()
-
-LOG_PATH = SCRIPT_DIR / "opt_log.jsonl"
-print(f"[log] writing to: {LOG_PATH}")  
-LOG_PATH.parent.mkdir(parents=True, exist_ok=True)
-
-log_file = open(LOG_PATH, "w", encoding="utf-8")
-atexit.register(log_file.close)
-
-def log_json_line(data: dict):
-    try:
-        json.dump(data, log_file, ensure_ascii=False)
-        log_file.write("\n")
-        log_file.flush()
-    except Exception as e:
-        print("[log error]", e, data)
-
-# ================= Scene Setup =================
-# robot = xarm6.XArmLite6Miller(enable_cc=True)
-robot = franka.FrankaResearch3(enable_cc=True)
+# -------------------- 构建机器人与场景几何 --------------------
+# 不开启渲染窗口；只拿到机器人对象和场景尺寸（桌/纸）
+robot = xarm6.XArmLite6Miller(enable_cc=False)
 base = wd.World(cam_pos=[2, 0, 1], lookat_pos=[0, 0, 0])
 mgm.gen_frame().attach_to(base)
 
+# 桌 & 纸参数（仅用于设定纸面高度与圆心约束）
 table_size = np.array([1.5, 1.5, 0.05])
 table_pos = np.array([0.6, 0, -0.025])
-table = mcm.gen_box(xyz_lengths=table_size, pos=table_pos,
-                    rgb=np.array([0.6, 0.4, 0.2]), alpha=1)
-table.attach_to(base)
-
 paper_size = np.array([1.0, 1.0, 0.002])
 paper_pos = table_pos.copy()
 paper_pos[0] = paper_size[0] / 2.0
 paper_pos[1] = 0.0
-paper_pos[2] = table_pos[2] + table_size[2]/2 + paper_size[2]/2
-paper = mcm.gen_box(xyz_lengths=paper_size, pos=paper_pos,
-                    rgb=np.array([1,1,1]), alpha=1)
-paper.attach_to(base)
+paper_pos[2] = table_pos[2] + table_size[2] / 2 + paper_size[2] / 2
+paper_surface_z = float(paper_pos[2] + paper_size[2] / 2)
 
-OBSTACLES = [table, paper]
-R_DEFAULT = np.array([[1,0,0],[0,1,0],[0,0,-1]])
+# -------------------- 超参数 --------------------
+num_points = 96
+dof = robot.manipulator.n_dof
+safe_clearance = 0.06                   # 初始抬高以便 IK/收敛
+alpha_r = 3.0                           # 半径奖励
+lambda_smooth = 1e-2
+lambda_jl = 1.0                         # 关节越界软惩罚
+r_min, r_max = 0.05, 0.40               # 半径上下界
+center_x_bounds = (0.30, 0.50)          # 圆心 x 软约束
+center_y_abs_max = 0.20                 # 圆心 y 软约束
+center_z_bounds = (paper_surface_z + 0.005, paper_surface_z + 0.020)
 
-# ================= Utils =================
-def is_collided(robot, obstacles):
-    res = robot.is_collided(obstacle_list=obstacles, toggle_contacts=False, toggle_dbg=False)
-    if isinstance(res, (list, tuple)):
-        return bool(res[0])
-    return bool(res)
+lr_q = 1e-2
+lr_r = 5e-3
+lr_c = 3e-3
+steps_stage1 = 1000
+steps_stage2 = 1500
+steps_stage3 = 1500
 
-def rot_distance(R1, R2):
-    d = rm.delta_w_between_rotmat(R1, R2)
-    return np.linalg.norm(d)
+# -------------------- 目标圆参数（变量） --------------------
+# 初始圆心（抬高 safe_clearance）
+initial_center = torch.tensor([0.35, 0.0, paper_surface_z + safe_clearance], dtype=DTYPE, device=device)
+center = torch.nn.Parameter(initial_center.clone(), requires_grad=False)
 
-# ================= Evaluation =================
-def evaluate_radius(robot, center, radius, num_points=80,
-                    w_pos=1.0, w_smooth=1e-2, w_rot_smooth=1e-1):
-    thetas = np.linspace(0, 2*np.pi, num_points, endpoint=False)
-    pos_list = [center + radius * np.array([np.cos(t), np.sin(t), 0.0]) for t in thetas]
+radius = torch.nn.Parameter(torch.tensor(0.10, dtype=DTYPE, device=device), requires_grad=False)
 
-    jnts_ok = []
-    prev_j = None
-    prev_R = None
-    loss = 0.0
-    success = 0
-    fail_ik = 0
-    fail_coll = 0
+# 均匀角度与单位圆方向（在 XY 平面）
+thetas = torch.linspace(0, 2 * math.pi, num_points, device=device)
+dirs = torch.stack([torch.cos(thetas), torch.sin(thetas), torch.zeros_like(thetas)], dim=1)  # (M,3)
 
-    for pos in pos_list:
-        j = robot.ik(tgt_pos=pos, tgt_rotmat=R_DEFAULT, seed_jnt_values=prev_j)
-        if j is None:
-            fail_ik += 1
-            continue
-        # avoid rendering call during eval
-        # robot.goto_given_conf(j)
-        if is_collided(robot, OBSTACLES):
-            fail_coll += 1
-            continue
-        success += 1
-        jnts_ok.append(j)
+# -------------------- 从 wrs 机器人构建 PoE（可微 FK） --------------------
+def _torch_from_np(a):
+    return torch.tensor(a, dtype=DTYPE, device=device)
 
-        x_curr, R_curr = robot.fk(jnt_values=j)
-        loss += w_pos * np.linalg.norm(x_curr - pos)**2
+def _skew3(v):  # (...,3) -> (...,3,3)
+    O = torch.zeros((*v.shape[:-1], 3, 3), dtype=v.dtype, device=v.device)
+    O[..., 0, 1] = -v[..., 2]; O[..., 0, 2] =  v[..., 1]
+    O[..., 1, 0] =  v[..., 2]; O[..., 1, 2] = -v[..., 0]
+    O[..., 2, 0] = -v[..., 1]; O[..., 2, 1] =  v[..., 0]
+    return O
 
-        if prev_j is not None and prev_R is not None:
-            loss += w_smooth * np.linalg.norm(j - prev_j)**2
-            loss += w_rot_smooth * rot_distance(prev_R, R_curr)**2
+def _exp_so3_batch(omega, theta):  # omega:(3,), theta:(M,)
+    M = theta.shape[0]
+    wnorm = omega.norm()
+    if wnorm < 1e-12:
+        return torch.eye(3, dtype=DTYPE, device=device).expand(M, 3, 3).clone()
+    w = omega / wnorm
+    K = _skew3(w).expand(M, 3, 3)
+    th = theta.view(-1, 1, 1)
+    I = torch.eye(3, dtype=DTYPE, device=device).expand(M, 3, 3)
+    return I + torch.sin(th) * K + (1 - torch.cos(th)) * (K @ K)
 
-        prev_j = j
-        prev_R = R_curr
+def _exp_se3_batch(Si, theta):  # Si:(6,), theta:(M,)
+    w, v = Si[:3], Si[3:]
+    M = theta.shape[0]
+    if w.norm() < 1e-12:
+        R = torch.eye(3, dtype=DTYPE, device=device).expand(M, 3, 3).clone()
+        t = theta.view(-1, 1) * v.view(1, 3)
+    else:
+        R = _exp_so3_batch(w, theta)
+        K = _skew3(w / (w.norm() + 1e-12)).expand(M, 3, 3)
+        th = theta.view(-1, 1, 1)
+        I = torch.eye(3, dtype=DTYPE, device=device).expand(M, 3, 3)
+        V = I * th + (1 - torch.cos(th)) * K + (th - torch.sin(th)) * (K @ K)
+        t = torch.einsum('mij,j->mi', V, v)
+    T = torch.zeros((M, 4, 4), dtype=DTYPE, device=device)
+    T[:, :3, :3] = R
+    T[:, :3, 3] = t
+    T[:, 3, 3] = 1.0
+    return T
 
-    success_ratio = success / num_points
-    return success_ratio, loss, jnts_ok, pos_list, fail_ik, fail_coll
+def _build_poe_from_wrs(robot):
+    """从 wrs 读取每节的 loc_rotmat/loc_pos/loc_motion_ax，构造 Slist 和 M（零位末端）。"""
+    jnts = robot.manipulator.jlc.jnts
+    DOF = robot.manipulator.n_dof
+    # 基座外参（默认 I）
+    T = torch.eye(4, dtype=DTYPE, device=device)
+    omegas, qs = [], []
+    for i in range(DOF):
+        R_loc = _torch_from_np(jnts[i].loc_rotmat)
+        p_loc = _torch_from_np(jnts[i].loc_pos)
+        # 累乘父->当前零位
+        T_next = T.clone()
+        T_next[:3, :3] = T[:3, :3] @ R_loc
+        T_next[:3, 3] = T[:3, 3] + T[:3, :3] @ p_loc
+        T = T_next
+        # 轴向（局部给的是单位 z，已被 loc_rotmat 旋到基座系）
+        ax_local = _torch_from_np(jnts[i].loc_motion_ax)
+        omega_i = T[:3, :3] @ ax_local
+        q_i = T[:3, 3]  # 轴上一点（取该关节原点）
+        omegas.append(omega_i)
+        qs.append(q_i)
+    # 零位末端（你的 TCP=I）
+    M = T.clone()
+    # 组装 Slist
+    S_cols = []
+    for w, qpt in zip(omegas, qs):
+        v = -torch.cross(w, qpt)
+        S_cols.append(torch.cat([w, v]))
+    Slist = torch.stack(S_cols, dim=1)  # (6, DOF)
+    return Slist, M
 
-# ================= Objective & Constraint =================
-def objective(radius, robot, center, num_points):
-    r = float(radius)
-    succ, loss, _, _, fail_ik, fail_coll = evaluate_radius(robot, center, r, num_points)
-    alpha = 10.0
-    beta = 50.0
-    threshold = 0.9
-    penalty = 0.0
-    if succ < threshold:
-        penalty = 1e5 * (threshold - succ)**2 * num_points
-    obj = loss - alpha * r - beta * (succ * r) + penalty
+_Slist, _M = _build_poe_from_wrs(robot)  # 只构建一次
+q_min_np = robot.manipulator.jlc.jnt_ranges[:, 0]
+q_max_np = robot.manipulator.jlc.jnt_ranges[:, 1]
+q_min = torch.tensor(q_min_np, dtype=DTYPE, device=device)
+q_max = torch.tensor(q_max_np, dtype=DTYPE, device=device)
 
-    log_json_line({
-        "radius": r,
-        "success_ratio": succ,
-        "loss": float(loss),
-        "objective": float(obj),
-        "fail_ik": fail_ik,
-        "fail_collision": fail_coll,
-        "time_since_start": time.time() - start_time
-    })
-    return obj
+def fk_batch(q_batch: torch.Tensor):
+    """可微正运动学：q_batch (M, DOF) -> 末端位置 (M,3)"""
+    Mbs = q_batch.shape[0]
+    Tq = torch.eye(4, dtype=DTYPE, device=device).unsqueeze(0).expand(Mbs, 4, 4).clone()
+    DOF = _Slist.shape[1]
+    for i in range(DOF):
+        Tq = torch.einsum('mij,mjk->mik', Tq, _exp_se3_batch(_Slist[:, i], q_batch[:, i]))
+    Tq = torch.einsum('mij,jk->mik', Tq, _M)
+    p = Tq[:, :3, 3]
+    return p
 
-def constraint_success(radius, robot, center, num_points):
-    succ, _, _, _, _, _ = evaluate_radius(robot, center, radius, num_points)
-    return succ - 0.9
+# -------------------- 初始化关节轨迹（尝试 IK，失败回 home） --------------------
+# 初始位姿：笔尖朝 -Z（若失败自动回退）
+R_DEFAULT = np.array([[1, 0, 0],
+                      [0, 1, 0],
+                      [0, 0, -1]])
 
-# ================= Optimization =================
-def optimize_radius(robot, center, num_points=80, r_bounds=(0.05, 0.40), x0=0.15):
-    # find initial feasible
-    for r0 in np.linspace(r_bounds[1], r_bounds[0], 20):
-        succ, _, _, _, _, _ = evaluate_radius(robot, center, r0, num_points)
-        if succ > 0.3:
-            x0 = r0
-            print("Initial feasible guess:", x0)
-            break
+try_pos = initial_center.detach().cpu().numpy().tolist()
+init_jnt = robot.ik(tgt_pos=try_pos, tgt_rotmat=R_DEFAULT, option="single")
+if init_jnt is None:
+    print("[Warn] IK failed at the initial center; fallback to home_conf with small noise.")
+    init_jnt = robot.manipulator.home_conf
 
-    res = minimize(
-        fun=lambda r: objective(r, robot, center, num_points),
-        x0=np.array([x0]),
-        method="SLSQP",
-        bounds=[r_bounds],
-        constraints=[{'type': 'ineq', 'fun': lambda r: constraint_success(r, robot, center, num_points)}],
-        options={'disp': True, 'maxiter': 200, 'ftol': 1e-6}
-    )
-    return float(res.x[0])
+q_init = np.tile(init_jnt, (num_points, 1)) + 0.01 * np.random.randn(num_points, dof)
+q_vars = torch.nn.Parameter(torch.tensor(q_init, dtype=DTYPE, device=device), requires_grad=True)
 
-# ================= Main =================
-if __name__ == "__main__":
-    num_points = 80
-    paper_surface_z = paper_pos[2] + paper_size[2]/2
-    circle_center = np.array([0.35, 0.0, paper_surface_z + 0.010])
-    mgm.gen_sphere(radius=0.006, pos=circle_center, rgb=[0,1,0], alpha=1).attach_to(base)
+# -------------------- 统一的优化步 --------------------
+def run_optimization(optimizer, steps=1000, stage_name="Stage", center_trainable=False, radius_trainable=False):
+    center.requires_grad_(center_trainable)
+    radius.requires_grad_(radius_trainable)
 
-    best_r = optimize_radius(robot, circle_center, num_points, r_bounds=(0.05, 0.40))
-    print("Optimized radius:", best_r)
+    for step in range(steps):
+        optimizer.zero_grad()
 
-    succ, loss, jnt_list, pos_list, _, _ = evaluate_radius(robot, circle_center, best_r, num_points)
-    print("Success rate:", succ, "Num feasible:", len(jnt_list))
+        # 当前目标/实际
+        pos_actual = fk_batch(q_vars)                        # (M,3) 可微
+        pos_target = center + radius * dirs                  # (M,3)
 
-    for pos in pos_list:
-        mgm.gen_sphere(radius=0.004, pos=pos, rgb=[1,0,0], alpha=1).attach_to(base)
+        # 位置贴合
+        loss_pos = torch.mean(torch.sum((pos_actual - pos_target) ** 2, dim=1))
+        # 平滑
+        loss_smooth = torch.mean(torch.sum((q_vars[1:] - q_vars[:-1]) ** 2, dim=1))
+        # 半径奖励（如果半径此阶段参与优化）
+        loss_radius = -alpha_r * radius if radius.requires_grad else torch.tensor(0.0, dtype=DTYPE, device=device)
 
-    if jnt_list:
-        import helper_functions as helper
-        helper.visualize_anime_path(base, robot, jnt_list)
-    base.run()
+        # ---- 半径与圆心边界（软约束，全部用 relu）----
+        pen = torch.tensor(0.0, dtype=DTYPE, device=device)
+        # radius bounds
+        pen = pen + (F.relu(r_min - radius) ** 2 + F.relu(radius - r_max) ** 2) * 1000.0
+        # center bounds（仅当 center 可训练）
+        if center.requires_grad:
+            cx, cy, cz = center[0], center[1], center[2]
+            pen = pen + (F.relu(center_x_bounds[0] - cx) ** 2 + F.relu(cx - center_x_bounds[1]) ** 2) * 1000.0
+            pen = pen + (F.relu(torch.abs(cy) - center_y_abs_max) ** 2) * 1000.0
+            pen = pen + (F.relu(center_z_bounds[0] - cz) ** 2 + F.relu(cz - center_z_bounds[1]) ** 2) * 1000.0
+
+        # 关节软限位
+        L_jl = (F.relu(q_min - q_vars) ** 2 + F.relu(q_vars - q_max) ** 2).mean()
+
+        total_loss = loss_pos + lambda_smooth * loss_smooth + loss_radius + lambda_jl * L_jl + pen
+        total_loss.backward()
+        # 可选：裁剪避免数值突跳
+        torch.nn.utils.clip_grad_norm_([q_vars], max_norm=1.0)
+        optimizer.step()
+
+        if step % 100 == 0 or step == steps - 1:
+            c_np = center.detach().cpu().numpy()
+            print(f"[{stage_name:>12} {step:4d}] "
+                  f"loss={total_loss.item():.6e} | "
+                  f"pos={loss_pos.item():.3e} sm={loss_smooth.item():.3e} "
+                  f"r={radius.item():.4f} c=({c_np[0]:.3f},{c_np[1]:.3f},{c_np[2]:.3f})")
+
+# -------------------- 三阶段优化 --------------------
+print("\n🚀 阶段 1：仅优化关节角 (r, c 固定)")
+opt1 = torch.optim.Adam([q_vars], lr=lr_q)
+run_optimization(opt1, steps=steps_stage1, stage_name="Pretrain Q", center_trainable=False, radius_trainable=False)
+
+print("\n🚀 阶段 2：解锁半径（优化 q + r）")
+opt2 = torch.optim.Adam([
+    {"params": [q_vars], "lr": lr_q},
+    {"params": [radius], "lr": lr_r},
+])
+run_optimization(opt2, steps=steps_stage2, stage_name="Optimize r+q", center_trainable=False, radius_trainable=True)
+
+print("\n🚀 阶段 3：解锁圆心（优化 q + r + c）")
+opt3 = torch.optim.Adam([
+    {"params": [q_vars], "lr": lr_q},
+    {"params": [radius, center], "lr": lr_c},
+])
+run_optimization(opt3, steps=steps_stage3, stage_name="Full optimize", center_trainable=True, radius_trainable=True)
+
+# -------------------- 结果 --------------------
+print("\n✅ 优化完成")
+print("最大半径 r* =", float(radius.item()))
+print("最优圆心 c* =", center.detach().cpu().numpy())
+print("q 轨迹形状 =", tuple(q_vars.shape))
+
+with torch.no_grad():
+    cx, cy, cz = center.tolist()
+    r = float(radius.item())
+    th = torch.linspace(0, 2*math.pi, 720, device=device)
+    circle_xyz = torch.stack([
+        torch.full_like(th, cx) + r*torch.cos(th),
+        torch.full_like(th, cy) + r*torch.sin(th),
+        torch.full_like(th, cz)                      # 圆在纸面，z=cz
+    ], dim=1)  # (720,3)
+
+# 若要转 numpy 保存：
+np_circle = circle_xyz.detach().cpu().numpy()  # shape = (720, 3)
+for pos in np_circle:
+    sphere = mgm.gen_sphere(radius=0.005, pos=pos, rgb=[1,0,0], alpha=1)
+    sphere.attach_to(base)
+for q in q_vars.detach().cpu().numpy():
+    pos, _ = robot.fk(q)
+    mgm.gen_sphere(radius=0.008, pos=pos, rgb=[0,0,1], alpha=1).attach_to(base)
+
+import helper_functions as helper
+helper.visualize_anime_path(base, robot, q_vars.detach().cpu().numpy())
