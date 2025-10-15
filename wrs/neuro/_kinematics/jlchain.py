@@ -1,7 +1,11 @@
 import torch
 import wrs.neuro._kinematics.math_utils as nkm
-from wrs import basis as bc, robot_sim as rkc, robot_sim as rkmg, neuro as nkjl, modeling as mgm
-
+import numpy as np
+import wrs.modeling.geometric_model as mgm
+import wrs.neuro._kinematics.jl as nkjl
+import wrs.basis.constant as bc
+import wrs.robot_sim._kinematics.model_generator as rkmg
+import wrs.robot_sim._kinematics.constant as rkc
 
 # TODO delay finalize
 # TODO joint gl -> flange
@@ -453,7 +457,7 @@ if __name__ == "__main__":
                 num_win += 1
             mgm.gen_frame(pos=tgt_pos, rotmat=tgt_rotmat).attach_to(base)
             jlc.fk(jnt_values=joint_values_with_dbg_info, update=True, toggle_jacobian=False)
-            jlc.gen_stickmodel(stick_rgba=rm.bc.navy_blue, toggle_flange_frame=True,
+            jlc.gen_stickmodel(stick_rgba=bc.navy_blue, toggle_flange_frame=True,
                                toggle_jnt_frames=True).attach_to(base)
             base.run()
         else:

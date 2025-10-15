@@ -1,7 +1,10 @@
 import torch
-from wrs import basis as bc, robot_sim as rkc, robot_sim as rkmg, modeling as mcm, modeling as mgm
 import wrs.neuro._kinematics.math_utils as nkm
-
+import wrs.robot_sim._kinematics.constant as rkc
+import wrs.robot_sim._kinematics.model_generator as rkmg
+import wrs.modeling.geometric_model as mgm
+import wrs.modeling.collision_model as mcm
+import wrs.basis.constant as bc
 
 class Link(object):
     """
