@@ -1,5 +1,6 @@
 import numpy as np
 import shapely.geometry as shp_geom
+import torch
 import wrs.basis.trimesh.primitives as trm_primit
 import wrs.basis.trimesh.geometry as trm_geom
 import wrs.basis.trimesh as trm
@@ -104,6 +105,8 @@ def gen_rectstick(spos=np.array([0, 0, 0]), epos=np.array([0.1, 0, 0]), radius=.
     author: weiwei
     date: 20191228osaka
     """
+    spos = spos.to('cpu').numpy() if isinstance(spos, torch.Tensor) else spos
+    epos = epos.to('cpu').numpy() if isinstance(epos, torch.Tensor) else epos
     height = np.linalg.norm(epos - spos)
     if np.allclose(height, 0):
         rotmat = np.eye(3)
@@ -161,6 +164,8 @@ def gen_dashstick(spos=np.array([0, 0, 0]),
         len_solid = radius * 3.2
     if len_interval is None:
         len_interval = radius * 2.14
+    epos = epos.to('cpu').numpy() if isinstance(epos, torch.Tensor) else epos
+    spos = spos.to('cpu').numpy() if isinstance(spos, torch.Tensor) else spos
     length, direction = rm.unit_vector(epos - spos, toggle_length=True)
     n_solid = round(length / (len_solid + len_interval) + 0.5)
     vertices = np.empty((0, 3))
@@ -176,6 +181,7 @@ def gen_dashstick(spos=np.array([0, 0, 0]),
         vertices = np.vstack((vertices, tmp_stick.vertices))
         faces = np.vstack((faces, tmp_stick_faces))
     # wrap up the last segment
+    spos = spos.to('cpu').numpy() if isinstance(spos, torch.Tensor) else spos
     tmp_spos = spos + (len_solid * direction + len_interval * direction) * (n_solid - 1)
     tmp_epos = tmp_spos + len_solid * direction
     final_length, _ = rm.unit_vector(tmp_epos - spos, toggle_length=True)
@@ -278,6 +284,8 @@ def gen_arrow(spos=np.array([0, 0, 0]), epos=np.array([0.1, 0, 0]), stick_radius
     author: weiwei
     date: 20191228osaka
     """
+    spos = spos.to('cpu').numpy() if isinstance(spos, torch.Tensor) else spos
+    epos = epos.to('cpu').numpy() if isinstance(epos, torch.Tensor) else epos
     direction = rm.unit_vector(epos - spos)
     if np.linalg.norm(spos - epos) > stick_radius * ARROW_CH_SR:
         stick = gen_stick(spos=spos,
@@ -321,6 +329,8 @@ def gen_dashed_arrow(spos=np.array([0, 0, 0]),
     author: weiwei
     date: 20191228osaka, 20230812toyonaka
     """
+    epos = epos.to('cpu').numpy() if isinstance(epos, torch.Tensor) else epos
+    spos = spos.to('cpu').numpy() if isinstance(spos, torch.Tensor) else spos
     length, direction = rm.unit_vector(epos - spos, toggle_length=True)
     cap = gen_cone(spos=epos - direction * stick_radius * ARROW_CH_SR,
                    epos=epos,

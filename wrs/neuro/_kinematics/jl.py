@@ -6,6 +6,10 @@ import wrs.modeling.geometric_model as mgm
 import wrs.modeling.collision_model as mcm
 import wrs.basis.constant as bc
 
+device = torch.device("cuda" if torch.cuda.is_available() else "cpu")
+def clean(tensor):
+    return torch.tensor(tensor, dtype=torch.float32, device=device)
+
 class Link(object):
     """
     author: weiwei
@@ -14,10 +18,10 @@ class Link(object):
 
     def __init__(self,
                  name="auto",
-                 loc_pos=torch.zeros(3),
-                 loc_rotmat=torch.eye(3),
-                 com=torch.zeros(3),
-                 inertia=torch.eye(3),
+                 loc_pos=torch.zeros(3, device=device),
+                 loc_rotmat=torch.eye(3, device=device),
+                 com=torch.zeros(3, device=device),
+                 inertia=torch.eye(3, device=device),
                  mass=0,
                  cmodel=None):
         self.name = name
@@ -180,8 +184,8 @@ class Anchor(object):
 
     def __init__(self,
                  name="auto",
-                 pos=torch.zeros(3),
-                 rotmat=torch.eye(3),
+                 pos=torch.zeros(3, device=device),
+                 rotmat=torch.eye(3, device=device),
                  n_flange=1,
                  n_lnk=1):
         """
@@ -196,7 +200,7 @@ class Anchor(object):
         self._rotmat = rotmat
         self._n_flange = n_flange
         self._n_lnk = n_lnk
-        self._loc_flange_pose_list = [[torch.zeros(3), torch.eye(3)] for _ in range(self._n_flange)]
+        self._loc_flange_pose_list = [[torch.zeros(3, device=device), torch.eye(3, device=device)] for _ in range(self._n_flange)]
         self._gl_flange_pose_list = self.compute_gl_flange()
         self._lnk_list = [Link(name=name) for _ in range(self._n_lnk)]
         self._is_gl_flange_delayed = True
@@ -356,10 +360,10 @@ class Joint(object):
     def __init__(self,
                  name="auto",
                  type=rkc.JntType.REVOLUTE,
-                 loc_pos=torch.zeros(3),
-                 loc_rotmat=torch.eye(3),
-                 loc_motion_ax=torch.tensor([0, 1, 0]),
-                 motion_range=torch.tensor([-torch.pi, torch.pi])):
+                 loc_pos=torch.zeros(3, device=device),
+                 loc_rotmat=torch.eye(3, device=device),
+                 loc_motion_ax=torch.tensor([0, 1, 0], device=device),
+                 motion_range=torch.tensor([-torch.pi, torch.pi], device=device)):
         self.name = name
         self.loc_pos = loc_pos
         self.loc_rotmat = loc_rotmat
@@ -499,7 +503,7 @@ if __name__ == '__main__':
     base = wd.World(cam_pos=[1., 1., 1.], lookat_pos=[.0, .0, .0])
     mgm.gen_frame().attach_to(base)
     jnt = Joint(loc_motion_ax=torch.tensor([.0, .0, 1.]))
-    jnt.lnk.cmodel = mcm.CollisionModel(initor="../../basis/objects/or2fg7_base.stl")
+    jnt.lnk.cmodel = mcm.CollisionModel(initor="/home/lqin/wrs_xinyi/wrs/basis/objects/or2fg7_base.stl")
     #
     ref_pos = torch.tensor([.0, .1, .0])
     ref_rotmat = nkm.rotmat_from_euler(torch.pi / 6, torch.pi / 3, torch.pi / 4)

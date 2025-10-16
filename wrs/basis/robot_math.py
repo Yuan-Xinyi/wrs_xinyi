@@ -17,6 +17,7 @@ from numpy.linalg import norm
 from numpy import sin, cos, tan
 from numpy import arctan2 as atan2, arcsin as asin, arccos as acos
 from numpy import floor, ceil, round, isnan, isinf
+import torch
 
 np.set_printoptions(suppress=True) # avoid scientific notation
 
@@ -292,8 +293,8 @@ def homomat_from_posrot(pos=np.zeros(3), rotmat=np.eye(3)):
     date: 20190313
     """
     homomat = np.eye(4)
-    homomat[:3, :3] = rotmat
-    homomat[:3, 3] = pos
+    homomat[:3, :3] = rotmat.to('cpu').numpy() if isinstance(rotmat, torch.Tensor) else rotmat
+    homomat[:3, 3] = pos.to('cpu').numpy() if isinstance(pos, torch.Tensor) else pos
     return homomat
 
 
@@ -768,15 +769,17 @@ def unit_vector(vector, toggle_length=False):
     author: weiwei
     date: 20200701osaka
     """
-    length = np.linalg.norm(vector)
+    length = np.linalg.norm(vector.to('cpu').numpy() if isinstance(vector, torch.Tensor) else vector)
     if math.isclose(length, 0):
         if toggle_length:
-            return 0.0, np.zeros_like(vector)
+            return 0.0, np.zeros_like(vector.to('cpu').numpy() if isinstance(vector, torch.Tensor) else vector)
         else:
             return np.zeros_like(vector)
     if toggle_length:
+        vector = vector.to('cpu').numpy() if isinstance(vector, torch.Tensor) else vector
         return length, vector / np.linalg.norm(vector)
     else:
+        vector = vector.to('cpu') if isinstance(vector, torch.Tensor) else vector
         return vector / np.linalg.norm(vector)
 
 
