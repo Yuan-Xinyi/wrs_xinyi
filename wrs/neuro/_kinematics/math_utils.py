@@ -104,8 +104,8 @@ def rotmat_from_euler(ai, aj, ak, axes='sxyz'):
         result_rotmat[k, k] = cj * ci
     return result_rotmat
 
-
-def homomat_from_posrot(pos=torch.zeros(3), rotmat=torch.eye(3)):
+device = torch.device("cuda" if torch.cuda.is_available() else "cpu")
+def homomat_from_posrot(pos=torch.zeros(3, device=device), rotmat=torch.eye(3, device=device)):
     """
     build a 4x4 homogeneous matrix
     :param pos: 1x3
@@ -114,7 +114,7 @@ def homomat_from_posrot(pos=torch.zeros(3), rotmat=torch.eye(3)):
     author: weiwei
     date: 20190313
     """
-    homomat = torch.eye(4)
+    homomat = torch.eye(4, device=device)
     homomat[:3, :3] = rotmat
     homomat[:3, 3] = pos
     return homomat

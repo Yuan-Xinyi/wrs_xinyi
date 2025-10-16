@@ -473,10 +473,10 @@ class Joint(object):
         self.assert_motion_value(value=motion_value)
         if self.type == rkc.JntType.REVOLUTE:
             rotmat_by_motion = nkm.rotmat_from_axangle(self.loc_motion_ax, motion_value)
-            return self.loc_homomat @ nkm.homomat_from_posrot(pos=torch.zeros(3), rotmat=rotmat_by_motion)
+            return self.loc_homomat @ nkm.homomat_from_posrot(pos=torch.zeros(3,device=device), rotmat=rotmat_by_motion)
         elif self.type == rkc.JntType.PRISMATIC:
             pos_by_motion = self.loc_motion_ax * motion_value
-            return self.loc_homomat @ nkm.homomat_from_posrot(pos=pos_by_motion, rotmat=torch.eye(3))
+            return self.loc_homomat @ nkm.homomat_from_posrot(pos=pos_by_motion, rotmat=torch.eye(3, device=device))
 
     def gen_model(self,
                   toggle_frame_0=True,

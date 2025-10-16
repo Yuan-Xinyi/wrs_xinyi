@@ -128,9 +128,9 @@ class JLChain(object):
         date: 20161202, 20201009osaka, 20230823
         """
         if not update:
-            homomat = self.anchor.gl_flange_homomat_list[0]
-            jnt_pos = torch.zeros((self.n_dof, 3))
-            jnt_motion_ax = torch.zeros((self.n_dof, 3))
+            homomat = self.anchor.gl_flange_homomat_list[0].to(device)
+            jnt_pos = torch.zeros((self.n_dof, 3), device=device)
+            jnt_motion_ax = torch.zeros((self.n_dof, 3), device=device)
             for i in range(self.flange_jnt_id + 1):
                 jnt_pos[i, :] = homomat[:3, 3] + homomat[:3, :3] @ self.jnts[i].loc_pos
                 homomat = homomat @ self.jnts[i].get_motion_homomat(motion_value=jnt_values[i])
@@ -292,7 +292,7 @@ class JLChain(object):
         author: weiwei
         date: 20200326
         """
-        return torch.rand(self.n_dof) * (self.jnt_ranges[:, 1] - self.jnt_ranges[:, 0]) + self.jnt_ranges[:, 0]
+        return torch.rand(self.n_dof, device=device) * (self.jnt_ranges[:, 1] - self.jnt_ranges[:, 0]) + self.jnt_ranges[:, 0]
 
     @assert_finalize_decorator
     def ik(self,

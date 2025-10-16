@@ -313,12 +313,18 @@ if __name__ == '__main__':
     # tgt_pos = np.array([.3, .3, .3])
     # tgt_rotmat = rm.rotmat_from_euler(0, 0, 0)
 
-    tgt_pos = np.array([0.2995316, -0.04995615, 0.1882039])
-    tgt_rotmat = np.array([[0.03785788, 0.05806798, 0.99759455],
-                           [0.01741114, 0.99812033, -0.05875933],
-                           [-0.99913144, 0.01959376, 0.03677569]])
-    mgm.gen_frame(pos=tgt_pos, rotmat=tgt_rotmat, alpha=.3).attach_to(base)
-    jnt_values = robot.ik(tgt_pos, tgt_rotmat, option="single")
-    robot.goto_given_conf(jnt_values=jnt_values)
-    robot.gen_meshmodel(rgb=rm.const.cyan, alpha=.3).attach_to(base)
+    # tgt_pos = np.array([0.2995316, -0.04995615, 0.1882039])
+    # tgt_rotmat = np.array([[0.03785788, 0.05806798, 0.99759455],
+    #                        [0.01741114, 0.99812033, -0.05875933],
+    #                        [-0.99913144, 0.01959376, 0.03677569]])
+    # mgm.gen_frame(pos=tgt_pos, rotmat=tgt_rotmat, alpha=.3).attach_to(base)
+    # jnt_values = robot.ik(tgt_pos, tgt_rotmat, option="single")
+    # print(repr(jnt_values))
+    # robot.goto_given_conf(jnt_values=jnt_values)
+    # robot.gen_meshmodel(rgb=rm.const.cyan, alpha=.3).attach_to(base)
+
+    jnt = np.array([-1.7072,  2.5946, -0.0380,  0.4481, -0.1043,  2.3908])
+    tgt_pos, tgt_rotmat = robot.fk(jnt)
+    print(tgt_pos)
+    print(tgt_rotmat)
     base.run()

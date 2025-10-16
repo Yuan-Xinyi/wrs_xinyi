@@ -1,20 +1,17 @@
-import os
 import math
-from panda3d.core import CollisionNode, CollisionBox, Point3, NodePath
 import wrs.basis.robot_math as rm
-import wrs.robot_sim.manipulators.manipulator_interface_neuro as mi
 import wrs.neuro._kinematics.jlchain as jlc
-import wrs.modeling.collision_model as mcm
 import wrs.modeling.geometric_model as mgm
 import torch
 import wrs.visualization.panda.world as wd
 import wrs.basis.constant as bc
 
-base = wd.World(cam_pos=[2, 0, 1], lookat_pos=[0, 0, 0])
-mgm.gen_frame().attach_to(base)
-
+'''device setting for torch computation'''
 device = torch.device("cuda" if torch.cuda.is_available() else "cpu")
 
+'''world initialization and robot construction'''
+base = wd.World(cam_pos=[2, 0, 1], lookat_pos=[0, 0, 0])
+mgm.gen_frame().attach_to(base)
 XArmLite6 = jlc.JLChain(n_dof=6)
 # anchor
 XArmLite6.jnts[0].loc_pos = torch.tensor([.0, .0, .2433], dtype=torch.float32, device=device)
@@ -52,10 +49,9 @@ XArmLite6.jnts[5].loc_motion_ax = torch.tensor([0, 0, 1], dtype=torch.float32, d
 XArmLite6.jnts[5].motion_range = torch.tensor([-math.pi, math.pi], dtype=torch.float32, device=device)
 # finalizing
 XArmLite6._loc_flange_pos = torch.tensor([0.0, 0.0, 0.01], device=device)
-XArmLite6._loc_flange_pos = torch.tensor([0.1, 0.1, 0.1], device=device)
+XArmLite6._loc_flange_pos = torch.tensor([0.0, 0.0, 0.0], device=device)
 result = XArmLite6.finalize()
 XArmLite6.gen_stickmodel(stick_rgba=bc.navy_blue, toggle_jnt_frames=True, toggle_flange_frame=True).attach_to(base)
-base.run()
 
 
 def ik(self,
@@ -129,3 +125,16 @@ def ik(self,
     #         self._is_jnt_in_range(jnt_id=5, jnt_value=j5_value)):
     #     return None
     return torch.tensor([j0_value, j1_value, j2_value, j3_value, j4_value, j5_value])
+
+if __name__=="__main__":
+    tgt_pos = torch.tensor([0.2995316, -0.04995615, 0.1882039])
+    tgt_rotmat = torch.tensor([[0.03785788, 0.05806798, 0.99759455],
+                           [0.01741114, 0.99812033, -0.05875933],
+                           [-0.99913144, 0.01959376, 0.03677569]])
+    jnt = XArmLite6.rand_conf()
+    # jnt = torch.zeros(6, device=device)
+    pos, rotmat = XArmLite6.fk(jnt_values=jnt)
+    print(repr(jnt))
+    print(repr(pos))
+    print(repr(rotmat))
+
