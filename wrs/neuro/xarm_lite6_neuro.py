@@ -7,7 +7,7 @@ import wrs.visualization.panda.world as wd
 import wrs.basis.constant as bc
 
 
-class XArmLite6Sim:
+class XArmLite6GPU:
     def __init__(self, device=None):
         """initialize scene and robot model"""
         self.device = device or torch.device("cuda" if torch.cuda.is_available() else "cpu")
@@ -20,9 +20,6 @@ class XArmLite6Sim:
         self.robot = jlc.JLChain(n_dof=6)
         self._build_robot()
         self.robot.finalize()
-        self.robot.gen_stickmodel(stick_rgba=bc.navy_blue,
-                                  toggle_jnt_frames=True,
-                                  toggle_flange_frame=True).attach_to(self.base)
 
     def _build_robot(self):
         """define xArm Lite 6 joints and their kinematic parameters"""
@@ -78,10 +75,6 @@ class XArmLite6Sim:
 
     def demo(self):
         """test FK + IK"""
-        tgt_pos = torch.tensor([0.2995316, -0.04995615, 0.1882039])
-        tgt_rotmat = torch.tensor([[0.03785788, 0.05806798, 0.99759455],
-                                   [0.01741114, 0.99812033, -0.05875933],
-                                   [-0.99913144, 0.01959376, 0.03677569]])
         jnt = self.robot.rand_conf()
         pos, rotmat = self.robot.fk(jnt_values=jnt)
         print("Joint values:", jnt)
@@ -92,5 +85,13 @@ class XArmLite6Sim:
 
 
 if __name__ == "__main__":
-    sim = XArmLite6Sim()
-    sim.demo()
+    xarm = XArmLite6GPU()
+    jnt = xarm.robot.rand_conf()
+    pos, rotmat = xarm.robot.fk(jnt_values=jnt)
+    print("Joint values:", jnt)
+    print("FK Position:", pos)
+    print("FK Rotmat:\n", rotmat)
+    xarm.robot.goto_given_conf(jnt_values=jnt)
+    xarm.robot.gen_stickmodel().attach_to(xarm.base)
+    xarm.robot.gen_meshmodel(rgb=bc.cyan, alpha=.3).attach_to(xarm.base)
+    xarm.base.run()
