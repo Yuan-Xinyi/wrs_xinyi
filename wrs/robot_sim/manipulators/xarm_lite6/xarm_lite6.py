@@ -323,7 +323,7 @@ if __name__ == '__main__':
     # robot.goto_given_conf(jnt_values=jnt_values)
     # robot.gen_meshmodel(rgb=rm.const.cyan, alpha=.3).attach_to(base)
 
-    jnt = np.array([-1.7072,  2.5946, -0.0380,  0.4481, -0.1043,  2.3908])
+    jnt = np.array([ 2.5518, -0.1158,  1.5646,  1.7187,  1.6221, -2.4834])
     tgt_pos, tgt_rotmat = robot.fk(jnt)
     print(tgt_pos)
     print(tgt_rotmat)
