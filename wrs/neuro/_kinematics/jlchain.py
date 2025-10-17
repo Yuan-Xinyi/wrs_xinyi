@@ -150,6 +150,69 @@ class JLChain(object):
             self._gl_flange_pos, self._gl_flange_rotmat = self._compute_gl_flange()
             return (self._gl_flange_pos, self._gl_flange_rotmat)
 
+    def fk_batch(self, jnt_values: torch.Tensor):
+        """
+        Batch forward kinematics (GPU)
+        Args:
+            jnt_values: (B, n_dof) tensor
+        Returns:
+            gl_flange_pos: (B, 3)
+            gl_flange_rotmat: (B, 3, 3)
+        """
+        device = jnt_values.device
+        B, n_dof = jnt_values.shape
+        assert n_dof == self.n_dof, f"Expected {self.n_dof} joints, got {n_dof}"
+
+        # --- initialize H with anchor transform
+        H = torch.eye(4, device=device).unsqueeze(0).repeat(B, 1, 1)
+        anchor_H = torch.tensor(self.anchor.gl_flange_homomat_list[0], device=device)
+        H = torch.bmm(H, anchor_H.unsqueeze(0).expand(B, -1, -1))
+
+        # --- forward chain multiply
+        for i in range(self.flange_jnt_id + 1):
+            loc_pos = self.jnts[i].loc_pos.to(device)       # (3,)
+            loc_rot = self.jnts[i].loc_rotmat.to(device)    # (3,3)
+            motion_ax = self.jnts[i].loc_motion_ax.to(device)
+
+            # compute joint transform for each sample in batch
+            motion_values = jnt_values[:, i]
+            motion_H = torch.eye(4, device=device).unsqueeze(0).repeat(B, 1, 1)
+            motion_H[:, :3, :3] = loc_rot.unsqueeze(0).expand(B, -1, -1)
+            motion_H[:, :3, 3] = loc_pos.unsqueeze(0).expand(B, -1)  # base translation
+
+            # rotation about joint axis
+            if torch.allclose(motion_ax, torch.tensor([0, 0, 1.], device=device)):
+                # z-axis rotation (common)
+                ca, sa = torch.cos(motion_values), torch.sin(motion_values)
+                R = torch.stack([
+                    torch.stack([ca, -sa, torch.zeros_like(ca)], dim=1),
+                    torch.stack([sa, ca, torch.zeros_like(sa)], dim=1),
+                    torch.tensor([0, 0, 1.], device=device).repeat(B, 1)
+                ], dim=1)
+            else:
+                # general rotation using Rodrigues formula
+                ax = motion_ax / (torch.norm(motion_ax) + 1e-8)
+                theta = motion_values.view(-1, 1, 1)
+                K = torch.tensor([[0, -ax[2], ax[1]],
+                                [ax[2], 0, -ax[0]],
+                                [-ax[1], ax[0], 0]], device=device).unsqueeze(0)
+                I = torch.eye(3, device=device).unsqueeze(0)
+                R = I + torch.sin(theta) * K + (1 - torch.cos(theta)) * torch.bmm(K, K)
+
+            # apply motion to H
+            H = torch.bmm(H, motion_H)
+            H[:, :3, :3] = torch.bmm(H[:, :3, :3], R)
+
+        # --- apply local flange transform
+        flange_H = self.loc_flange_homomat.to(device)
+        H = torch.bmm(H, flange_H.unsqueeze(0).expand(B, -1, -1))
+
+        # --- extract position and rotation
+        gl_flange_pos = H[:, :3, 3]
+        gl_flange_rotmat = H[:, :3, :3]
+        return gl_flange_pos, gl_flange_rotmat
+
+
     def fix_to(self, pos, rotmat, jnt_values=None):
         self.anchor.pos = pos
         self.anchor.rotmat = rotmat
@@ -293,6 +356,21 @@ class JLChain(object):
         date: 20200326
         """
         return torch.rand(self.n_dof, device=device) * (self.jnt_ranges[:, 1] - self.jnt_ranges[:, 0]) + self.jnt_ranges[:, 0]
+
+    def rand_conf_batch(self, batch_size=1):
+        """
+        Generate a batch of random joint configurations.
+        Args:
+            batch_size (int): number of random samples
+        Returns:
+            jnt_batch (torch.Tensor): (batch_size, n_dof)
+        """
+        device = self.jnt_ranges.device
+        low = self.jnt_ranges[:, 0]  # (n_dof,)
+        high = self.jnt_ranges[:, 1]
+        jnt_batch = torch.rand(batch_size, self.n_dof, device=device) * (high - low) + low
+        return jnt_batch
+
 
     @assert_finalize_decorator
     def ik(self,

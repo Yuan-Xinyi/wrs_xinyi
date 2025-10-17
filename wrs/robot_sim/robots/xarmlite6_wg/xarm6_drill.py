@@ -64,36 +64,9 @@ if __name__ == '__main__':
     base = wd.World(cam_pos=[2, 0, 1.5], lookat_pos=[0, 0, .2])
     mgm.gen_frame().attach_to(base)
     robot = XArmLite6Miller(pos=np.array([0, 0, 0]), enable_cc=True)
-    robot.goto_given_conf(jnt_values=[0, rm.pi/10, rm.pi*.4, 0, rm.pi/4, 0])
-    robot.gen_meshmodel(alpha=1).attach_to(base)
-    robot.gen_stickmodel(toggle_jnt_frames=True, toggle_tcp_frame=True).attach_to(base)
-    base.run()
-    # tic = time.time()
-    # trm_model=xarm_model.acquire_cm_trm()
-    # toc = time.time()
-    # print(toc-tic)
-    # print(trm_model.vertices)
-    # print("Is self collided?", robot.is_collided())
-
-    goal_pos = np.array([0.30013906, -0.04995994, 0.04078924])
-    goal_rotmat = np.array([[-0.36436617, -0.23050759, -0.90227687],
-                            [-0.1049671, 0.97287324, -0.20615424],
-                            [0.92532114, 0.01959376, -0.37867781]])
-    mgm.gen_frame(pos=goal_pos, rotmat=goal_rotmat).attach_to(base)
-    jnt_values = robot.ik(tgt_pos=goal_pos, tgt_rotmat=goal_rotmat)
-    if jnt_values is None:
-        base.run()
-    robot.goto_given_conf(jnt_values=jnt_values)
-    robot.gen_meshmodel().attach_to(base)
-    # base.run()
-
-    tgt_pos = np.array([0.2995316, -0.04995615, 0.1882039])
-    tgt_rotmat = np.array([[0.03785788, 0.05806798, 0.99759455],
-                           [0.01741114, 0.99812033, -0.05875933],
-                           [-0.99913144, 0.01959376, 0.03677569]])
-    mgm.gen_frame(pos=tgt_pos, rotmat=tgt_rotmat).attach_to(base)
-    jnt_values = robot.ik(tgt_pos, tgt_rotmat)
-    print(jnt_values)
-    robot.goto_given_conf(jnt_values)
-    robot.gen_meshmodel().attach_to(base)
+    jnt = np.array([ 2.5870,  1.9920,  0.2887, -1.2303,  0.1405, -0.2582])
+    robot.goto_given_conf(jnt_values=jnt)
+    tgt_pos, tgt_rotmat = robot.fk(jnt_values=jnt)
+    print(tgt_pos)
+    print(tgt_rotmat)
     base.run()

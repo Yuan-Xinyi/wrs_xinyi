@@ -12,10 +12,6 @@ class XArmLite6GPU:
         """initialize scene and robot model"""
         self.device = device or torch.device("cuda" if torch.cuda.is_available() else "cpu")
 
-        # create visualization world
-        self.base = wd.World(cam_pos=[2, 0, 1], lookat_pos=[0, 0, 0])
-        mgm.gen_frame().attach_to(self.base)
-
         # initialize robot model
         self.robot = jlc.JLChain(n_dof=6)
         self._build_robot()
@@ -67,7 +63,7 @@ class XArmLite6GPU:
         r.jnts[5].motion_range = torch.tensor([-math.pi, math.pi], dtype=torch.float32, device=device)
 
         # flange
-        r._loc_flange_pos = torch.tensor([0.0, 0.0, 0.0], device=device)
+        r._loc_flange_pos = torch.tensor([0.0, 0.0, 0.22], device=device)
 
     def ik(self, tgt_pos: torch.Tensor, tgt_rotmat: torch.Tensor):
         """solve inverse kinematics (Analytical IK)"""
@@ -81,17 +77,11 @@ class XArmLite6GPU:
         print("FK Position:", pos)
         print("FK Rotmat:\n", rotmat)
 
-        self.base.run()
-
 
 if __name__ == "__main__":
     xarm = XArmLite6GPU()
-    jnt = xarm.robot.rand_conf()
-    pos, rotmat = xarm.robot.fk(jnt_values=jnt)
+    jnt = xarm.robot.rand_conf_batch(batch_size=4)
+    pos, rotmat = xarm.robot.fk_batch(jnt_values=jnt)
     print("Joint values:", jnt)
     print("FK Position:", pos)
     print("FK Rotmat:\n", rotmat)
-    xarm.robot.goto_given_conf(jnt_values=jnt)
-    xarm.robot.gen_stickmodel().attach_to(xarm.base)
-    xarm.robot.gen_meshmodel(rgb=bc.cyan, alpha=.3).attach_to(xarm.base)
-    xarm.base.run()
