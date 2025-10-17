@@ -201,7 +201,9 @@ class JLChain(object):
 
             # apply motion to H
             H = torch.bmm(H, motion_H)
-            H[:, :3, :3] = torch.bmm(H[:, :3, :3], R)
+            H = H.clone()
+            H[:, :3, :3] = torch.bmm(H[:, :3, :3].clone(), R.clone())
+            # H[:, :3, :3] = torch.bmm(H[:, :3, :3], R)
 
         # --- apply local flange transform
         flange_H = self.loc_flange_homomat.to(device)

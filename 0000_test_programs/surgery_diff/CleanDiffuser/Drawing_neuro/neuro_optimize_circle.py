@@ -13,6 +13,8 @@ from scipy.optimize import minimize
 import numpy as np
 import matplotlib.pyplot as plt
 import torch
+torch.autograd.set_detect_anomaly(True)
+
 
 # ======================== Initialization ============================
 '''initialize robot and scene'''
@@ -75,9 +77,9 @@ def randomize_circle(paper_pos, paper_size, num_points=50, margin=0.05, visualiz
         [mgm.gen_sphere(p, 0.005, [0,1,0]).attach_to(base) for p in pos_list]
         mgm.gen_sphere(center, 0.005, [0,1,0]).attach_to(base)
         for i in range(num_points):
-            mgm.gen_stick(pos_list[i], pos_list[(i+1)%num_points], 0.0015, [0,0,1]).attach_to(base)
+            mgm.gen_stick(pos_list[i], pos_list[(i+1)%num_points], 0.0015, [0,0,-1]).attach_to(base)
 
-    return pos_list, {'center': center, 'radius': r, 'normal': [0,0,1], 'plane_z': z}
+    return pos_list, {'center': center, 'radius': r, 'normal': [0,0,-1], 'plane_z': z}
 
 
 def randomize_circles_batch(paper_pos, paper_size, batch_size=16, num_points=50, 
@@ -94,21 +96,21 @@ def randomize_circles_batch(paper_pos, paper_size, batch_size=16, num_points=50,
     y_min, y_max = (py - ly/2) + margin, (py + ly/2) - margin
 
     '''visualize paper boundary'''
-    mgm.gen_stick(spos=np.array([x_min, y_min, z]),
-                epos=np.array([x_max, y_min, z]),
-                radius=0.001, rgb=np.array([1,0,0])).attach_to(base)
+    # mgm.gen_stick(spos=np.array([x_min, y_min, z]),
+    #             epos=np.array([x_max, y_min, z]),
+    #             radius=0.001, rgb=np.array([1,0,0])).attach_to(base)
 
-    mgm.gen_stick(spos=np.array([x_max, y_min, z]),
-                epos=np.array([x_max, y_max, z]),
-                radius=0.001, rgb=np.array([1,0,0])).attach_to(base)
+    # mgm.gen_stick(spos=np.array([x_max, y_min, z]),
+    #             epos=np.array([x_max, y_max, z]),
+    #             radius=0.001, rgb=np.array([1,0,0])).attach_to(base)
 
-    mgm.gen_stick(spos=np.array([x_max, y_max, z]),
-                epos=np.array([x_min, y_max, z]),
-                radius=0.001, rgb=np.array([1,0,0])).attach_to(base)
+    # mgm.gen_stick(spos=np.array([x_max, y_max, z]),
+    #             epos=np.array([x_min, y_max, z]),
+    #             radius=0.001, rgb=np.array([1,0,0])).attach_to(base)
 
-    mgm.gen_stick(spos=np.array([x_min, y_max, z]),
-                epos=np.array([x_min, y_min, z]),
-                radius=0.001, rgb=np.array([1,0,0])).attach_to(base)
+    # mgm.gen_stick(spos=np.array([x_min, y_max, z]),
+    #             epos=np.array([x_min, y_min, z]),
+    #             radius=0.001, rgb=np.array([1,0,0])).attach_to(base)
 
     # random centers
     centers_x = torch.empty(batch_size, device=device).uniform_(x_min, x_max)
@@ -155,14 +157,90 @@ def visualize_pos_batch(pos_batch):
         for t in range(pos_batch_np.shape[1]):
             mgm.gen_sphere(pos_batch_np[b, t], 0.005, [0,1,0]).attach_to(base)
 
+def visulize_jnt_batch(jnt_batch):
+    jnt_batch_np = jnt_batch.cpu().numpy()
+    for b in range(jnt_batch_np.shape[0]):
+        xarm_sim.goto_given_conf(jnt_values=jnt_batch_np[b])
+        xarm_sim.gen_meshmodel(alpha=0.2).attach_to(base)
+
+def optimize_trajectory(
+    xarm_gpu,
+    pos_target_batch,
+    steps=1000,
+    lr=1e-2,
+    lambda_pos=50.0,
+    lambda_smooth=5.0,
+    lambda_cone=2.0,
+    visualize=False
+):
+    device = pos_target_batch.device
+    num_points = pos_target_batch.shape[0]
+    n_dof = xarm_gpu.robot.n_dof
+
+    # ========== Initialization ==========
+    q_traj = xarm_gpu.robot.rand_conf_batch(num_points)  # (N,6)
+    q_traj = q_traj.clone().detach().to(device).requires_grad_(True)
+
+    optimizer = torch.optim.Adam([q_traj], lr=lr)
+    z_target = torch.tensor([0, 0, -1], dtype=torch.float32, device=device)  # TCP朝下方向（写字笔）
+
+    for step in range(steps):
+        optimizer.zero_grad()
+
+        # ---------- Forward Kinematics ----------
+        pos_fk, rot_fk = xarm_gpu.robot.fk_batch(q_traj)  # pos:(N,3), rot:(N,3,3)
+
+        # ---------- Loss terms ----------
+        # 1. Position loss
+        pos_loss = torch.mean((pos_fk - pos_target_batch) ** 2)
+
+        # 2. Smoothness loss
+        smooth_loss = torch.mean((q_traj[1:] - q_traj[:-1]) ** 2)
+
+        # ---------- Total loss ----------
+        loss = lambda_pos * pos_loss + lambda_smooth * smooth_loss
+
+        # ---------- Backward & Update ----------
+        loss.backward()
+        optimizer.step()
+
+        # ---------- Logging ----------
+        if visualize and (step % 50 == 0 or step == steps - 1):
+            print(f"Step {step:03d}: "
+                  f"loss={loss.item():.6f}, "
+                  f"pos={pos_loss.item():.4f}, "
+                  f"smooth={smooth_loss.item():.4f}, ")
+
+    return q_traj.detach()
+
+
 
 if __name__ == "__main__":
-    batch_size = 256
+    batch_size = 1
     pos_batch, info_batch = randomize_circles_batch(paper_pos, paper_size, batch_size=batch_size, num_points=25)
 
     # ======================== Test Visualization ============================
-    xarm_sim.goto_given_conf(jnt_values=xarm_sim.rand_conf())
-    xarm_sim.gen_meshmodel().attach_to(base)
-    visualize_pos_batch(pos_batch)
-    base.run()
+    # xarm_sim.goto_given_conf(jnt_values=xarm_sim.rand_conf())
+    # xarm_sim.gen_meshmodel().attach_to(base)
+    # visualize_pos_batch(pos_batch)
+    # base.run()
     
+    # ======================== Optimization Test ============================
+    pos_target_batch = pos_batch[0].to(xarm_gpu.device)
+
+    # 优化得到轨迹
+    q_traj = optimize_trajectory(
+        xarm_gpu,
+        pos_target_batch,
+        steps=5000,
+        lr=1e-2,
+        lambda_pos=50.0,
+        lambda_smooth=5.0,
+        visualize=True
+    )
+
+    # ======================= Visualization of Result ============================
+    visualize_pos_batch(pos_batch)
+    visulize_jnt_batch(q_traj)
+    base.run()
+
