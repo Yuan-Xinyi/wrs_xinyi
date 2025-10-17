@@ -1,6 +1,7 @@
 import numpy as np
 from scipy.optimize import minimize
 import matplotlib.pyplot as plt
+import torch
 from wrs import wd, rm, mcm
 import wrs.robot_sim.robots.franka_research_3.franka_research_3 as franka
 # import wrs.robot_sim.manipulators.xarm_lite6.xarm_lite6 as xarm6
@@ -244,18 +245,19 @@ def gpmp_smooth_trajectory(jnt_path, lengthscale=0.1, variance=1.0, noise=1e-6):
 
 if __name__ == "__main__":
     num_joints = robot.n_dof
-    num_points = 100
+    num_points = 50
+    radius = 0.12
 
     # === 生成圆轨迹 ===
     paper_surface_z = paper_pos[2] + paper_size[2]/2
-    circle_center = np.array([0.35, 0.0, paper_surface_z + 0.01])
+    circle_center = np.array([0.3, 0.0, paper_surface_z + 0.01])
     mgm.gen_sphere(radius=0.005, pos=circle_center, rgb=[0,1,0], alpha=1).attach_to(base)
     # visualize_rotation_cone(base, apex=circle_center,
     #                         a_axis=np.array([0,0,-1]),   # 垂直于xy平面
     #                         alpha_max_rad=np.deg2rad(30),
     #                         height=0.15)
     # base.run()
-    raw_jnt_path, pos_list = generate_circle_path(radius=0.23,
+    raw_jnt_path, pos_list = generate_circle_path(radius=0.12,
                                                   robot=robot,
                                                   table=table,
                                                   paper=paper,
@@ -268,5 +270,18 @@ if __name__ == "__main__":
     import helper_functions as helper
     import utils
     jnt_path = gpmp_smooth_trajectory(np.array(raw_jnt_path), lengthscale=0.2, variance=1.0, noise=1e-6)
+    
+    import pickle
+    data = {
+        "jnt": torch.tensor(jnt_path, dtype=torch.float32, device=torch.device("cuda" if torch.cuda.is_available() else "cpu")),
+        "circle": torch.tensor(pos_list, dtype=torch.float32, device=torch.device("cuda" if torch.cuda.is_available() else "cpu")),
+        "circle_info": {"center": torch.tensor(circle_center, dtype=torch.float32, device=torch.device("cuda" if torch.cuda.is_available() else "cpu")), 
+                        "radius": torch.tensor(radius, dtype=torch.float32, device=torch.device("cuda" if torch.cuda.is_available() else "cpu"))}
+    }
+    with open("0000_test_programs/surgery_diff/CleanDiffuser/Drawing_neuro/circle_data.pkl", "wb") as f:
+        pickle.dump(data, f)
+
     utils.plot_joint_and_workspace(robot, raw_jnt_path, jnt_path, labels=["Raw Path", "Smoothed Path"])
     helper.visualize_anime_path(base, robot, jnt_path)
+
+

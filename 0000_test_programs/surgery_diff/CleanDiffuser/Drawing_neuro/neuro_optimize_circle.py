@@ -9,6 +9,7 @@ import rotation_cone_constraint as cone_constraint
 
 '''global variables'''
 import time
+import pickle
 from scipy.optimize import minimize
 import numpy as np
 import matplotlib.pyplot as plt
@@ -33,8 +34,8 @@ mgm.gen_frame().attach_to(base)
 # xarm_sim.gen_meshmodel().attach_to(base)
 
 '''table'''
-table_size = np.array([0.9, 0.9, 0.05]) 
-table_pos  = np.array([0.37, 0, -0.025])
+table_size = np.array([1.5, 1.5, 0.05]) 
+table_pos  = np.array([0.6, 0, -0.025])
 
 table = mcm.gen_box(xyz_lengths=table_size,
                     pos=table_pos,
@@ -43,7 +44,7 @@ table = mcm.gen_box(xyz_lengths=table_size,
 table.attach_to(base)
 
 '''paper'''
-paper_size = np.array([0.5, 0.5, 0.002])
+paper_size = np.array([1.0, 1.0, 0.002])
 paper_pos = table_pos.copy()
 paper_pos[2] = table_pos[2] + table_size[2]/2 + paper_size[2]/2
 paper = mcm.gen_box(xyz_lengths=paper_size,
@@ -143,9 +144,7 @@ def randomize_circles_batch(paper_pos, paper_size, batch_size=16, num_points=50,
 
     info = {
         'center': centers,
-        'radius': radii,
-        'normal': torch.tensor([0, 0, 1], device=device).repeat(batch_size, 1),
-        'plane_z': torch.full((batch_size,), z, device=device)
+        'radius': radii
     }
 
     return pos_tensor, info
@@ -216,16 +215,34 @@ def optimize_trajectory(
 
 
 if __name__ == "__main__":
+    # ======================== Configuration ==============================
     batch_size = 1
-    pos_batch, info_batch = randomize_circles_batch(paper_pos, paper_size, batch_size=batch_size, num_points=25)
 
-    # ======================== Test Visualization ============================
+
+    # ======================== Test Visualization ==============================
     # xarm_sim.goto_given_conf(jnt_values=xarm_sim.rand_conf())
     # xarm_sim.gen_meshmodel().attach_to(base)
     # visualize_pos_batch(pos_batch)
     # base.run()
-    
-    # ======================== Optimization Test ============================
+
+
+    # ======================== Analytical Experience ============================
+    with open("0000_test_programs/surgery_diff/CleanDiffuser/Drawing_neuro/circle_data.pkl", "rb") as f:
+        data = pickle.load(f)
+    jnt_path = data["jnt"]
+    pos_path = data["circle"]
+    circle_info = data["circle_info"]
+    print("Loaded analytical circle data.")
+    num_points = jnt_path.shape[0]
+    assert pos_path.shape[0] == pos_path.shape[0]
+
+
+    # ======================== Randomized Circle Generation ==================
+    pos_batch, info_batch = randomize_circles_batch(paper_pos, paper_size, 
+                                                    batch_size=batch_size, num_points=num_points)
+
+
+    # ======================== Optimization Test ================================
     pos_target_batch = pos_batch[0].to(xarm_gpu.device)
 
     # 优化得到轨迹
