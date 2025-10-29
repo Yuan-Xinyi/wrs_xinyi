@@ -42,7 +42,7 @@ class DDIKSolver(object):
             os.makedirs(path)
         self._fname_tree = os.path.join(path, f"{identifier_str}_ikdd_tree.pkl")
         self._fname_jnt = os.path.join(path, f"{identifier_str}_jnt_data.pkl")
-        self._k_max = 1000  # maximum nearest neighbours examined by the backbone solver
+        self._k_max = 200  # maximum nearest neighbours examined by the backbone solver
         self._max_n_iter = 7  # max_n_iter of the backbone solver
         if backbone_solver == 'n':
             self._backbone_solver = ikn.NumIKSolver(self.jlc)

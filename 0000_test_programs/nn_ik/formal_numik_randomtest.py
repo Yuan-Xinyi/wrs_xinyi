@@ -33,7 +33,7 @@ best_sol_num_list = [1]
 # best_sol_num_list = np.arange(7, 21, 1).tolist() # [1,2,3,...,30]
 robot_list = ['cbt','cbtpro1300', 'ur3', 'yumi']
 # robot_list = ['cbt']
-json_file = "metrics_robot_result_0730.jsonl"
+json_file = "metrics_robot_result_1029.jsonl"
 
 if __name__ == '__main__':
 # while True:
