@@ -146,12 +146,14 @@ class SglArmRobotInterface(ri.RobotInterface):
            tgt_pos: np.ndarray,
            tgt_rotmat: np.ndarray,
            best_sol_num,
+           para,
            seed_jnt_values=None,
            option="single",
            toggle_dbg=False):
         return self._manipulator.ik(tgt_pos=tgt_pos,
                                     tgt_rotmat=tgt_rotmat,
                                     best_sol_num=best_sol_num,
+                                    para=para,
                                     seed_jnt_values=seed_jnt_values,
                                     option=option,
                                     toggle_dbg=toggle_dbg)

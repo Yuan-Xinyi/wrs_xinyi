@@ -73,6 +73,7 @@ class DDIKSolver(object):
                  tgt_pos,
                  tgt_rotmat,
                  best_sol_num,
+                 para,
                  seed_jnt_values=None,
                  max_n_iter=None,
                  toggle_dbg=False):
@@ -88,6 +89,7 @@ class DDIKSolver(object):
         return self.ik(tgt_pos=tgt_pos,
                        tgt_rotmat=tgt_rotmat,
                        best_sol_num=best_sol_num,
+                       para=para,
                        seed_jnt_values=seed_jnt_values,
                        max_n_iter=max_n_iter,
                        toggle_dbg=toggle_dbg)
@@ -148,6 +150,7 @@ class DDIKSolver(object):
            tgt_pos,
            tgt_rotmat,
            best_sol_num=1,
+           para=20,
            seed_jnt_values=None,
            max_n_iter=None,
            toggle_dbg=False):
@@ -172,7 +175,8 @@ class DDIKSolver(object):
             rel_pos, rel_rotmat = rm.rel_pose(self.jlc.pos, self.jlc.rotmat, tgt_pos, tgt_rotmat)
             rel_rotvec = self._rotmat_to_vec(rel_rotmat)
             query_point = np.concatenate((rel_pos, rel_rotvec))
-            dist_value_list, nn_indx_list = self.query_tree.query(query_point, k=self._k_max, workers=-1)
+            # dist_value_list, nn_indx_list = self.query_tree.query(query_point, k=self._k_max, workers=-1)
+            dist_value_list, nn_indx_list = self.query_tree.query(query_point, k=para, workers=-1)
             if type(nn_indx_list) is int:
                 nn_indx_list = [nn_indx_list]
             seed_jnt_array = self.jnt_data[nn_indx_list]
@@ -182,7 +186,8 @@ class DDIKSolver(object):
             adjust_array = np.einsum('ijk,ik->ij', seed_jinv_array, seed_posrot_diff_array)
             square_sums = np.sum((adjust_array) ** 2, axis=1)
             sorted_indices = np.argsort(square_sums)
-            seed_jnt_array_cad = seed_jnt_array[sorted_indices[:20]]
+            seed_jnt_array_cad = seed_jnt_array[sorted_indices[:10]]
+            # print(f"DDIKS: Trying {len(seed_jnt_array_cad)} candidate seeds...")
             for id, seed_jnt_values in enumerate(seed_jnt_array_cad):
                 if id > best_sol_num:
                     return None

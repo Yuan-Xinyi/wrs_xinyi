@@ -121,6 +121,7 @@ class CVRB1213(mi.ManipulatorInterface):
            tgt_pos,
            tgt_rotmat,
            best_sol_num,
+           para,
            seed_jnt_values=None,
            option="single",
            toggle_dbg=False):
@@ -140,7 +141,7 @@ class CVRB1213(mi.ManipulatorInterface):
         self.jlc._ik_solver._k_max = 200
         rel_rotmat = tgt_rotmat @ self.loc_tcp_rotmat.T
         rel_pos = tgt_pos - tgt_rotmat @ self.loc_tcp_pos
-        result = self.jlc.ik(tgt_pos=rel_pos, tgt_rotmat=rel_rotmat, seed_jnt_values=seed_jnt_values, best_sol_num = best_sol_num)
+        result = self.jlc.ik(tgt_pos=rel_pos, tgt_rotmat=rel_rotmat, seed_jnt_values=seed_jnt_values, best_sol_num=best_sol_num, para=para)
         '''ikgeo'''
         # result = ikgeo.ik(jlc=self.jlc, tgt_pos=rel_pos, tgt_rotmat=rel_rotmat, seed_jnt_values=None)
 

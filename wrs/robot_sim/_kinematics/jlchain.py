@@ -396,6 +396,7 @@ class JLChain(object):
            tgt_pos,
            tgt_rotmat,
            best_sol_num,
+           para,
            seed_jnt_values=None,
            toggle_dbg=False):
         """
@@ -409,6 +410,7 @@ class JLChain(object):
         jnt_values = self._ik_solver(tgt_pos=tgt_pos,
                                      tgt_rotmat=tgt_rotmat,
                                      best_sol_num=best_sol_num,
+                                     para=para,
                                      seed_jnt_values=seed_jnt_values,
                                      toggle_dbg=toggle_dbg)
         return jnt_values

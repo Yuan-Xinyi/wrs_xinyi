@@ -112,6 +112,7 @@ class DDIKSolver(object):
                  tgt_pos,
                  tgt_rotmat,
                  best_sol_num,
+                 para,
                  seed_jnt_values=None,
                  max_n_iter=None,
                  toggle_dbg=False):
@@ -127,6 +128,7 @@ class DDIKSolver(object):
         return self.ik(tgt_pos=tgt_pos,
                        tgt_rotmat=tgt_rotmat,
                        best_sol_num=best_sol_num,
+                       para=para,
                        seed_jnt_values=seed_jnt_values,
                        max_n_iter=max_n_iter,
                        toggle_dbg=toggle_dbg)
