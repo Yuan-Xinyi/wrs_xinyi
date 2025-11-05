@@ -46,7 +46,7 @@ class DDIKSolver(object):
         self._max_n_iter = 7  # max_n_iter of the backbone solver
         if backbone_solver == 'n':
             self._backbone_solver = ikn.NumIKSolver(self.jlc)
-            print("Using NumIKSolver as the backbone solver.")
+            # print("Using NumIKSolver as the backbone solver.")
         elif backbone_solver == 'o':
             self._backbone_solver = iko.OptIKSolver(self.jlc)
             print("Using OptIKSolver as the backbone solver.")
