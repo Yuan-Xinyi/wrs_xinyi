@@ -1,0 +1,82 @@
+[
+    {
+        "n": 12000,
+        "d": 6,
+        "mean_nn": 0.28,
+        "std_nn": 0.12,
+        "cv_nn": 0.42,
+        "file": "rrt_n12000_d6_r0.npy"
+    },
+    {
+        "n": 151200,
+        "d": 6,
+        "mean_nn": 0.18,
+        "std_nn": 0.1,
+        "cv_nn": 0.54,
+        "file": "rrt_n151200_d6_r0.npy"
+    },
+    {
+        "n": 16384,
+        "d": 7,
+        "mean_nn": 0.33,
+        "std_nn": 0.02,
+        "cv_nn": 0.06,
+        "file": "rrt_n16384_d7_r0.npy"
+    },
+    {
+        "n": 166320,
+        "d": 6,
+        "mean_nn": 0.18,
+        "std_nn": 0.09,
+        "cv_nn": 0.54,
+        "file": "rrt_n166320_d6_r0.npy"
+    },
+    {
+        "n": 25200,
+        "d": 6,
+        "mean_nn": 0.23,
+        "std_nn": 0.13,
+        "cv_nn": 0.54,
+        "file": "rrt_n25200_d6_r0.npy"
+    },
+    {
+        "n": 259200,
+        "d": 6,
+        "mean_nn": 0.16,
+        "std_nn": 0.09,
+        "cv_nn": 0.53,
+        "file": "rrt_n259200_d6_r0.npy"
+    },
+    {
+        "n": 40320,
+        "d": 6,
+        "mean_nn": 0.21,
+        "std_nn": 0.12,
+        "cv_nn": 0.56,
+        "file": "rrt_n40320_d6_r0.npy"
+    },
+    {
+        "n": 4096,
+        "d": 6,
+        "mean_nn": 0.32,
+        "std_nn": 0.07,
+        "cv_nn": 0.21,
+        "file": "rrt_n4096_d6_r0.npy"
+    },
+    {
+        "n": 5120,
+        "d": 6,
+        "mean_nn": 0.32,
+        "std_nn": 0.08,
+        "cv_nn": 0.25,
+        "file": "rrt_n5120_d6_r0.npy"
+    },
+    {
+        "n": 60480,
+        "d": 6,
+        "mean_nn": 0.2,
+        "std_nn": 0.11,
+        "cv_nn": 0.56,
+        "file": "rrt_n60480_d6_r0.npy"
+    }
+]
