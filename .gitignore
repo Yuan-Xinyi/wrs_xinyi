@@ -9,3 +9,4 @@
 **/logs/
 *.zarr
 *.npy
+**/artifacts/
