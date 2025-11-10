@@ -354,129 +354,96 @@ def gen_expand_shift_candidates(
     info = {'center': centers, 'radius': radii}
     return pos_batch, info
 
-def gen_expand_multi_rings(
-    c0, r0,
-    paper_pos, paper_size,
-    num_points,
-    num_expand=5,       # 要画多少圈
-    dr=0.03,            # 每圈半径增量
-    r_min_abs=0.08,     # 最小允许半径
-    margin=0.06,
-    device=None
-):
-    """
-    生成多圈同心圆 (半径依次增加)
-    返回:
-        pos_batch: (B,N,3)
-        info: {'center': (B,3), 'radius': (B,)}
-    """
-    device = device or torch.device("cuda" if torch.cuda.is_available() else "cpu")
-
-    px, py, pz = paper_pos
-    lx, ly, lz = paper_size
-    z = pz + lz/2
-
-    # 边界约束
-    x_min, x_max = (px - lx/2) + margin, (px + lx/2) - margin
-    y_min, y_max = (py - ly/2) + margin, (py + ly/2) - margin
-    left   = c0[0] - x_min
-    right  = x_max - c0[0]
-    bottom = c0[1] - y_min
-    top    = y_max - c0[1]
-    max_r_boundary = min(left, right, bottom, top)
-
-    # 生成所有半径
-    radii = []
-    for i in range(num_expand):
-        new_r = r0 + dr * (i + 1)
-        if new_r >= r_min_abs and new_r <= max_r_boundary:
-            radii.append(new_r)
-    if len(radii) == 0:
-        print("No valid expanded rings (too large or too small).")
-        return (torch.empty(0, num_points, 3, device=device),
-                {'center': torch.empty(0, 3, device=device), 'radius': torch.empty(0, device=device)})
-
-    B = len(radii)
-    radii_t = torch.tensor(radii, device=device)
-
-    # 每个半径生成对应的圆点
-    theta = torch.linspace(0, 2*torch.pi, steps=num_points+1, device=device)[:-1]
-    ct, st = torch.cos(theta), torch.sin(theta)
-
-    pos_batch = torch.stack([
-        c0[0] + radii_t[:, None] * ct[None, :],
-        c0[1] + radii_t[:, None] * st[None, :],
-        torch.full((B, num_points), z, device=device)
-    ], dim=-1)  # (B,N,3)
-
-    info = {'center': torch.stack([c0.to(device)] * B), 'radius': radii_t}
-    return pos_batch, info
 
 
-
-# ======================== 主流程（扩半径 + 小漂移 + 并行优化） ============================
+# ======================== 主流程（递进扩环 + 优化） ============================
 if __name__ == "__main__":
-    # 读示教
     with open("0000_test_programs/surgery_diff/CleanDiffuser/Drawing_neuro/circle_data.pkl", "rb") as f:
         data = pickle.load(f)
-    q_demo = data["jnt"]     # (N,6)
-    pos_demo = data["circle"]  # (N,3)
+    q_demo = data["jnt"]
+    pos_demo = data["circle"]
     circle_info = data["circle_info"]
-    assert pos_demo.shape[0] == q_demo.shape[0]
+    c0 = torch.as_tensor(circle_info["center"], dtype=torch.float32, device=device)
+    r0 = float(circle_info["radius"])
     N = pos_demo.shape[0]
 
-    c0 = circle_info["center"]
-    r0 = circle_info["radius"]
+    num_expand_per_round = 64     # 每轮生成多少圈
+    dr = 0.02                     # 每圈半径增量
+    topk_keep = 32                 # 每轮保留多少条最大的圆
+    max_rounds = 6               # 迭代轮数上限
 
+    current_centers = [c0]
+    current_radii = [r0]
 
-    pos_batch, info_batch = gen_expand_shift_candidates(
-        c0=c0, r0=r0,
-        paper_pos=paper_pos, paper_size=paper_size,
-        num_points=N,
-        d_center=0.03,    # 小步漂移 3cm
-        dr=0.05,          # 半径增加 3cm    
-        num_dirs=8,       # 8 个方向
-        r_min_abs=0.08,   # 最小半径
-        margin=0.06,
-        device=device
-    )
+    for round_idx in range(max_rounds):
+        print(f"\n=== Round {round_idx+1}/{max_rounds} ===")
 
-    # pos_batch, info_batch = gen_expand_multi_rings(
-    #     c0=c0, r0=r0,
-    #     paper_pos=paper_pos, paper_size=paper_size,
-    #     num_points=N,
-    #     num_expand=64, 
-    #     dr=0.01,        # 每圈半径加3cm
-    #     r_min_abs=0.08,
-    #     margin=0.06,
-    #     device=device
-    # )
+        # ------- 1. 生成扩展候选 -------
+        all_pos = []
+        all_info = {'center': [], 'radius': []}
 
+        for ci, ri in zip(current_centers, current_radii):
+            pos_batch, info_batch = gen_expand_shift_candidates(
+                c0=ci, r0=ri,
+                paper_pos=paper_pos, paper_size=paper_size,
+                num_points=N,
+                d_center=0.03,      # 圆心漂移步长（每轮偏移 3cm，可自行调）
+                dr=dr,              # 半径增加 dr
+                num_dirs=num_expand_per_round,  # 每轮生成 num_expand_per_round 个漂移方向
+                r_min_abs=0.08,
+                margin=0.06,
+                device=device
+            )
+            if pos_batch.shape[0] > 0:
+                all_pos.append(pos_batch)
+                all_info['center'].append(info_batch['center'])
+                all_info['radius'].append(info_batch['radius'])
 
-    if pos_batch.shape[0] == 0:
-        print("No valid candidates under current dr/d_center; try smaller values.")
-    else:
-        print(f"Generated {pos_batch.shape[0]} valid candidates.")
+        if len(all_pos) == 0:
+            print("No valid new rings this round, stop iteration.")
+            break
 
-        # 批量相位对齐（把示教旋转到最接近每条圆）
+        pos_batch = torch.cat(all_pos, dim=0)
+        all_info['center'] = torch.cat(all_info['center'], dim=0)
+        all_info['radius'] = torch.cat(all_info['radius'], dim=0)
+        print(f"Generated {pos_batch.shape[0]} total candidate rings.")
+
+        # ------- 2. 相位对齐 + 优化 -------
         q_warm_batch, best_shift = batch_phase_align(pos_demo, q_demo, pos_batch)
-        print("Best phase shifts:", best_shift.tolist())
-
         q_batch = optimize_trajectories_batch(
             xarm_gpu,
             pos_batch=pos_batch,
             q_warm_batch=q_warm_batch,
-            steps=1200,
+            steps=800,
             lr=1e-2,
-            lambda_pos=120.0,
+            lambda_pos=100.0,
             lambda_smooth=2.0,
             lambda_cone=1.0,
             cone_max_deg=30.0,
             log_every=100
-        )  # (B,N,6)
+        )
 
-        # 可视化
-        visualize_pos_batch(pos_batch)
-        visualize_jnt_traj_video(xarm_sim, q_batch)
-        base.run()
+        # ------- 3. 选出半径最大的 top-k -------
+        radii = all_info['radius']
+        topk = min(topk_keep, len(radii))
+        top_idx = torch.topk(radii, k=topk).indices
+
+        # 可选：如果想看半径选择结果
+        print(f"Selected top-{topk} radii:", radii[top_idx].cpu().tolist())
+
+        # ------- 4. 更新当前圆，用于下一轮扩展 -------
+        current_centers = all_info['center'][top_idx]
+        current_radii = radii[top_idx]
+
+        # ------- 5. 可视化当前轮 -------
+        # visualize_pos_batch(pos_batch[top_idx])
+        # visualize_jnt_traj_video(xarm_sim, q_batch[top_idx])
+
+        # 判断是否超出画布
+        if (current_radii.max() + dr) > 0.5:  # 或者按边界条件终止
+            print("Reached paper boundary, stopping.")
+            break
+    visualize_pos_batch(pos_batch[top_idx])
+    visualize_jnt_traj_video(xarm_sim, q_batch[top_idx])
+    base.run()
 
