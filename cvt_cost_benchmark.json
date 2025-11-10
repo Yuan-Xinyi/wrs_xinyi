@@ -1,0 +1,44 @@
+[
+    {
+        "method": "rrt",
+        "n": 48000,
+        "d": 7,
+        "repeats": 5,
+        "time_mean_s": 5053.29,
+        "time_std_s": 387.26,
+        "peakRAM_mean_mb": 4903.94,
+        "peakRAM_std_mb": 876.84,
+        "file_npy_mean_mb": 1.28,
+        "file_npy_std_mb": 0.0,
+        "file_npz_mean_mb": 1.19,
+        "file_npz_std_mb": 0.0
+    },
+    {
+        "method": "rrt",
+        "n": 100800,
+        "d": 7,
+        "repeats": 5,
+        "time_mean_s": 13677.34,
+        "time_std_s": 1708.27,
+        "peakRAM_mean_mb": 9205.47,
+        "peakRAM_std_mb": 1401.25,
+        "file_npy_mean_mb": 2.69,
+        "file_npy_std_mb": 0.0,
+        "file_npz_mean_mb": 2.5,
+        "file_npz_std_mb": 0.0
+    },
+    {
+        "method": "rrt",
+        "n": 201600,
+        "d": 7,
+        "repeats": 5,
+        "time_mean_s": 29741.25,
+        "time_std_s": 3242.58,
+        "peakRAM_mean_mb": 16047.64,
+        "peakRAM_std_mb": 2311.75,
+        "file_npy_mean_mb": 5.38,
+        "file_npy_std_mb": 0.0,
+        "file_npz_mean_mb": 4.99,
+        "file_npz_std_mb": 0.0
+    }
+]

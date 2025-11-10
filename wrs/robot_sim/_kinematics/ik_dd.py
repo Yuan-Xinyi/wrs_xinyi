@@ -24,6 +24,16 @@ from sklearn.linear_model import RANSACRegressor
 from scipy.spatial.distance import cdist
 from sklearn.cluster import MeanShift, estimate_bandwidth
 
+def clamp_tgt_err(f2t_pos_err, f2t_rot_err, f2t_err_vec):
+    clamp_pos_err = .1
+    clamp_rot_err = np.pi / 10.0
+    clamped_vec = np.copy(f2t_err_vec)
+    if f2t_pos_err >= clamp_pos_err:
+        clamped_vec[:3] = clamp_pos_err * f2t_err_vec[:3] / f2t_pos_err
+    if f2t_rot_err >= clamp_rot_err:
+        clamped_vec[3:6] = clamp_rot_err * f2t_err_vec[3:6] / f2t_rot_err
+    return clamped_vec
+
 class DDIKSolver(object):
     def __init__(self, jlc, path=None, identifier_str='test', backbone_solver='n', rebuild=False):
         """
@@ -172,17 +182,63 @@ class DDIKSolver(object):
             rel_pos, rel_rotmat = rm.rel_pose(self.jlc.pos, self.jlc.rotmat, tgt_pos, tgt_rotmat)
             rel_rotvec = self._rotmat_to_vec(rel_rotmat)
             query_point = np.concatenate((rel_pos, rel_rotvec))
-            dist_value_list, nn_indx_list = self.query_tree.query(query_point, k=self._k_max, workers=-1)
+            
+            method = 'm2'  # 'm1', 'm2'
+            if method == 'm1':
+                dist_value_list, nn_indx_list = self.query_tree.query(query_point, k=20, workers=-1)
+            else:
+                dist_value_list, nn_indx_list = self.query_tree.query(query_point, k=self._k_max, workers=-1)
+            
             if type(nn_indx_list) is int:
                 nn_indx_list = [nn_indx_list]
             seed_jnt_array = self.jnt_data[nn_indx_list]
-            seed_tcp_array = self.tcp_data[nn_indx_list]
-            seed_jinv_array = self.jinv_data[nn_indx_list]
-            seed_posrot_diff_array = query_point - seed_tcp_array
-            adjust_array = np.einsum('ijk,ik->ij', seed_jinv_array, seed_posrot_diff_array)
-            square_sums = np.sum((adjust_array) ** 2, axis=1)
-            sorted_indices = np.argsort(square_sums)
-            seed_jnt_array_cad = seed_jnt_array[sorted_indices[:20]]
+
+            if method == 'm1':
+                jnt_min, jnt_max = self.jlc.jnt_ranges[:, 0], self.jlc.jnt_ranges[:, 1]
+                dist_to_limits = np.minimum(seed_jnt_array - jnt_min, jnt_max - seed_jnt_array)
+                dist_norm = np.linalg.norm(dist_to_limits, axis=1)
+                sorted_cad_indices = np.argsort(-dist_norm)
+                seed_jnt_array_cad = seed_jnt_array[sorted_cad_indices]
+            else:
+                seed_tcp_array = self.tcp_data[nn_indx_list]
+                seed_jinv_array = self.jinv_data[nn_indx_list]
+                seed_posrot_diff_array = query_point - seed_tcp_array
+                adjust_array = np.einsum('ijk,ik->ij', seed_jinv_array, seed_posrot_diff_array)
+                square_sums = np.sum((adjust_array) ** 2, axis=1)
+                sorted_indices = np.argsort(square_sums)
+                seed_jnt_array_cad = seed_jnt_array[sorted_indices[:20]]
+            
+            if method == 'm4':
+                '''calculate the next joint values for the remaining seeds'''
+                delta_q_list = []
+                for cad_id, jnt in enumerate(seed_jnt_array_cad):
+                    pos, rotmat, j_mat = self.jlc.fk(jnt_values=jnt, toggle_jacobian=True)
+                    f2t_pos_err, f2t_rot_err, f2t_err_vec = rm.diff_between_poses(src_pos=pos,
+                                                                                src_rotmat=rotmat,
+                                                                                tgt_pos=tgt_pos,
+                                                                                tgt_rotmat=tgt_rotmat)
+                    clamped_err_vec = clamp_tgt_err(f2t_pos_err, f2t_rot_err, f2t_err_vec)
+                    delta_jnt_values = np.linalg.lstsq(j_mat, clamped_err_vec, rcond=1e-4)[0]
+                    delta_q_list.append(delta_jnt_values)
+                delta_jnt_values_array = np.array(delta_q_list)
+                next_jnt_values_array = seed_jnt_array_cad + delta_jnt_values_array
+
+                jnt_min, jnt_max = self.jlc.jnt_ranges[:, 0], self.jlc.jnt_ranges[:, 1]
+                dist_to_limits = np.minimum(next_jnt_values_array - jnt_min, jnt_max - next_jnt_values_array)
+                dist_norm = np.linalg.norm(dist_to_limits, axis=1)
+                sorted_cad_indices = np.argsort(-dist_norm)
+                seed_jnt_array_cad = seed_jnt_array_cad[sorted_cad_indices]
+
+            if method == 'm3':
+                '''calculate the next joint values for the remaining seeds by estimation'''
+                delta_jnt_values_array = adjust_array[sorted_indices[:20]]
+                next_jnt_values_array = seed_jnt_array_cad + delta_jnt_values_array
+                jnt_min, jnt_max = self.jlc.jnt_ranges[:, 0], self.jlc.jnt_ranges[:, 1]
+                dist_to_limits = np.minimum(next_jnt_values_array - jnt_min, jnt_max - next_jnt_values_array)
+                dist_norm = np.linalg.norm(dist_to_limits, axis=1)
+                sorted_cad_indices = np.argsort(-dist_norm)
+                seed_jnt_array_cad = seed_jnt_array_cad[sorted_cad_indices]
+
             for id, seed_jnt_values in enumerate(seed_jnt_array_cad):
                 if id > best_sol_num:
                     return None
@@ -195,12 +251,15 @@ class DDIKSolver(object):
                                                seed_jnt_values=seed_jnt_values,
                                                max_n_iter=max_n_iter,
                                                toggle_dbg=toggle_dbg)
-                if result is None:
-                    # nid = id+1
-                    # distances = np.linalg.norm(nid*seed_jnt_array_cad[nid:] - np.sum(seed_jnt_array_cad[:nid], axis=0), axis=1)
-                    # sorted_cad_indices = np.argsort(distances)
-                    # seed_jnt_array_cad[nid:] = seed_jnt_array_cad[nid:][sorted_cad_indices]
-                    # # seed_jnt_array_cad[nid] = seed_jnt_array_cad[5]
+                if result is None:                    
+                    if method == 'm2':
+                        nid = id + 1
+                        remaining_seeds = seed_jnt_array_cad[nid:]
+                        jnt_min, jnt_max = self.jlc.jnt_ranges[:, 0], self.jlc.jnt_ranges[:, 1]
+                        dist_to_limits = np.minimum(remaining_seeds - jnt_min, jnt_max - remaining_seeds)
+                        dist_norm = np.linalg.norm(dist_to_limits, axis=1)
+                        sorted_cad_indices = np.argsort(-dist_norm)
+                        seed_jnt_array_cad[nid:] = remaining_seeds[sorted_cad_indices]
                     continue
                 else:
                     return result
