@@ -60,6 +60,27 @@ class XArmLite6WG2(sari.SglArmRobotInterface):
 if __name__ == '__main__':
     from wrs import wd, mgm, rm
 
+    base = wd.World(cam_pos=[2, 0, 1], lookat_pos=[0, 0, 0])
+    mgm.gen_frame().attach_to(base)
+    robot = XArmLite6WG2(pos=np.array([0, 0, 0]), enable_cc=True)
+
+    jnt = [-1.68272353, 0.23265229, 0.55777409, -1.07847632, 0.52855499, 0.88992335]
+    pos, rotmat = robot.fk(jnt)
+    print("FK pos:", pos)
+    print("FK rotmat:\n", rotmat)
+    mgm.gen_frame(pos=pos, rotmat=rotmat).attach_to(base)
+    res = robot.ik(tgt_pos=pos, tgt_rotmat=rotmat)
+    print("IK res:", res)
+    if res is not None:
+        robot.goto_given_conf(res)
+    else:
+        print("IK failed")
+    robot.gen_meshmodel().attach_to(base)
+    base.run()
+
+
+    from wrs import wd, mgm, rm
+
     base = wd.World(cam_pos=[2, 0, 1.5], lookat_pos=[0, 0, .2])
     mgm.gen_frame().attach_to(base)
     robot = XArmLite6WG2(pos=np.array([0, 0, 0]), enable_cc=True)
