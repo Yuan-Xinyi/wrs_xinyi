@@ -1,4 +1,0 @@
-{"iter": 1, "radius": 0.2, "success_ratio": 0.0, "loss": 0.0, "objective": -2.0, "margin": -0.9, "ik_all": 80, "ik_ok": 0, "time_since_start": 1.6835079193115234}
-{"iter": 2, "radius": 0.2000000149011612, "success_ratio": 0.0, "loss": 0.0, "objective": -2.000000149011612, "margin": -0.9, "ik_all": 80, "ik_ok": 0, "time_since_start": 2.3461575508117676}
-{"iter": 3, "radius": 0.4, "success_ratio": 0.0, "loss": 0.0, "objective": -4.0, "margin": -0.9, "ik_all": 80, "ik_ok": 0, "time_since_start": 4.992892265319824}
-{"iter": 4, "radius": 0.39999998509883883, "success_ratio": 0.0, "loss": 0.0, "objective": -3.999999850988388, "margin": -0.9, "ik_all": 80, "ik_ok": 0, "time_since_start": 6.316638708114624}
