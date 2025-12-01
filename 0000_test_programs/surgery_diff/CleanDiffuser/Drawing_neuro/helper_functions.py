@@ -244,7 +244,7 @@ def visualize_static_path(base, robot, path):
         robot.goto_given_conf(jnt)
         pos, rot = robot.fk(jnt)
         mcm.mgm.gen_frame(pos=pos, rotmat=rot).attach_to(base)
-        robot.gen_meshmodel(alpha=.2).attach_to(base)
+        robot.gen_meshmodel(alpha=.1).attach_to(base)
     base.run()
 
 def workspace_plot(robot, jnt_path):
