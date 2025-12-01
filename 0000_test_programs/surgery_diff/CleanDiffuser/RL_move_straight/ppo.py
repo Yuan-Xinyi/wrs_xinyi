@@ -133,10 +133,12 @@ class Robots:
     def __init__(self, batch_size):
         self.robot = xarm6_gpu.XArmLite6GPU()
         self.jnts = self.robot.robot.rand_conf(batch_size=batch_size)
+        self.tcps = None
     
     def fk(self):
         pos, rotmat = self.robot.robot.fk_batch(jnt_values=self.jnts)
-        return pos, rotmat
+        self.tcps['pos'] = pos
+        self.tcps['rot'] = rotmat
 
 if __name__ == "__main__":
     args = tyro.cli(Args)
