@@ -3,6 +3,7 @@ import os
 import random
 import time
 from dataclasses import dataclass
+from typing import Any
 
 import numpy as np
 import torch
@@ -11,6 +12,7 @@ import torch.optim as optim
 import tyro
 from torch.distributions.categorical import Categorical
 from torch.utils.tensorboard import SummaryWriter
+from torch.distributions import Normal # For continuous action space (Gaussian Policy)
 
 from wrs import wd, rm, mcm
 import wrs.neuro.xarm_lite6_neuro as xarm6_gpu
@@ -20,6 +22,7 @@ import wrs.modeling.geometric_model as mgm
 
 @dataclass
 class Args:
+    # ... (Args class remains unchanged) ...
     exp_name: str = os.path.basename(__file__)[: -len(".py")]
     """the name of this experiment"""
     seed: int = 1
@@ -44,7 +47,7 @@ class Args:
     """total timesteps of the experiments"""
     learning_rate: float = 2.5e-4
     """the learning rate of the optimizer"""
-    num_envs: int = 4
+    num_envs: int = 1024
     """the number of parallel game environments"""
     num_steps: int = 128
     """the number of steps to run in each environment per policy rollout"""
@@ -82,19 +85,6 @@ class Args:
     """the number of iterations (computed in runtime)"""
 
 
-def make_env(env_id, idx, capture_video, run_name):
-    def thunk():
-        if capture_video and idx == 0:
-            env = gym.make(env_id, render_mode="rgb_array")
-            env = gym.wrappers.RecordVideo(env, f"videos/{run_name}")
-        else:
-            env = gym.make(env_id)
-        env = gym.wrappers.RecordEpisodeStatistics(env)
-        return env
-
-    return thunk
-
-
 def layer_init(layer, std=np.sqrt(2), bias_const=0.0):
     torch.nn.init.orthogonal_(layer.weight, std)
     torch.nn.init.constant_(layer.bias, bias_const)
@@ -102,46 +92,313 @@ def layer_init(layer, std=np.sqrt(2), bias_const=0.0):
 
 
 class Agent(nn.Module):
+    """
+    Adapted Agent class for Continuous Action Space (Delta Q, Gaussian Policy).
+    Observation space: 15D (qpos(6) + tcp_pos(3) + goal_pos(3) + tcp_to_goal(3))
+    Action space: 6D (Delta Q)
+    """
     def __init__(self, envs):
         super().__init__()
+        # Use single_observation_space and single_action_space from the custom env
+        obs_dim = envs.single_observation_space.shape[0]
+        action_dim = envs.single_action_space.shape[0] # Should be 6
+        
+        # Value Network (Critic)
         self.critic = nn.Sequential(
-            layer_init(nn.Linear(np.array(envs.single_observation_space.shape).prod(), 64)),
+            layer_init(nn.Linear(obs_dim, 64)),
             nn.Tanh(),
             layer_init(nn.Linear(64, 64)),
             nn.Tanh(),
             layer_init(nn.Linear(64, 1), std=1.0),
         )
-        self.actor = nn.Sequential(
-            layer_init(nn.Linear(np.array(envs.single_observation_space.shape).prod(), 64)),
+        
+        # Policy Mean Network (Actor)
+        self.actor_mean = nn.Sequential(
+            layer_init(nn.Linear(obs_dim, 64)),
             nn.Tanh(),
             layer_init(nn.Linear(64, 64)),
             nn.Tanh(),
-            layer_init(nn.Linear(64, envs.single_action_space.n), std=0.01),
+            layer_init(nn.Linear(64, action_dim), std=0.01),
         )
+        # Log standard deviation parameter (learned)
+        self.actor_logstd = nn.Parameter(torch.zeros(1, action_dim))
 
     def get_value(self, x):
         return self.critic(x)
 
     def get_action_and_value(self, x, action=None):
-        logits = self.actor(x)
-        probs = Categorical(logits=logits)
+        # Continuous action space logic (Gaussian)
+        action_mean = self.actor_mean(x)
+        action_logstd = self.actor_logstd.expand_as(action_mean)
+        action_std = torch.exp(action_logstd)
+        
+        probs = Normal(action_mean, action_std)
+        
         if action is None:
-            action = probs.sample()
-        return action, probs.log_prob(action), probs.entropy(), self.critic(x)
+            action = probs.sample() # Sample Delta Q
+        
+        # Calculate log_prob: sum across action dimension (6D)
+        log_prob = probs.log_prob(action).sum(1)
+        
+        # Calculate entropy: sum across action dimension (6D)
+        entropy = probs.entropy().sum(1)
+        
+        return action, log_prob, entropy, self.critic(x)
+
 
 class Robots:
+    """
+    The original Robots class, now acts as a batched controller/simulator.
+    NOTE: The 'jnts' variable must be treated as the current batched joint positions.
+    We will manage this state in RobotsEnv.
+    """
     def __init__(self, batch_size):
         self.robot = xarm6_gpu.XArmLite6GPU()
-        self.jnts = self.robot.robot.rand_conf(batch_size=batch_size)
+        # Initialize jnts for the batch. This will be updated externally.
+        self.jnts = self.robot.robot.rand_conf_batch(batch_size=batch_size) 
         self.tcps = None
     
-    def fk(self):
-        pos, rotmat = self.robot.robot.fk_batch(jnt_values=self.jnts)
-        self.tcps['pos'] = pos
-        self.tcps['rot'] = rotmat
+    def fk(self, jnt_values_np: np.ndarray):
+        """
+        Modified FK function to take joint values as input and return pos/rotmat.
+        Assumes jnt_values_np is of shape (batch_size, 6).
+        """
+        pos, rotmat = self.robot.robot.fk_batch(jnt_values=jnt_values_np)
+        return pos, rotmat
+
+    # The original fk() logic is now redundant as we use fk(jnt_values_np)
+    # The original class is left untouched, but its usage is updated in RobotsEnv.
+
+# ----------------------------------------------------------------------
+# RobotsEnv: Custom Vector Environment Wrapper for Point-to-Goal Task
+# ----------------------------------------------------------------------
+
+class RobotsEnv:
+    """
+    Simulated vector environment class for XArm Lite6 point-to-goal task.
+    This mimics the gym.vector.AsyncVectorEnv interface.
+    """
+    def __init__(self, num_envs, device, batch_size):
+        self.num_envs = num_envs
+        self.device = device
+        
+        # Initialize the ORIGINAL Robots controller class
+        self.robot_controller = Robots(batch_size=num_envs)
+        
+        # State variables (Batched tensors on device)
+        # 6 joint positions
+        self.current_qpos = None 
+        # 6 joint velocities (used for static reward)
+        self.current_qvel = torch.zeros(num_envs, 6).to(device) 
+        self.goal_pos = None     # Target TCP position (3D)
+        self.tcp_pos = None      # Current TCP position (3D)
+        self.prev_tcp_pos = None # Previous TCP position (for progress reward)
+
+        # Define Observation and Action Space shapes
+        # Action: Delta Q (6DOF)
+        self._single_action_space = type('ActionSpace', (object,), {'shape': (6,), 'n': 6})() 
+        # Obs: qpos(6) + tcp_pos(3) + goal_pos(3) + tcp_to_goal(3) = 15
+        self._single_observation_space = type('ObsSpace', (object,), {'shape': (15,)})()
+        
+        # Task parameters
+        self.table_center = torch.tensor([0.6, 0.0, 0.05]).to(device) 
+        self.table_half_size = 0.5 # Define reachable area on the table
+        self.goal_thresh = 0.025
+        self.max_episode_steps = 50
+
+        # State flags
+        self.episode_steps = torch.zeros(num_envs).to(device)
+
+
+    @property
+    def single_observation_space(self):
+        return self._single_observation_space
+
+    @property
+    def single_action_space(self):
+        return self._single_action_space
+
+    def _generate_random_pos(self, center, half_size):
+        """Generates random [x, y] positions on the table and sets z above the table."""
+        xy = (torch.rand(self.num_envs, 2).to(self.device) * half_size * 2) - half_size
+        xy[:, 0] += center[0]
+        xy[:, 1] += center[1]
+        z = center[2] + 0.1 
+        pos = torch.cat([xy, torch.full((self.num_envs, 1), z).to(self.device)], dim=1)
+        return pos
+
+    def _get_obs(self):
+        """Constructs the observation vector."""
+        tcp_to_goal_pos = self.goal_pos - self.tcp_pos
+        
+        obs = torch.cat([
+            self.current_qpos, 
+            self.tcp_pos, 
+            self.goal_pos, 
+            tcp_to_goal_pos
+        ], dim=1)
+        return obs
+
+    def _update_tcp(self):
+        """Updates TCP position based on current_qpos using the original Robots class."""
+        # Use the extended fk method from the original Robots class
+        pos_np, _ = self.robot_controller.fk(self.current_qpos)
+        self.tcp_pos = torch.tensor(pos_np, dtype=torch.float32).to(self.device)
+
+
+    def reset(self, seed=None):
+        """Resets the environment and returns the initial observation."""
+        if seed is not None:
+            torch.manual_seed(seed)
+        
+        # 1. Initialize joint positions (qpos) randomly
+        qpos_np = self.robot_controller.robot.robot.rand_conf_batch(batch_size=self.num_envs)
+        self.current_qpos = torch.tensor(qpos_np, dtype=torch.float32).to(self.device)
+        self.current_qvel = torch.zeros_like(self.current_qpos).to(self.device)
+
+        # 2. Randomly initialize TCP Goal position
+        self.goal_pos = self._generate_random_pos(self.table_center, self.table_half_size)
+        
+        # 3. Calculate initial TCP position
+        self._update_tcp()
+        self.prev_tcp_pos = self.tcp_pos.clone() 
+
+        # Reset episode step counter
+        self.episode_steps = torch.zeros(self.num_envs).to(self.device)
+
+        return self._get_obs().cpu().numpy(), {"info": "reset"}
+    
+    def step(self, action: np.ndarray):
+        """
+        Applies action (delta_q) and advances the simulation/state.
+        action: numpy array of shape (num_envs, 6)
+        """
+        action_tensor = torch.tensor(action, dtype=torch.float32).to(self.device)
+        
+        # Save previous TCP pos before update
+        self.prev_tcp_pos = self.tcp_pos.clone() 
+        
+        # 1. Apply Delta Q action
+        dq_limit = 0.05 # Max change per step
+        action_tensor = torch.clamp(action_tensor, -dq_limit, dq_limit)
+        
+        new_qpos = self.current_qpos + action_tensor
+        
+        # 2. Update Q velocity and Q position
+        self.current_qvel = new_qpos - self.current_qpos 
+        self.current_qpos = new_qpos
+
+        # 3. Calculate new TCP position (Forward Kinematics)
+        self._update_tcp()
+
+        # 4. Check termination/truncation
+        self.episode_steps += 1
+        
+        # Task Termination: Goal Reached
+        tcp_to_goal_dist = torch.linalg.norm(self.goal_pos - self.tcp_pos, dim=1)
+        terminations = (tcp_to_goal_dist <= self.goal_thresh).float()
+        
+        # Truncation: Max steps reached
+        truncations = (self.episode_steps >= self.max_episode_steps).float()
+
+        done = torch.logical_or(terminations.bool(), truncations.bool()).float()
+
+        # 5. Compute Reward
+        reward = self._compute_reward(
+            tcp_pos=self.tcp_pos,
+            prev_tcp_pos=self.prev_tcp_pos, 
+            goal_pos=self.goal_pos,
+            is_done=terminations
+        )
+
+        # 6. Prepare next observation
+        next_obs = self._get_obs()
+        
+        # 7. Info structure (mimics gym step info)
+        infos = {"final_info": [None] * self.num_envs}
+        
+        # Handle environment reset after termination/truncation
+        for i in range(self.num_envs):
+            if done[i].item() == 1.0:
+                # Record episodic stats
+                infos["final_info"][i] = {
+                    "episode": {
+                        "r": reward[i].item(), 
+                        "l": self.episode_steps[i].item(),
+                    }
+                }
+                # Reset state variables for the done env
+                self._reset_single_env(i)
+                # Recalculate next_obs for the just-reset environment
+                next_obs[i] = self._get_obs()[i]
+
+        return next_obs.cpu().numpy(), reward.cpu().numpy(), terminations.bool().cpu().numpy(), truncations.bool().cpu().numpy(), infos
+    
+    def _reset_single_env(self, idx):
+        """Resets the state of a single environment."""
+        # 1. Reset qpos and qvel
+        self.current_qpos[idx] = torch.tensor(self.robot_controller.robot.robot.rand_conf_batch(batch_size=1), \
+                                              dtype=torch.float32).to(self.device)[0]
+        self.current_qvel[idx] = 0.0
+        
+        # 2. Reset Goal pos
+        self.goal_pos[idx] = self._generate_random_pos(self.table_center, self.table_half_size)[0]
+        
+        # 3. Recalculate initial TCP pos
+        self._update_tcp() # Update all TCPs based on current_qpos
+        self.prev_tcp_pos[idx] = self.tcp_pos[idx].clone()
+
+        # 4. Reset step counter
+        self.episode_steps[idx] = 0
+    
+    def _compute_reward(self, tcp_pos, prev_tcp_pos, goal_pos, is_done):
+        """
+        Custom Dense Reward for Point-to-Goal Task.
+        """
+        
+        # ----- 1. Approach: Shaped reward -----
+        dist_to_goal = torch.linalg.norm(goal_pos - tcp_pos, dim=1)
+        approach_reward = 2 * (1 - torch.tanh(5 * dist_to_goal))
+        reward = approach_reward
+        
+        # ----- 2. Distance Reduction Reward (Progress Reward) -----
+        dist_to_goal_prev = torch.linalg.norm(goal_pos - prev_tcp_pos, dim=1)
+        dist_reduction = dist_to_goal_prev - dist_to_goal
+        
+        dist_reduction_reward = torch.clamp(dist_reduction, min=0.0) * 10.0
+        reward += dist_reduction_reward
+        
+        # ----- 3. Forward Movement in Desired Direction -----
+        move = tcp_pos - prev_tcp_pos
+        dir_goal = (goal_pos - tcp_pos)
+        
+        dir_goal = dir_goal / (torch.norm(dir_goal, dim=1, keepdim=True) + 1e-6)
+
+        proj = torch.sum(move * dir_goal, dim=1)
+        
+        forward_reward = torch.clamp(proj, min=0.0)
+        reward += forward_reward * 20.0 
+
+        # ----- 4. Near Goal Bonus -----
+        close_bonus = (dist_to_goal < 0.05).float() * 3.0
+        reward += close_bonus
+
+        # ----- 5. Success Bonus (on termination) -----
+        reward[is_done.bool()] = 8.0 
+        
+        return reward.float()
+    
+    def close(self):
+        """Placeholder for closing resources."""
+        pass
+
+
+# --- 2. Main Training Loop Adaptation ---
 
 if __name__ == "__main__":
     args = tyro.cli(Args)
+    
+    # ... (Batch size calculation, run name, logging setup remains unchanged) ...
     args.batch_size = int(args.num_envs * args.num_steps)
     args.minibatch_size = int(args.batch_size // args.num_minibatches)
     args.num_iterations = args.total_timesteps // args.batch_size
@@ -172,27 +429,32 @@ if __name__ == "__main__":
 
     device = torch.device("cuda" if torch.cuda.is_available() and args.cuda else "cpu")
 
-    # env setup
+    # env setup (Visualization elements remain)
     base = wd.World(cam_pos=[2, 0, 1], lookat_pos=[0, 0, 0])
     mgm.gen_frame().attach_to(base)
 
-    table_size = np.array([1.5, 1.5, 0.05])
-    table_pos  = np.array([0.6, 0, -0.025])
-    table = mcm.gen_box(xyz_lengths=table_size, pos=table_pos, rgb=np.array([0.6, 0.4, 0.2]), alpha=1)
-    table.attach_to(base)
+    # table_size = np.array([1.5, 1.5, 0.05])
+    # table_pos  = np.array([0.6, 0, -0.025])
+    # table = mcm.gen_box(xyz_lengths=table_size, pos=table_pos, rgb=np.array([0.6, 0.4, 0.2]), alpha=1)
+    # table.attach_to(base)
 
-    paper_size = np.array([1.0, 1.0, 0.002])
-    paper_pos = table_pos.copy()
-    paper_pos[2] = table_pos[2] + table_size[2]/2 + paper_size[2]/2
-    paper = mcm.gen_box(xyz_lengths=paper_size, pos=paper_pos, rgb=np.array([1, 1, 1]), alpha=1)
-    paper.attach_to(base)
+    # paper_size = np.array([1.0, 1.0, 0.002])
+    # paper_pos = table_pos.copy()
+    # paper_pos[2] = table_pos[2] + table_size[2]/2 + paper_size[2]/2
+    # paper = mcm.gen_box(xyz_lengths=paper_size, pos=paper_pos, rgb=np.array([1, 1, 1]), alpha=1)
+    # paper.attach_to(base)
 
+    # --- ENVIRONMENT REPLACEMENT ---
+    envs = RobotsEnv(args.num_envs, device, args.batch_size) 
+    
+    # Agent initialization uses the custom environment's space shapes
     agent = Agent(envs).to(device)
     optimizer = optim.Adam(agent.parameters(), lr=args.learning_rate, eps=1e-5)
 
-    # ALGO Logic: Storage setup
+    # ALGO Logic: Storage setup (Adapt action tensor size)
     obs = torch.zeros((args.num_steps, args.num_envs) + envs.single_observation_space.shape).to(device)
-    actions = torch.zeros((args.num_steps, args.num_envs) + envs.single_action_space.shape).to(device)
+    # Action tensor shape adapted to (..., 6) for Delta Q
+    actions = torch.zeros((args.num_steps, args.num_envs) + envs.single_action_space.shape).to(device) 
     logprobs = torch.zeros((args.num_steps, args.num_envs)).to(device)
     rewards = torch.zeros((args.num_steps, args.num_envs)).to(device)
     dones = torch.zeros((args.num_steps, args.num_envs)).to(device)
@@ -201,8 +463,9 @@ if __name__ == "__main__":
     # TRY NOT TO MODIFY: start the game
     global_step = 0
     start_time = time.time()
-    next_obs, _ = envs.reset(seed=args.seed)
-    next_obs = torch.Tensor(next_obs).to(device)
+    # next_obs is now a numpy array from RobotsEnv.reset()
+    next_obs_np, _ = envs.reset(seed=args.seed) 
+    next_obs = torch.Tensor(next_obs_np).to(device)
     next_done = torch.zeros(args.num_envs).to(device)
 
     for iteration in range(1, args.num_iterations + 1):
@@ -219,16 +482,21 @@ if __name__ == "__main__":
 
             # ALGO LOGIC: action logic
             with torch.no_grad():
+                # action is now a continuous tensor of Delta Q
                 action, logprob, _, value = agent.get_action_and_value(next_obs)
                 values[step] = value.flatten()
             actions[step] = action
             logprobs[step] = logprob
 
             # TRY NOT TO MODIFY: execute the game and log data.
-            next_obs, reward, terminations, truncations, infos = envs.step(action.cpu().numpy())
+            # action.cpu().numpy() is the Delta Q to pass to the environment
+            next_obs_np, reward, terminations, truncations, infos = envs.step(action.cpu().numpy())
+            
             next_done = np.logical_or(terminations, truncations)
+            
+            # Convert results back to tensors
             rewards[step] = torch.tensor(reward).to(device).view(-1)
-            next_obs, next_done = torch.Tensor(next_obs).to(device), torch.Tensor(next_done).to(device)
+            next_obs, next_done = torch.Tensor(next_obs_np).to(device), torch.Tensor(next_done).to(device)
 
             if "final_info" in infos:
                 for info in infos["final_info"]:
@@ -256,7 +524,8 @@ if __name__ == "__main__":
         # flatten the batch
         b_obs = obs.reshape((-1,) + envs.single_observation_space.shape)
         b_logprobs = logprobs.reshape(-1)
-        b_actions = actions.reshape((-1,) + envs.single_action_space.shape)
+        # Action tensor is continuous (6D)
+        b_actions = actions.reshape((-1,) + envs.single_action_space.shape) 
         b_advantages = advantages.reshape(-1)
         b_returns = returns.reshape(-1)
         b_values = values.reshape(-1)
@@ -270,7 +539,8 @@ if __name__ == "__main__":
                 end = start + args.minibatch_size
                 mb_inds = b_inds[start:end]
 
-                _, newlogprob, entropy, newvalue = agent.get_action_and_value(b_obs[mb_inds], b_actions.long()[mb_inds])
+                # b_actions is continuous, pass the tensor directly (not .long())
+                _, newlogprob, entropy, newvalue = agent.get_action_and_value(b_obs[mb_inds], b_actions[mb_inds]) 
                 logratio = newlogprob - b_logprobs[mb_inds]
                 ratio = logratio.exp()
 
