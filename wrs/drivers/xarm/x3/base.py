@@ -897,9 +897,9 @@ class Base(Events):
             self._asyncio_loop_alive = False
 
         @staticmethod
-        @asyncio.coroutine
-        def _async_run_callback(callback, msg):
-            yield from callback(msg)
+        async def _async_run_callback(callback, msg):
+            await callback(msg)
+
 
     def _run_callback(self, callback, msg, name='', enable_callback_thread=True):
         try:
