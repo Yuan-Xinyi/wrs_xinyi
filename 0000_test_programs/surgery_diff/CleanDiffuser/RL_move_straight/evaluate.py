@@ -162,8 +162,8 @@ def visualize_static_path(base, robot, path):
 if __name__ == "__main__":
     robot = XArmLite6()
     base = wd.World(cam_pos=[2, 0, 1], lookat_pos=[0, 0, 0])
-    visualize_anime_path(base, robot, path=np.load("qpos_traj_ep3.npy"))
+    visualize_anime_path(base, robot, path=np.load("qpos_traj_ep2.npy"))
     # visualize_static_path(base, robot, path=np.load("qpos_traj_ep3.npy"))
     
-    model_path = "runs/ppo_xarm_1764581123.5161152/checkpoints/agent_iter15_step1966080.pth"
-    evaluate_and_visualize(model_path, episodes=3)
+    # model_path = "runs/ppo_xarm_1764666514.7465906/checkpoints/agent_iter15_step1966080.pth"
+    # evaluate_and_visualize(model_path, episodes=3)
