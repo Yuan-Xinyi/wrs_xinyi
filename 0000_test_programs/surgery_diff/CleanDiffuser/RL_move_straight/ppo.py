@@ -142,6 +142,8 @@ class Robots:
 
 
 class RobotsEnv:
+    """FK-only env: reward = forward distance + straightness"""
+
     def __init__(self, num_envs, device):
         self.num_envs = num_envs
         self.device = device
@@ -150,22 +152,18 @@ class RobotsEnv:
 
         self.current_qpos = None
         self.current_qvel = torch.zeros(num_envs, 6).to(device)
-        self.goal_pos = None
+        self.start_pos = None        # ★ initial TCP pos
         self.tcp_pos = None
         self.prev_tcp_pos = None
 
         self._single_action_space = type("AS", (), {"shape": (6,)})()
         self._single_observation_space = type("OS", (), {"shape": (15,)})()
 
-        self.goal_center = torch.tensor([0.6, 0.0, 0.05], dtype=torch.float32).to(device)
-        self.goal_half = 0.05
-        self.goal_thresh = 0.02
-        self.max_steps = 50
+        self.max_steps = 100
+        self.episode_steps = torch.zeros(num_envs).to(device)
 
         self.qmin = self.robot.robot.robot.jnt_ranges[:,0].to(device)
         self.qmax = self.robot.robot.robot.jnt_ranges[:,1].to(device)
-
-        self.episode_steps = torch.zeros(num_envs).to(device)
 
     @property
     def single_action_space(self):
@@ -175,40 +173,65 @@ class RobotsEnv:
     def single_observation_space(self):
         return self._single_observation_space
 
-    def _random_goal(self):
-        xy = (torch.rand(self.num_envs, 2).to(self.device) * (2*self.goal_half)) - self.goal_half
-        xy[:,0] += self.goal_center[0]
-        xy[:,1] += self.goal_center[1]
-        z = torch.full((self.num_envs,1), self.goal_center[2] + 0.05).to(self.device)
-        return torch.cat([xy, z], dim=1)
-
-    def _update_tcp(self):
-        pos, _ = self.robot.fk(self.current_qpos)
-        self.tcp_pos = torch.tensor(pos, dtype=torch.float32).to(self.device)
-
-    def _get_obs(self):
-        tcp_to_goal = self.goal_pos - self.tcp_pos
-        return torch.cat([self.current_qpos,
-                          self.tcp_pos,
-                          self.goal_pos,
-                          tcp_to_goal], dim=1)
-
+    # -------------------------
+    # reset
+    # -------------------------
     def reset(self, seed=None):
         if seed is not None:
             torch.manual_seed(seed)
 
-        q = self.robot.robot.robot.rand_conf_batch(batch_size=self.num_envs)
-        self.current_qpos = torch.tensor(q, dtype=torch.float32).to(self.device)
+        # q = self.robot.robot.robot.rand_conf_batch(batch_size=self.num_envs)
+        # self.current_qpos = q0.unsqueeze(0).repeat(self.num_envs, 1).to(self.device)
+        q0 = torch.tensor([0., 0.173311, 0.555015, 0., 0.381703, 0.], dtype=torch.float32)
+        self.current_qpos = q0.unsqueeze(0).repeat(self.num_envs, 1).to(self.device)
         self.current_qvel = torch.zeros_like(self.current_qpos)
 
-        self.goal_pos = self._random_goal()
-        self._update_tcp()
+        # compute TCP
+        pos, _ = self.robot.robot.robot.fk_batch(jnt_values=self.current_qpos)
+        self.tcp_pos = pos.to(self.device)
         self.prev_tcp_pos = self.tcp_pos.clone()
+
+        # ★ fixed start pos
+        self.start_pos = self.tcp_pos.clone()
 
         self.episode_steps = torch.zeros(self.num_envs).to(self.device)
 
         return self._get_obs().cpu().numpy(), {}
 
+    # -------------------------
+    # obs
+    # -------------------------
+    def _get_obs(self):
+        return torch.cat([
+            self.current_qpos,       # 6
+            self.tcp_pos,            # 3
+            self.start_pos,          # 3
+            self.tcp_pos - self.start_pos  # 3 direction vector
+        ], dim=1)
+
+    # -------------------------
+    # reward components
+    # -------------------------
+    def _straight_reward(self):
+        v1 = self.prev_tcp_pos - self.start_pos
+        v2 = self.tcp_pos - self.start_pos
+
+        norm1 = torch.norm(v1, dim=1) + 1e-6
+        norm2 = torch.norm(v2, dim=1) + 1e-6
+
+        cos = torch.sum(v1 * v2, dim=1) / (norm1 * norm2)
+        return cos  # [-1, 1]
+
+    def _compute_reward(self):
+        dist_from_start = torch.norm(self.tcp_pos - self.start_pos, dim=1)
+        straight = self._straight_reward()
+
+        reward = 1.0 * dist_from_start + 10.0 * straight
+        return reward
+
+    # -------------------------
+    # step
+    # -------------------------
     def step(self, action_np):
         action = torch.tensor(action_np, dtype=torch.float32).to(self.device)
 
@@ -222,18 +245,17 @@ class RobotsEnv:
         self.current_qvel = new_qpos - self.current_qpos
         self.current_qpos = new_qpos
 
-        self._update_tcp()
+        # FK
+        pos, _ = self.robot.robot.robot.fk_batch(jnt_values=new_qpos)
+        self.tcp_pos = torch.tensor(pos, dtype=torch.float32).to(self.device)
 
+        # reward
+        reward = self._compute_reward()
+
+        # done when max steps reached
         self.episode_steps += 1
-        dist = torch.norm(self.goal_pos - self.tcp_pos, dim=1)
+        done = (self.episode_steps >= self.max_steps)
 
-        success = (dist < self.goal_thresh)
-        timeout = (self.episode_steps >= self.max_steps)
-        done = torch.logical_or(success, timeout)
-
-        reward = self._compute_reward(success)
-
-        obs = self._get_obs()
         info = {"final_info":[None]*self.num_envs}
 
         for i in range(self.num_envs):
@@ -243,40 +265,26 @@ class RobotsEnv:
                     "l": self.episode_steps[i].item()
                 }}
 
+                # reset env i
                 q = self.robot.robot.robot.rand_conf_batch(batch_size=1)
                 self.current_qpos[i] = torch.tensor(q[0], dtype=torch.float32).to(self.device)
                 self.current_qvel[i] = 0.0
-                self.goal_pos[i] = self._random_goal()[0]
 
-                self._update_tcp()
+                pos, _ = self.robot.robot.robot.fk_batch(jnt_values=self.current_qpos[i:i+1])
+                self.tcp_pos[i] = torch.tensor(pos[0], dtype=torch.float32).to(self.device)
+
+                self.start_pos[i] = self.tcp_pos[i].clone()
                 self.prev_tcp_pos[i] = self.tcp_pos[i].clone()
                 self.episode_steps[i] = 0
 
-        return (obs.cpu().numpy(),
-                reward.cpu().numpy(),
-                success.cpu().numpy(),
-                timeout.cpu().numpy(),
-                info)
-
-    def _compute_reward(self, success):
-        dist = torch.norm(self.goal_pos - self.tcp_pos, dim=1)
-        prev_dist = torch.norm(self.goal_pos - self.prev_tcp_pos, dim=1)
-
-        dist_reward = -dist
-        progress_reward = torch.clamp(prev_dist - dist, min=0.0)
-        smooth_penalty = -0.01 * torch.norm(self.current_qvel, dim=1)
-        near_bonus = (dist < 0.03).float() * 0.5
-
-        success_bonus = success.float() * 1.0
-
-        reward = (
-            1.0 * dist_reward +
-            3.0 * progress_reward +
-            1.0 * near_bonus +
-            0.2 * success_bonus +
-            smooth_penalty
+        return (
+            self._get_obs().cpu().numpy(),
+            reward.cpu().numpy(),
+            done.cpu().numpy(),
+            done.cpu().numpy(),
+            info
         )
-        return reward
+
 
 
 # ---------------------------------------------------------------------

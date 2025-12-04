@@ -3,7 +3,7 @@ Author: Hao Chen (chen960216@gmail.com 20221113)
 The program to manually calibrate the camera
 """
 __VERSION__ = '0.0.1'
-
+# precised manual calibration for depth camera extrinsic parameters
 import os
 from pathlib import Path
 import json

@@ -241,6 +241,9 @@ if __name__ == '__main__':
     base = wd.World(cam_pos=[2, 0, 1], lookat_pos=[0, 0, 0])
     mgm.gen_frame().attach_to(base)
     robot = XArmLite6(enable_cc=True)
+    robot.goto_given_conf([0., 0.173311, 0.555015, 0., 0.381703, 0.])
+    robot.gen_meshmodel().attach_to(base)
+    base.run()
 
     success = 0
     num_trials = 10000

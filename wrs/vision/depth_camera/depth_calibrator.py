@@ -1,7 +1,7 @@
 import scipy.optimize as sopt
 import pickle
 import wrs.basis.robot_math as rm
-
+# for roughly calibrating the depth camera extrinsic parameters
 
 def load_calibration_data(file="./depth_sensor_calib_mat.pkl",
                           has_sensor_and_real_points=False):

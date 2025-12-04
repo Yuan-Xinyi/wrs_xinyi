@@ -6,48 +6,49 @@ from mpl_toolkits.mplot3d import Axes3D
 from ppo import Agent, RobotsEnv, Args    # 直接引用你的训练文件
 
 
-def evaluate_and_visualize(model_path, episodes=3, save_fig=True):
+import numpy as np
+import torch
+import matplotlib.pyplot as plt
+
+def evaluate_and_visualize(model_path, episodes=10, save_fig=True):
     device = torch.device("cuda" if torch.cuda.is_available() else "cpu")
 
     # ---- Load Args ----
     args = Args()
-    args.num_envs = 1    # evaluate 单环境
+    args.num_envs = 1
 
-    # ---- Create Env ----
+    # ---- Environment ----
     env = RobotsEnv(num_envs=1, device=device)
 
-    # ---- Create Agent ----
+    # ---- Agent ----
     agent = Agent(env).to(device)
-
-    # ---- Load weights ----
     agent.load_state_dict(torch.load(model_path, map_location=device))
     agent.eval()
     print(f"[OK] Loaded model: {model_path}")
 
-    # --------------------------
-    # Evaluate Episodes
-    # --------------------------
+    # ==========================================================
+    #  收集所有 episode 轨迹
+    # ==========================================================
+    all_tcp_traj = []     # list of arrays, shape (Ti, 3)
+    all_qpos_traj = []    # list of arrays, shape (Ti, 6)
+
     for ep in range(episodes):
         obs, _ = env.reset()
         obs = torch.tensor(obs, dtype=torch.float32).to(device)
 
+        tcp_traj = []
+        qpos_traj = []
+
         done = False
         total_reward = 0
 
-        tcp_traj = []          # 记录 tcp 轨迹
-        qpos_traj = []         # ⭐ 新增：记录关节轨迹
-
-        goal = env.goal_pos[0].cpu().numpy()
-
         while not done:
-            # ---------- 记录轨迹 ----------
+            # record
             tcp_traj.append(env.tcp_pos[0].cpu().numpy())
-            qpos_traj.append(env.current_qpos[0].cpu().numpy())   # ⭐ 新增
+            qpos_traj.append(env.current_qpos[0].cpu().numpy())
 
-            # deterministic action
             with torch.no_grad():
-                mean = agent.actor_mean(obs)
-                action = mean
+                action = agent.actor_mean(obs)
 
             action_np = action.cpu().numpy()
             next_obs_np, reward, term, trunc, info = env.step(action_np)
@@ -60,46 +61,66 @@ def evaluate_and_visualize(model_path, episodes=3, save_fig=True):
         tcp_traj = np.array(tcp_traj)
         qpos_traj = np.array(qpos_traj)
 
-        print(f"Episode {ep+1} return={total_reward:.3f}, steps={tcp_traj.shape[0]}")
-        print(f"Joint trajectory shape: {qpos_traj.shape} (steps, 6)")
+        print(f"Episode {ep+1}: return={total_reward:.3f}, steps={len(tcp_traj)}")
 
-        # ---------- 保存关节轨迹 ----------
+        all_tcp_traj.append(tcp_traj)
+        all_qpos_traj.append(qpos_traj)
+
+        # 保存单独轨迹
+        np.save(f"tcp_traj_ep{ep+1}.npy", tcp_traj)
         np.save(f"qpos_traj_ep{ep+1}.npy", qpos_traj)
-        print(f"[Saved] qpos_traj_ep{ep+1}.npy")
 
-        # ----------------------------
-        # Visualize TCP trajectory
-        # ----------------------------
-        fig = plt.figure(figsize=(6,6))
-        ax = fig.add_subplot(111, projection='3d')
-        ax.plot(tcp_traj[:,0], tcp_traj[:,1], tcp_traj[:,2], '-r', label='TCP Trajectory')
-        ax.scatter(goal[0], goal[1], goal[2], c='g', s=100, label='Goal')
-        ax.scatter(tcp_traj[0,0], tcp_traj[0,1], tcp_traj[0,2], c='b', s=60, label='Start')
+    # ==========================================================
+    #  图 1 ：将所有 TCP 轨迹画在一个 3D 图中
+    # ==========================================================
+    fig = plt.figure(figsize=(7,7))
+    ax = fig.add_subplot(111, projection='3d')
 
-        ax.set_title(f"Episode {ep+1} TCP Trajectory")
-        ax.set_xlabel('X')
-        ax.set_ylabel('Y')
-        ax.set_zlabel('Z')
-        ax.legend()
+    start_pos = all_tcp_traj[0][0]  # 第一条轨迹的起点
 
-        # 设置固定比例
-        max_range = np.array([tcp_traj[:,0].max()-tcp_traj[:,0].min(),
-                              tcp_traj[:,1].max()-tcp_traj[:,1].min(),
-                              tcp_traj[:,2].max()-tcp_traj[:,2].min()]).max()
-        Xb = 0.5*max_range * np.array([-1,1]) + np.mean(tcp_traj[:,0])
-        Yb = 0.5*max_range * np.array([-1,1]) + np.mean(tcp_traj[:,1])
-        Zb = 0.5*max_range * np.array([-1,1]) + np.mean(tcp_traj[:,2])
-        ax.set_xlim(Xb[0], Xb[1])
-        ax.set_ylim(Yb[0], Yb[1])
-        ax.set_zlim(Zb[0], Zb[1])
+    for i, tcp_traj in enumerate(all_tcp_traj):
+        ax.plot(tcp_traj[:,0], tcp_traj[:,1], tcp_traj[:,2], label=f'ep{i+1}')
 
-        plt.tight_layout()
+    ax.scatter(start_pos[0], start_pos[1], start_pos[2], c='b', s=80, label='Start')
+    ax.set_title("TCP Trajectories (All Episodes)")
+    ax.set_xlabel("X"); ax.set_ylabel("Y"); ax.set_zlabel("Z")
+    ax.legend()
 
-        if save_fig:
-            plt.savefig(f"trajectory_ep{ep+1}.png", dpi=150)
-            print(f"[Saved] trajectory_ep{ep+1}.png")
+    # 设置为等比例
+    all_points = np.concatenate(all_tcp_traj, axis=0)
+    max_range = (all_points.max(axis=0) - all_points.min(axis=0)).max()
+    mid = all_points.mean(axis=0)
+    ax.set_xlim(mid[0]-max_range/2, mid[0]+max_range/2)
+    ax.set_ylim(mid[1]-max_range/2, mid[1]+max_range/2)
+    ax.set_zlim(mid[2]-max_range/2, mid[2]+max_range/2)
 
-        plt.show()
+    plt.tight_layout()
+    if save_fig:
+        plt.savefig("all_tcp_trajectories.png", dpi=150)
+        print("[Saved] all_tcp_trajectories.png")
+    plt.show()
+
+    # ==========================================================
+    #  图 2 ：关节轨迹（6 个子图），每条线是一个 episode
+    # ==========================================================
+    fig, axes = plt.subplots(6, 1, figsize=(8, 12), sharex=True)
+
+    for joint_id in range(6):
+        ax = axes[joint_id]
+        for i, qpos_traj in enumerate(all_qpos_traj):
+            ax.plot(qpos_traj[:, joint_id], label=f"ep{i+1}")
+        ax.set_ylabel(f"j{joint_id}")
+        ax.grid(True)
+
+    axes[-1].set_xlabel("Timestep")
+    axes[0].set_title("Joint Trajectories (All Episodes)")
+
+    plt.tight_layout()
+    if save_fig:
+        plt.savefig("all_joint_trajectories.png", dpi=150)
+        print("[Saved] all_joint_trajectories.png")
+    plt.show()
+
 
 
 from wrs.robot_sim.manipulators.xarm_lite6.xarm_lite6 import XArmLite6
@@ -160,10 +181,10 @@ def visualize_static_path(base, robot, path):
     base.run()
 
 if __name__ == "__main__":
-    robot = XArmLite6()
-    base = wd.World(cam_pos=[2, 0, 1], lookat_pos=[0, 0, 0])
-    visualize_anime_path(base, robot, path=np.load("qpos_traj_ep2.npy"))
-    # visualize_static_path(base, robot, path=np.load("qpos_traj_ep3.npy"))
+    # robot = XArmLite6()
+    # base = wd.World(cam_pos=[2, 0, 1], lookat_pos=[0, 0, 0])
+    # visualize_anime_path(base, robot, path=np.load("qpos_traj_ep1.npy"))
+    # # visualize_static_path(base, robot, path=np.load("qpos_traj_ep1.npy"))
     
-    # model_path = "runs/ppo_xarm_1764666514.7465906/checkpoints/agent_iter15_step1966080.pth"
-    # evaluate_and_visualize(model_path, episodes=3)
+    model_path = "runs/ppo_xarm_1764814909.3672829/checkpoints/agent_iter15_step1966080.pth"
+    evaluate_and_visualize(model_path, episodes=1)
