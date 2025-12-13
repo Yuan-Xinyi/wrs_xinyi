@@ -40,7 +40,7 @@ class Args:
     cuda: bool = True
     torch_deterministic: bool = True
 
-    total_timesteps: int = 2_000_000
+    total_timesteps: int = 100_000_000
     learning_rate: float = 3e-4
     num_envs: int = 1024
     num_steps: int = 128
@@ -159,7 +159,7 @@ class RobotsEnv:
         self._single_action_space = type("AS", (), {"shape": (6,)})()
         self._single_observation_space = type("OS", (), {"shape": (15,)})()
 
-        self.max_steps = 100
+        self.max_steps = 300
         self.episode_steps = torch.zeros(num_envs).to(device)
 
         self.qmin = self.robot.robot.robot.jnt_ranges[:,0].to(device)

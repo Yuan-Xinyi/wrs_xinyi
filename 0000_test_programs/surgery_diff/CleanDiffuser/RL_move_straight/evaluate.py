@@ -99,6 +99,8 @@ def evaluate_and_visualize(model_path, episodes=10, save_fig=True):
         plt.savefig("all_tcp_trajectories.png", dpi=150)
         print("[Saved] all_tcp_trajectories.png")
     plt.show()
+    total_length = np.sum([np.sum(np.linalg.norm(np.diff(tcp_traj, axis=0), axis=1)) for tcp_traj in all_tcp_traj])
+    print(f"Average trajectory length over {episodes} episodes: {total_length/episodes:.4f} meters")
 
     # ==========================================================
     #  图 2 ：关节轨迹（6 个子图），每条线是一个 episode
@@ -181,10 +183,11 @@ def visualize_static_path(base, robot, path):
     base.run()
 
 if __name__ == "__main__":
-    # robot = XArmLite6()
-    # base = wd.World(cam_pos=[2, 0, 1], lookat_pos=[0, 0, 0])
+    robot = XArmLite6()
+    base = wd.World(cam_pos=[2, 0, 1], lookat_pos=[0, 0, 0])
     # visualize_anime_path(base, robot, path=np.load("qpos_traj_ep1.npy"))
-    # # visualize_static_path(base, robot, path=np.load("qpos_traj_ep1.npy"))
+    visualize_static_path(base, robot, path=np.load("qpos_traj_ep1.npy"))
     
-    model_path = "runs/ppo_xarm_1764814909.3672829/checkpoints/agent_iter15_step1966080.pth"
-    evaluate_and_visualize(model_path, episodes=1)
+    # # model_path = "runs/ppo_xarm_1764815273.6780434/checkpoints/agent_iter15_step1966080.pth"
+    # model_path = "runs/ppo_xarm_1764815951.5149322/checkpoints/agent_iter762_step99876864.pth"
+    # evaluate_and_visualize(model_path, episodes=1)

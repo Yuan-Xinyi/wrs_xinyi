@@ -11,6 +11,7 @@ from abc import ABC, abstractmethod
 import wrs.basis.robot_math as rm
 import wrs.modeling.geometric_model as mgm
 import wrs.robot_sim.robots.robot_interface as ri
+import numpy as np
 
 
 def py2json_data_formatter(data):
@@ -188,7 +189,7 @@ class ManualCalibrationBase(ABC):
             self._plot_node_rbt.detach()
         if self._plot_node_pcd is not None:
             self._plot_node_pcd.detach()
-        self._plot_node_rbt = self._rbt_s.gen_meshmodel()
+        self._plot_node_rbt = self._rbt_s.gen_meshmodel(alpha=0.5)
         self._plot_node_rbt.attach_to(base)
         pcd = self._pcd
         if pcd is not None:
@@ -260,14 +261,36 @@ if __name__ == "__main__":
     import wrs.visualization.panda.world as wd
     from wrs.drivers.devices.realsense.realsense_d400s import RealSenseD400
     from wrs.robot_sim.robots.xarmlite6_wg import x6wg2
+    from wrs.robot_con.xarm_lite6.xarm_lite6_x import XArmLite6X
 
     base = wd.World(cam_pos=rm.vec(2, 0, 1.5), lookat_pos=rm.vec(0, 0, 0))
     rs_pipe = RealSenseD400()
     # the first frame contains no data information
     rs_pipe.get_pcd_texture_depth()
     rs_pipe.get_pcd_texture_depth()
-    # rbtx = XArmLite6X(ip='192.168.1.190', has_gripper=False)
+    rbtx = XArmLite6X(ip='192.168.1.152', has_gripper=False)
     rbt = x6wg2.XArmLite6WG2()
 
-    xarm_mc = XArmLite6ManualCalib(rbt_s=rbt, rbt_x=None, sensor_hdl=rs_pipe)
+    import json
+    import numpy as np
+    import os
+
+    calib_path = "manual_calibration.json"
+
+    if os.path.exists(calib_path):
+        with open(calib_path, "r") as f:
+            init_calib_mat = np.array(json.load(f)["affine_mat"])
+        print("Loaded previous calibration.")
+    else:
+        init_calib_mat = None
+        print("No previous calibration found, using identity.")
+
+    xarm_mc = XArmLite6ManualCalib(
+        rbt_s=rbt,
+        rbt_x=rbtx,
+        sensor_hdl=rs_pipe,
+        init_calib_mat=init_calib_mat
+    )
+
+    # xarm_mc = XArmLite6ManualCalib(rbt_s=rbt, rbt_x=rbtx, sensor_hdl=rs_pipe)
     base.run()
