@@ -268,7 +268,7 @@ if __name__ == "__main__":
     # the first frame contains no data information
     rs_pipe.get_pcd_texture_depth()
     rs_pipe.get_pcd_texture_depth()
-    rbtx = XArmLite6X(ip='192.168.1.152', has_gripper=False)
+    rbtx = XArmLite6X(ip='192.168.1.152', has_gripper=True)
     rbt = x6wg2.XArmLite6WG2()
 
     import json
