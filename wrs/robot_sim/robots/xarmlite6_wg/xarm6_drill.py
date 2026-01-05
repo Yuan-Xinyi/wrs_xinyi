@@ -56,17 +56,42 @@ class XArmLite6Miller(sari.SglArmRobotInterface):
 
     def get_jaw_width(self):
         return self.get_ee_values()
+    
+    def are_jnts_in_ranges(self, jnt_values):
+        return super().are_jnts_in_ranges(jnt_values)
 
 
 if __name__ == '__main__':
-    from wrs import wd, mgm, rm
+    from wrs import wd, mgm, rm, mcm
 
     base = wd.World(cam_pos=[2, 0, 1.5], lookat_pos=[0, 0, .2])
     mgm.gen_frame().attach_to(base)
-    robot = XArmLite6Miller(pos=np.array([0, 0, 0]), enable_cc=True)
-    jnt = np.array([ 2.5870,  1.9920,  0.2887, -1.2303,  0.1405, -0.2582])
-    robot.goto_given_conf(jnt_values=jnt)
-    tgt_pos, tgt_rotmat = robot.fk(jnt_values=jnt)
+
+    table_size = np.array([1.5, 1.5, 0.03])
+    table_pos  = np.array([0.2, 0, -0.025])
+    table = mcm.gen_box(xyz_lengths=table_size, pos=table_pos, rgb=np.array([0.6, 0.4, 0.2]), alpha=1)
+    table.attach_to(base)
+
+    paper_size = np.array([1.2, 1.2, 0.002])
+    paper_pos = table_pos.copy()
+    paper_pos[2] = table_pos[2] + table_size[2]/2 + paper_size[2]/2
+    print("paper pos:", paper_pos)
+    paper = mcm.gen_box(xyz_lengths=paper_size, pos=paper_pos, rgb=np.array([1, 1, 1]), alpha=1)
+    paper.attach_to(base)
+
+    robot = XArmLite6Miller(enable_cc=True)
+    # jnt = robot.rand_conf()
+    # robot.goto_given_conf(jnt_values=jnt)
+    # robot.gen_meshmodel(rgb=[0,1,0]).attach_to(base)
+    # tgt_pos, tgt_rotmat = robot.fk(jnt_values=jnt)
+    tgt_pos = np.array([0.3, 0.0, 0.0])
+    tgt_rotmat = np.eye(3)
+    tgt_rotmat[:3,2] = np.array([0,0,-1])
+    jnt_ik = robot.ik(tgt_pos=tgt_pos, tgt_rotmat=tgt_rotmat)
+    robot.goto_given_conf(jnt_values=jnt_ik)
+    robot.gen_meshmodel(rgb=[1,0,0]).attach_to(base)
+    mgm.gen_frame(pos=tgt_pos, rotmat=tgt_rotmat).attach_to(base)
+    print("jnt from ik:", jnt_ik)
     print(tgt_pos)
     print(tgt_rotmat)
     base.run()
