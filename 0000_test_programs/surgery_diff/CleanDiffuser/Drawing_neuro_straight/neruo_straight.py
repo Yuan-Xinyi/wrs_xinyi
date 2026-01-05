@@ -21,7 +21,7 @@ mgm.gen_frame().attach_to(base)
 xarm_sim.goto_given_conf([0, 0, 0, 0, 0, 0])
 xarm_sim.gen_meshmodel().attach_to(base)
 
-table_size = np.array([1.5, 1.5, 0.05])
+table_size = np.array([1.5, 1.5, 0.03])
 table_pos  = np.array([0.2, 0, -0.025])
 table = mcm.gen_box(xyz_lengths=table_size, pos=table_pos, rgb=np.array([0.6, 0.4, 0.2]), alpha=1)
 table.attach_to(base)
@@ -29,6 +29,7 @@ table.attach_to(base)
 paper_size = np.array([1.2, 1.2, 0.002])
 paper_pos = table_pos.copy()
 paper_pos[2] = table_pos[2] + table_size[2]/2 + paper_size[2]/2
+print("paper pos:", paper_pos)
 paper = mcm.gen_box(xyz_lengths=paper_size, pos=paper_pos, rgb=np.array([1, 1, 1]), alpha=1)
 paper.attach_to(base)
 
