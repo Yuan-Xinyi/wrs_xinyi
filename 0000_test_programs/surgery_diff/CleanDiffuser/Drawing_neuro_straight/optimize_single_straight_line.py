@@ -166,8 +166,6 @@ def optimize_path_batch(pos_targets, steps=50):
 import wrs.robot_sim.robots.xarmlite6_wg.xarm6_drill as xarm6_sim
 import helper_functions as helpers
 rbt_sim = xarm6_sim.XArmLite6Miller(enable_cc=True)
-rbt_sim.goto_home_conf()
-rbt_sim.gen_meshmodel().attach_to(base)
 
 if __name__ == "__main__":
     '''if manually specify line:'''
