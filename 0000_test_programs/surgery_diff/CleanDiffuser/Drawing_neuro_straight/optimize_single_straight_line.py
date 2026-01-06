@@ -1,9 +1,66 @@
 import torch
 import numpy as np
 import time
+from matplotlib.path import Path
+import pickle
 from wrs import wd, mcm
 import wrs.neuro.xarm_lite6_neuro as xarm6_gpu
 import wrs.modeling.geometric_model as mgm
+import warnings
+import numpy as np
+import pickle
+import torch
+from matplotlib.path import Path
+warnings.filterwarnings("ignore", message=".*To copy construct from a tensor.*")
+
+class LineSampler:
+    def __init__(self, contour_path, z_value=0.0, device='cuda'):
+        with open(contour_path, 'rb') as f:
+            self.contour = pickle.load(f)
+        
+        self.path = Path(self.contour)
+        self.z_value = z_value
+        self.device = device
+        
+        # self.min_x, self.min_y = np.min(self.contour, axis=0)
+        # self.max_x, self.max_y = np.max(self.contour, axis=0)
+        self.min_y, self.max_y = 0, 0 # -0.1, 0.1
+        self.min_x, self.max_x = 0.3, 0.3 # 0.2, 0.4
+
+    def is_in_workspace(self, points_xy):
+        return self.path.contains_points(points_xy)
+
+    def sample_tasks(self, batch_size=1, L_range=(0.05, 0.5)):
+        valid_tasks = []
+        
+        while len(valid_tasks) < batch_size:
+            tmp_xc_xy = np.random.uniform([self.min_x, self.min_y], 
+                                          [self.max_x, self.max_y], size=(1, 2))
+            
+            if not self.is_in_workspace(tmp_xc_xy)[0]:
+                continue
+            
+            theta = np.random.uniform(0, 2 * np.pi)
+            d_xy = np.array([np.cos(theta), np.sin(theta)])
+            L = np.random.uniform(L_range[0], L_range[1])
+            
+            xs_xy = tmp_xc_xy[0] - (L / 2) * d_xy
+            xe_xy = tmp_xc_xy[0] + (L / 2) * d_xy
+        
+            check_points = np.stack([tmp_xc_xy[0], xs_xy, xe_xy])
+            if np.all(self.is_in_workspace(check_points)):
+                task = {
+                    'xc': np.append(tmp_xc_xy[0], self.z_value),
+                    'd': np.append(d_xy, 0.0),
+                    'L': L
+                }
+                valid_tasks.append(task)
+                
+        P_xc = torch.tensor([t['xc'] for t in valid_tasks], dtype=torch.float32, device=self.device)
+        P_d = torch.tensor([t['d'] for t in valid_tasks], dtype=torch.float32, device=self.device)
+        P_L = torch.tensor([t['L'] for t in valid_tasks], dtype=torch.float32, device=self.device)
+        
+        return P_xc, P_d, P_L
 
 # ------------------------------------------------------------
 # environment setup
@@ -14,7 +71,7 @@ device = xarm.device
 base = wd.World(cam_pos=[1.2, 0.5, 0.5], lookat_pos=[0.3, 0, 0])
 mgm.gen_frame().attach_to(base)
 
-table = mcm.gen_box(xyz_lengths=[2.0, 2.0, 0.03], pos=[0.2, 0, -0.025], rgb=[0.6, 0.4, 0.2])
+table = mcm.gen_box(xyz_lengths=[2.0, 2.0, 0.03], pos=[0.2, 0, -0.014], rgb=[0.6, 0.4, 0.2])
 table.attach_to(base)
 paper = mcm.gen_box(xyz_lengths=[1.8, 1.8, 0.002], pos=[0.3, 0, 0.001], rgb=[1, 1, 1])
 paper.attach_to(base)
@@ -48,55 +105,59 @@ def get_batch_rot_error(rotmat_batch):
     delta_w = r_diff * scale.unsqueeze(-1)
     return torch.norm(delta_w, dim=-1)
 
-def sample_line(xc, d, L, num_points):
-    s_list = torch.linspace(-L/2, L/2, num_points, device=device)
-    return torch.stack([xc + s*d for s in s_list], dim=0)
+def sample_line_batch(xc, d, L, num_points, visulize=False):
+    B = xc.shape[0]
+    device = xc.device
+    t = torch.linspace(-0.5, 0.5, num_points, device=device)
+    if L.dim() == 1:
+        L = L.unsqueeze(-1)
+    s_grid = L * t.unsqueeze(0) 
+    points = xc.unsqueeze(1) + s_grid.unsqueeze(-1) * d.unsqueeze(1)
+
+    if visulize:
+        mgm.gen_sphere([0.3,0,0.002], radius=0.003, rgb=[0,1,0]).attach_to(base)
+        for i in range(points.shape[0]):
+            mgm.gen_stick(points[i,0].cpu().numpy(),
+                        points[i,-1].cpu().numpy(),
+                        radius=0.0025,
+                        rgb=[0,0,1]).attach_to(base)
+        # base.run()
+    return points
 
 
-def optimize_path(pos_targets, steps=50):
-    num_pts = pos_targets.shape[0]
+def optimize_path_batch(pos_targets, steps=50):
+    B, N, _ = pos_targets.shape # B=100, N=32
     num_jnts = robot.n_dof
-
-    q_traj = torch.zeros((num_pts, num_jnts), device=device, requires_grad=True)
-    with torch.no_grad():
-        q_traj += torch.randn_like(q_traj) * 0.1
-
-    optimizer = torch.optim.LBFGS([q_traj], lr=1, max_iter=20, history_size=10 )
     
-    jnt_min = torch.tensor(robot.jnt_ranges[:,0], dtype=torch.float32, device=device)
-    jnt_max = torch.tensor(robot.jnt_ranges[:,1], dtype=torch.float32, device=device)
+    q_traj = (torch.randn((B, N, num_jnts), device=device) * 0.1).detach().requires_grad_(True)
+    optimizer = torch.optim.LBFGS([q_traj], lr=1, max_iter=20)
+    
+    jnt_min = torch.tensor(robot.jnt_ranges[:,0], device=device, dtype=torch.float32)
+    jnt_max = torch.tensor(robot.jnt_ranges[:,1], device=device, dtype=torch.float32)
 
     def closure():
         optimizer.zero_grad()
-    
-        pos_fk, rot_fk = robot.fk_batch(q_traj)
+        pos_fk, rot_fk = robot.fk_batch(q_traj.view(-1, num_jnts))
+        pos_fk = pos_fk.view(B, N, 3)
+        rot_fk = rot_fk.view(B, N, 3, 3)
 
-        ## position, velocity, acceleration loss
         loss_pos = torch.mean(torch.sum((pos_fk - pos_targets)**2, dim=-1))
-        vel = q_traj[1:] - q_traj[:-1]
-        acc = q_traj[2:] - 2*q_traj[1:-1] + q_traj[:-2]
+        
+        vel = q_traj[:, 1:] - q_traj[:, :-1]
+        acc = q_traj[:, 2:] - 2*q_traj[:, 1:-1] + q_traj[:, :-2]
         loss_smooth = torch.mean(vel**2) * 1.0 + torch.mean(acc**2) * 0.5
         
-        # rotation loss
-        rot_errors = get_batch_rot_error(rot_fk)
+        rot_errors = get_batch_rot_error(rot_fk.view(-1, 3, 3)) 
         loss_rot = torch.mean(rot_errors**2)
         
-        # loss towards joint limits
-        loss_limit = torch.sum(torch.relu(jnt_min - q_traj)**2) + \
-                     torch.sum(torch.relu(q_traj - jnt_max)**2)
+        loss_limit = torch.mean(torch.relu(jnt_min - q_traj)**2 + torch.relu(q_traj - jnt_max)**2)
 
-
-        total_loss = 1000.0 * loss_pos + 10.0 * loss_smooth + 50.0 * loss_rot + \
-                                         100.0 * loss_limit  
+        total_loss = 1000.0 * loss_pos + 10.0 * loss_smooth + 50.0 * loss_rot + 100.0 * loss_limit
         total_loss.backward()
         return total_loss
 
-    print("starting optimization...")
-    for i in range(steps):
-        current_loss = optimizer.step(closure)
-        if i % 5 == 0:
-            print(f"Step {i:02d} | Loss: {current_loss.item():.6f}")
-
+    for _ in range(steps):
+        optimizer.step(closure)
     return q_traj.detach()
 
 # ------------------------------------------------------------
@@ -105,18 +166,33 @@ def optimize_path(pos_targets, steps=50):
 import wrs.robot_sim.robots.xarmlite6_wg.xarm6_drill as xarm6_sim
 import helper_functions as helpers
 rbt_sim = xarm6_sim.XArmLite6Miller(enable_cc=True)
+rbt_sim.goto_home_conf()
+rbt_sim.gen_meshmodel().attach_to(base)
 
 if __name__ == "__main__":
-    xc = torch.tensor([0.4, 0.0, 0.02], device=device)
-    d = torch.tensor([0.0, 1.0, 0.0], device=device) # 沿Y轴
-    pos_path = sample_line(xc, d, 1.4, num_points=40)
+    '''if manually specify line:'''
+    # xc = torch.tensor([0.4, 0.0, 0.02], device=device)
+    # d = torch.tensor([0.0, 1.0, 0.0], device=device) # along y axis
+    # pos_path = sample_line(xc, d, 1.4, num_points=40)
+    # start_t = time.time()
+    # q_optimized = optimize_path(pos_path)
+    # print(f"total time: {time.time()-start_t:.2f}s")
 
+    # q_np = q_optimized.cpu().numpy()
+    # for i in range(len(q_np)):
+    #     mgm.gen_sphere(pos_path[i].cpu().numpy(), radius=0.003, rgb=[1,0,0]).attach_to(base)
+
+    # helpers.visualize_anime_path(base, rbt_sim, q_np)
+
+    '''if randomly sample line within workspace:'''
+    sampler = LineSampler(contour_path='0000_test_programs/surgery_diff/CleanDiffuser/Drawing_neuro_straight/xarm_contour_z0.pkl')
+    xcs, ds, Ls = sampler.sample_tasks(batch_size=10, L_range=(0.8, 1.6))
+    pos_paths = sample_line_batch(xcs, ds, Ls, num_points=32, visulize=True)
+    print("[INFO] optimizing sampled lines...")
     start_t = time.time()
-    q_optimized = optimize_path(pos_path)
-    print(f"total time: {time.time()-start_t:.2f}s")
+    q_optimized_batch = optimize_path_batch(pos_paths, steps=100)
+    print(f"[INFO] total time for batch optimization: {time.time()-start_t:.2f}s")
+    print("[INFO] visualizing...")
+    q_optimized_batch = q_optimized_batch.reshape(-1, 6).cpu().numpy()
 
-    q_np = q_optimized.cpu().numpy()
-    for i in range(len(q_np)):
-        mgm.gen_sphere(pos_path[i].cpu().numpy(), radius=0.003, rgb=[1,0,0]).attach_to(base)
-
-    helpers.visualize_anime_path(base, rbt_sim, q_np)
+    helpers.visualize_anime_path(base, rbt_sim, q_optimized_batch)
