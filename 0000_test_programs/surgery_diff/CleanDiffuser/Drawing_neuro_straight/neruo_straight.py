@@ -146,7 +146,7 @@ if __name__ == "__main__":
     xc = np.array([0.3, 0.0, 0])  # 线段中心
     d = np.array([0.0, -1.0, 0.0])  # 沿-y轴
     d = d / np.linalg.norm(d)
-    L_max = 0.8
+    L_max = 0.1
     joint_thresh = 0.2 
     num_points = 30
 
