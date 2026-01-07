@@ -1,4 +1,6 @@
 import os
+
+import trimesh
 import wrs.basis.robot_math as rm
 import wrs.modeling.model_collection as mmc
 import wrs.modeling.collision_model as mcm
@@ -81,6 +83,14 @@ class SpineMiller(si.SCTInterface):
         if toggle_tcp_frame:
             self._toggle_tcp_frame(m_col)
         return m_col
+    
+    def _export_stl(self, filename="spine_miller.stl"):
+        this_dir, _ = os.path.split(__file__)
+        mesh_model = self.gen_meshmodel(toggle_tcp_frame=True)
+        trm_mesh = mesh_model.acquire_cm_trm() 
+        stl_file_path = os.path.join(this_dir, filename)  
+        trm_mesh.export(stl_file_path)  
+        print(f"Exported: {stl_file_path}")
 
 
 if __name__ == '__main__':
@@ -90,4 +100,5 @@ if __name__ == '__main__':
     mgm.gen_frame().attach_to(base)
     ee = SpineMiller()
     ee.gen_meshmodel(toggle_tcp_frame=True).attach_to(base)
+    ee._export_stl()
     base.run()
