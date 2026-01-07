@@ -1,3 +1,4 @@
+import string
 import numpy as np
 import wrs.robot_sim.manipulators.xarm_lite6 as manipulator
 # import wrs.robot_sim.end_effectors.grippers.wrs_gripper.wrs_gripper_v2 as end_effector

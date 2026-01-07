@@ -253,8 +253,6 @@ if __name__ == '__main__':
 
     for i in tqdm(range(num_trials)):
         jnt = robot.rand_conf()
-        # jnt = [ 1.85502727, -2.26425354,  3.87582289,  0.87367316,  1.27778191,
-        # 2.33416951]
         pos, rot = robot.fk(jnt)
         print("Random jnt:", repr(jnt))
         robot.goto_given_conf(jnt)
