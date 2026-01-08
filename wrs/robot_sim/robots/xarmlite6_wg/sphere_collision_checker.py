@@ -15,6 +15,10 @@ class SphereCollisionChecker:
 
         self._jit_update = jax.jit(self.compute_sphere_positions)
 
+        # collision related: mask is used to ignore spheres within the same link
+        self.collision_mask = self._prepare_collision_masks(ignore_adjacent=True)
+        self._jit_collision_cost = jax.jit(self.self_collision_cost)
+
     def _parse_urdf_structure(self, urdf_path):
         with open(urdf_path, 'r') as f:
             robot_data = xmltodict.parse(f.read())['robot']
@@ -91,6 +95,70 @@ class SphereCollisionChecker:
             p_idxs.append(p_indices)
         
         return jnp.array(statics), jnp.array(axes), np.array(types), np.array(q_idxs), np.array(p_idxs)
+
+    def _prepare_collision_masks(self, ignore_adjacent=True):
+            num_spheres = len(self.sphere_link_indices)
+            id_i = self.sphere_link_indices[:, None]
+            id_j = self.sphere_link_indices[None, :]
+            
+            mask = (id_i != id_j)
+
+            if ignore_adjacent:
+                adj_pairs = []
+                for name in self.link_order:
+                    if name == self.base_link: continue
+                    child_idx = self.link_order.index(name)
+                    parent_idx = self.parent_indices[child_idx]
+                    if parent_idx != -1:
+                        adj_pairs.append((parent_idx, child_idx))
+                
+                for p_idx, c_idx in adj_pairs:
+                    mask &= ~((id_i == p_idx) & (id_j == c_idx))
+                    mask &= ~((id_i == c_idx) & (id_j == p_idx))
+            
+            upper_tri = jnp.triu(jnp.ones((num_spheres, num_spheres), dtype=bool), k=1)
+            return mask & upper_tri
+
+    def compute_self_collision_dist(self, q):
+        spheres = self.compute_sphere_positions(q)
+        radii = self.sphere_radii
+        
+        diff = spheres[:, None, :] - spheres[None, :, :]
+        dist_matrix = jnp.sqrt(jnp.sum(diff**2, axis=-1) + 1e-8)
+        
+        radii_sum_matrix = radii[:, None] + radii[None, :]
+        margin_matrix = dist_matrix - radii_sum_matrix
+        safe_dist = jnp.where(self.collision_mask, margin_matrix, 1e6)
+        
+        return jnp.min(safe_dist)
+
+    def self_collision_cost(self, q, min_margin=0.01):
+            spheres = self.compute_sphere_positions(q)
+            diff = spheres[:, None, :] - spheres[None, :, :]
+            dist_matrix = jnp.sqrt(jnp.sum(diff**2, axis=-1) + 1e-8)
+            radii_sum_matrix = self.sphere_radii[:, None] + self.sphere_radii[None, :]
+            
+            dist_net = dist_matrix - radii_sum_matrix
+            
+            collision_penalty = jax.nn.relu(min_margin - dist_net)
+            
+            total_cost = jnp.sum(collision_penalty * self.collision_mask) * 100.0
+            return total_cost
+
+    def check_collisions(self, q, margin=-0.005):
+            spheres = self.compute_sphere_positions(q)
+            
+            diff = spheres[:, None, :] - spheres[None, :, :]
+            dist_matrix = jnp.linalg.norm(diff, axis=-1)
+            
+            radii_sum = self.sphere_radii[:, None] + self.sphere_radii[None, :]
+            margin_matrix = dist_matrix - radii_sum
+            
+            collision_pairs = (margin_matrix < margin) & self.collision_mask
+            
+            is_colliding = jnp.any(collision_pairs, axis=1) | jnp.any(collision_pairs, axis=0)
+            
+            return spheres, is_colliding
 
     def compute_sphere_positions(self, q):
         num_links = len(self.link_order)

@@ -71,14 +71,14 @@ if __name__ == '__main__':
     table_size = np.array([1.5, 1.5, 0.03])
     table_pos  = np.array([0.2, 0, -0.025])
     table = mcm.gen_box(xyz_lengths=table_size, pos=table_pos, rgb=np.array([0.6, 0.4, 0.2]), alpha=1)
-    table.attach_to(base)
+    # table.attach_to(base)
 
     paper_size = np.array([1.2, 1.2, 0.002])
     paper_pos = table_pos.copy()
     paper_pos[2] = table_pos[2] + table_size[2]/2 + paper_size[2]/2
     print("paper pos:", paper_pos)
     paper = mcm.gen_box(xyz_lengths=paper_size, pos=paper_pos, rgb=np.array([1, 1, 1]), alpha=1)
-    paper.attach_to(base)
+    # paper.attach_to(base)
 
     robot = XArmLite6Miller(enable_cc=True)
     # jnt = robot.rand_conf()
@@ -91,8 +91,8 @@ if __name__ == '__main__':
     jnt_ik = robot.ik(tgt_pos=tgt_pos, tgt_rotmat=tgt_rotmat)
     jnt_ik = robot.rand_conf()  # --- IGNORE ---
     robot.goto_given_conf(jnt_values=jnt_ik)
-    robot.gen_meshmodel().attach_to(base)
-    mgm.gen_frame(pos=tgt_pos, rotmat=tgt_rotmat).attach_to(base)
+    # robot.gen_meshmodel().attach_to(base)
+    # mgm.gen_frame(pos=tgt_pos, rotmat=tgt_rotmat).attach_to(base)
     print("jnt from ik:", jnt_ik)
     print(tgt_pos)
     print(tgt_rotmat)
@@ -102,14 +102,23 @@ if __name__ == '__main__':
     model = SphereCollisionChecker('wrs/robot_sim/robots/xarmlite6_wg/xarm6_sphere_visuals.urdf')
     import time
     import jax.numpy as jnp
-    q_gpu = jnp.array(jnt_ik)
-    _ = model.update(q_gpu)
+    # warm up the jax to avoid initial compilation time
+    jnt_ik = np.array([-0.51425886, 1.61529928, 4.88470885, 2.42885323, 1.0333872, 0.98597998])
+    _ = model.update(jnp.array(np.zeros(robot.n_dof)))
     t1 = time.time()
-    positions = model.update(q_gpu).block_until_ready()
+    q_gpu = jnp.array(jnt_ik)
+    positions = model.update(q_gpu)
     t2 = time.time()
     print("[INFO] Time for sphere collision check update:", t2 - t1)
 
+    # collision visualization
+    spheres_pos, collision_flags = model.check_collisions(q_gpu)
+    radii = model.sphere_radii
+
     for id in range(positions.shape[0]):
-        sphere = mcm.gen_sphere(radius=model.sphere_radii[id], pos=positions[id], rgb=[1,1,0], alpha=0.5)
+        if collision_flags[id]:
+            sphere = mcm.gen_sphere(radius=model.sphere_radii[id], pos=positions[id], rgb=[1,0,0], alpha=0.2)
+        else:
+            sphere = mcm.gen_sphere(radius=model.sphere_radii[id], pos=positions[id], rgb=[1,1,0], alpha=0.2)
         sphere.attach_to(base)
     base.run()
