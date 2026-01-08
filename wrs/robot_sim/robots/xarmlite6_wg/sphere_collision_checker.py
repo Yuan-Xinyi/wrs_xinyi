@@ -132,7 +132,7 @@ class SphereCollisionChecker:
         
         return jnp.min(safe_dist)
 
-    def self_collision_cost(self, q, min_margin=0.01):
+    def self_collision_cost(self, q, scale = 100, min_margin=0.01):
             spheres = self.compute_sphere_positions(q)
             diff = spheres[:, None, :] - spheres[None, :, :]
             dist_matrix = jnp.sqrt(jnp.sum(diff**2, axis=-1) + 1e-8)
@@ -142,7 +142,7 @@ class SphereCollisionChecker:
             
             collision_penalty = jax.nn.relu(min_margin - dist_net)
             
-            total_cost = jnp.sum(collision_penalty * self.collision_mask) * 100.0
+            total_cost = jnp.sum(collision_penalty * self.collision_mask) * scale
             return total_cost
 
     def check_collisions(self, q, margin=-0.005):

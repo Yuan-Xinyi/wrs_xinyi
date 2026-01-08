@@ -90,8 +90,9 @@ if __name__ == '__main__':
     tgt_rotmat[:3,2] = np.array([0,0,-1])
     jnt_ik = robot.ik(tgt_pos=tgt_pos, tgt_rotmat=tgt_rotmat)
     jnt_ik = robot.rand_conf()  # --- IGNORE ---
+    # jnt_ik = np.array([-0.51425886, 1.61529928, 4.88470885, 2.42885323, 1.0333872, 0.98597998])
     robot.goto_given_conf(jnt_values=jnt_ik)
-    # robot.gen_meshmodel().attach_to(base)
+    robot.gen_meshmodel(alpha=0.2).attach_to(base)
     # mgm.gen_frame(pos=tgt_pos, rotmat=tgt_rotmat).attach_to(base)
     print("jnt from ik:", jnt_ik)
     print(tgt_pos)
@@ -103,7 +104,6 @@ if __name__ == '__main__':
     import time
     import jax.numpy as jnp
     # warm up the jax to avoid initial compilation time
-    jnt_ik = np.array([-0.51425886, 1.61529928, 4.88470885, 2.42885323, 1.0333872, 0.98597998])
     _ = model.update(jnp.array(np.zeros(robot.n_dof)))
     t1 = time.time()
     q_gpu = jnp.array(jnt_ik)
@@ -119,6 +119,7 @@ if __name__ == '__main__':
         if collision_flags[id]:
             sphere = mcm.gen_sphere(radius=model.sphere_radii[id], pos=positions[id], rgb=[1,0,0], alpha=0.2)
         else:
-            sphere = mcm.gen_sphere(radius=model.sphere_radii[id], pos=positions[id], rgb=[1,1,0], alpha=0.2)
+            sphere = mcm.gen_sphere(radius=model.sphere_radii[id], pos=positions[id], rgb=[0,0,1], alpha=0.2)
         sphere.attach_to(base)
+    
     base.run()
