@@ -90,7 +90,7 @@ if __name__ == '__main__':
     tgt_rotmat[:3,2] = np.array([0,0,-1])
     jnt_ik = robot.ik(tgt_pos=tgt_pos, tgt_rotmat=tgt_rotmat)
     jnt_ik = robot.rand_conf()  # --- IGNORE ---
-    # jnt_ik = np.array([-0.51425886, 1.61529928, 4.88470885, 2.42885323, 1.0333872, 0.98597998])
+    jnt_ik = np.array([ 0.52303625,  0.04266861,  2.52732741,  0.02286268, -1.69838813,  2.18791072])
     robot.goto_given_conf(jnt_values=jnt_ik)
     robot.gen_meshmodel(alpha=0.8).attach_to(base)
     # mgm.gen_frame(pos=tgt_pos, rotmat=tgt_rotmat).attach_to(base)
@@ -123,5 +123,5 @@ if __name__ == '__main__':
         else:
             sphere = mcm.gen_sphere(radius=model.sphere_radii[id], pos=positions[id], rgb=[0,0,1], alpha=0.2)
         sphere.attach_to(base)
-    
+    print(f'[INFO] The self collision cost is {model.self_collision_cost(q_gpu, scale=1)}')
     base.run()
