@@ -1,0 +1,513 @@
+<?xml version="1.0" encoding="utf-8"?>
+<robot name="xarm_lite6">
+
+  <material name="Grey">
+    <color rgba="0.75 0.75 0.75 1.0"/>
+  </material>
+
+  <link name="base_link">
+    <visual>
+      <geometry>
+        <mesh filename="package://xarm_lite6_description/meshes/base.stl"/>
+      </geometry>
+      <material name="Grey"/>
+    </visual>
+    <collision>
+        <geometry>
+            <sphere radius="0.062362"></sphere>
+        </geometry>
+        <origin xyz="0.000459348 -0.000282285 0.134435" rpy="0 0 0"></origin>
+    </collision>
+    <collision>
+        <geometry>
+            <sphere radius="0.067714"></sphere>
+        </geometry>
+        <origin xyz="0.001527348 -0.000847285 0.052853" rpy="0 0 0"></origin>
+    </collision>
+    <collision>
+        <geometry>
+            <sphere radius="0.065785"></sphere>
+        </geometry>
+        <origin xyz="-0.03689465 0.02269471 0.038717" rpy="0 0 0"></origin>
+    </collision>
+    <collision>
+        <geometry>
+            <sphere radius="0.0684"></sphere>
+        </geometry>
+        <origin xyz="-0.02749165 -0.02229128 0.039662" rpy="0 0 0"></origin>
+    </collision>
+    <collision>
+        <geometry>
+            <sphere radius="0.067319"></sphere>
+        </geometry>
+        <origin xyz="0.01239634 0.02047471 0.039861" rpy="0 0 0"></origin>
+    </collision>
+    <collision>
+        <geometry>
+            <sphere radius="0.064816"></sphere>
+        </geometry>
+        <origin xyz="0.01891634 -0.01404128 0.037429" rpy="0 0 0"></origin>
+    </collision>
+    <collision>
+        <geometry>
+            <sphere radius="0.042938"></sphere>
+        </geometry>
+        <origin xyz="0.02718034 -0.04201028 0.015969" rpy="0 0 0"></origin>
+    </collision>
+    <collision>
+        <geometry>
+            <sphere radius="0.028741"></sphere>
+        </geometry>
+        <origin xyz="0.04438234 0.04490571 0.009663" rpy="0 0 0"></origin>
+    </collision>
+  </link>
+
+  <joint name="joint1" type="revolute">
+    <parent link="base_link"/>
+    <child link="link1"/>
+    <origin xyz="0 0 0.2433" rpy="0 0 0"/>
+    <axis xyz="0 0 1"/>
+    <limit lower="-3.14159" upper="3.14159" effort="50" velocity="3.14"/>
+  </joint>
+
+  <link name="link1">
+    <visual>
+      <geometry>
+        <mesh filename="package://xarm_lite6_description/meshes/link1.stl"/>
+      </geometry>
+      <material name="Grey"/>
+    </visual>
+    <collision>
+        <geometry>
+            <sphere radius="0.051397"></sphere>
+        </geometry>
+        <origin xyz="-0.004148611 0.045994389 -0.004809796" rpy="0 0 0"></origin>
+    </collision>
+    <collision>
+        <geometry>
+            <sphere radius="0.05179"></sphere>
+        </geometry>
+        <origin xyz="-2.96112e-05 0.000624389 -0.003609796" rpy="0 0 0"></origin>
+    </collision>
+    <collision>
+        <geometry>
+            <sphere radius="0.050992"></sphere>
+        </geometry>
+        <origin xyz="-0.004776611 -0.007730611 -0.038299796" rpy="0 0 0"></origin>
+    </collision>
+    <collision>
+        <geometry>
+            <sphere radius="0.052575"></sphere>
+        </geometry>
+        <origin xyz="0.005866389 0.046309389 0.001231204" rpy="0 0 0"></origin>
+    </collision>
+    <collision>
+        <geometry>
+            <sphere radius="0.051169"></sphere>
+        </geometry>
+        <origin xyz="-0.002726611 0.046753389 0.005876204" rpy="0 0 0"></origin>
+    </collision>
+    <collision>
+        <geometry>
+            <sphere radius="0.042281"></sphere>
+        </geometry>
+        <origin xyz="0.014363389 -0.003891611 -0.045725796" rpy="0 0 0"></origin>
+    </collision>
+    <collision>
+        <geometry>
+            <sphere radius="0.037386"></sphere>
+        </geometry>
+        <origin xyz="-0.012426611 0.011116389 -0.050737796" rpy="0 0 0"></origin>
+    </collision>
+    <collision>
+        <geometry>
+            <sphere radius="0.032539"></sphere>
+        </geometry>
+        <origin xyz="0.009580389 0.019117389 -0.053075796" rpy="0 0 0"></origin>
+    </collision>
+  </link>
+
+  <joint name="joint2" type="revolute">
+    <parent link="link1"/>
+    <child link="link2"/>
+    <origin xyz="0 0 0" rpy="1.5708 -1.5708 3.1416"/>
+    <axis xyz="0 0 1"/>
+    <limit lower="-2.61799" upper="2.61799" effort="50" velocity="3.14"/>
+  </joint>
+
+  <link name="link2">
+    <visual>
+      <geometry>
+        <mesh filename="package://xarm_lite6_description/meshes/link2.stl"/>
+      </geometry>
+      <material name="Grey"/>
+    </visual>
+    <collision>
+        <geometry>
+            <sphere radius="0.059264"></sphere>
+        </geometry>
+        <origin xyz="0.200661813 0.000568362 0.082753426" rpy="0 0 0"></origin>
+    </collision>
+    <collision>
+        <geometry>
+            <sphere radius="0.055842"></sphere>
+        </geometry>
+        <origin xyz="0.169793813 -0.003314638 0.100713426" rpy="0 0 0"></origin>
+    </collision>
+    <collision>
+        <geometry>
+            <sphere radius="0.040843"></sphere>
+        </geometry>
+        <origin xyz="0.106934813 -0.016173638 0.113598426" rpy="0 0 0"></origin>
+    </collision>
+    <collision>
+        <geometry>
+            <sphere radius="0.045372"></sphere>
+        </geometry>
+        <origin xyz="0.119298813 0.008917362 0.113947426" rpy="0 0 0"></origin>
+    </collision>
+    <collision>
+        <geometry>
+            <sphere radius="0.044882"></sphere>
+        </geometry>
+        <origin xyz="0.057724813 0.014530362 0.112793426" rpy="0 0 0"></origin>
+    </collision>
+    <collision>
+        <geometry>
+            <sphere radius="0.045653"></sphere>
+        </geometry>
+        <origin xyz="0.042489813 -0.015066638 0.111223426" rpy="0 0 0"></origin>
+    </collision>
+    <collision>
+        <geometry>
+            <sphere radius="0.049566"></sphere>
+        </geometry>
+        <origin xyz="-0.005015187 -0.005770638 0.101357426" rpy="0 0 0"></origin>
+    </collision>
+    <collision>
+        <geometry>
+            <sphere radius="0.05026"></sphere>
+        </geometry>
+        <origin xyz="0.001526813 0.007824362 0.102250426" rpy="0 0 0"></origin>
+    </collision>
+  </link>
+
+  <joint name="joint3" type="revolute">
+    <parent link="link2"/>
+    <child link="link3"/>
+    <origin xyz="0.2 0 0" rpy="-3.1416 0 1.5708"/>
+    <axis xyz="0 0 1"/>
+    <limit lower="-0.061087" upper="5.235988" effort="30" velocity="3.14"/>
+  </joint>
+
+  <link name="link3">
+    <visual>
+      <geometry>
+        <mesh filename="package://xarm_lite6_description/meshes/link3.stl"/>
+      </geometry>
+      <material name="Grey"/>
+    </visual>
+    <collision>
+        <geometry>
+            <sphere radius="0.051805"></sphere>
+        </geometry>
+        <origin xyz="-0.000275837 0.000981553 0.001196971" rpy="0 0 0"></origin>
+    </collision>
+    <collision>
+        <geometry>
+            <sphere radius="0.048458"></sphere>
+        </geometry>
+        <origin xyz="0.091529163 -0.004746447 0.006068971" rpy="0 0 0"></origin>
+    </collision>
+    <collision>
+        <geometry>
+            <sphere radius="0.052898"></sphere>
+        </geometry>
+        <origin xyz="0.069583163 0.000319553 0.001297971" rpy="0 0 0"></origin>
+    </collision>
+    <collision>
+        <geometry>
+            <sphere radius="0.054093"></sphere>
+        </geometry>
+        <origin xyz="0.024489163 0.002781553 -0.003510029" rpy="0 0 0"></origin>
+    </collision>
+    <collision>
+        <geometry>
+            <sphere radius="0.050417"></sphere>
+        </geometry>
+        <origin xyz="-0.001464837 -0.005699447 -0.013325029" rpy="0 0 0"></origin>
+    </collision>
+    <collision>
+        <geometry>
+            <sphere radius="0.051588"></sphere>
+        </geometry>
+        <origin xyz="-0.001997837 0.005310553 -0.012209029" rpy="0 0 0"></origin>
+    </collision>
+    <collision>
+        <geometry>
+            <sphere radius="0.042749"></sphere>
+        </geometry>
+        <origin xyz="0.089794163 -0.010037447 -0.012116029" rpy="0 0 0"></origin>
+    </collision>
+  </link>
+
+  <joint name="joint4" type="revolute">
+    <parent link="link3"/>
+    <child link="link4"/>
+    <origin xyz="0.087 -0.2276 0" rpy="1.5708 0 0"/>
+    <axis xyz="0 0 1"/>
+    <limit lower="-3.14159" upper="3.14159" effort="20" velocity="3.14"/>
+  </joint>
+
+  <link name="link4">
+    <visual>
+      <geometry>
+        <mesh filename="package://xarm_lite6_description/meshes/link4.stl"/>
+      </geometry>
+      <material name="Grey"/>
+    </visual>
+    <collision>
+        <geometry>
+            <sphere radius="0.0587"></sphere>
+        </geometry>
+        <origin xyz="0.000185809 -0.001045302 -0.154923746" rpy="0 0 0"></origin>
+    </collision>
+    <collision>
+        <geometry>
+            <sphere radius="0.056997"></sphere>
+        </geometry>
+        <origin xyz="0.000163809 -0.004527302 -0.098632746" rpy="0 0 0"></origin>
+    </collision>
+    <collision>
+        <geometry>
+            <sphere radius="0.054288"></sphere>
+        </geometry>
+        <origin xyz="0.002633809 -0.047305302 -0.089468746" rpy="0 0 0"></origin>
+    </collision>
+    <collision>
+        <geometry>
+            <sphere radius="0.042228"></sphere>
+        </geometry>
+        <origin xyz="-0.007754191 -0.061040302 -0.046762746" rpy="0 0 0"></origin>
+    </collision>
+    <collision>
+        <geometry>
+            <sphere radius="0.039909"></sphere>
+        </geometry>
+        <origin xyz="0.016199809 -0.063689302 -0.030466746" rpy="0 0 0"></origin>
+    </collision>
+    <collision>
+        <geometry>
+            <sphere radius="0.038411"></sphere>
+        </geometry>
+        <origin xyz="0.011799809 -0.060708302 0.010142254" rpy="0 0 0"></origin>
+    </collision>
+    <collision>
+        <geometry>
+            <sphere radius="0.031862"></sphere>
+        </geometry>
+        <origin xyz="-0.009809191 -0.059696302 0.014928254" rpy="0 0 0"></origin>
+    </collision>
+    <collision>
+        <geometry>
+            <sphere radius="0.036571"></sphere>
+        </geometry>
+        <origin xyz="-0.016049191 -0.060841302 -0.000250746" rpy="0 0 0"></origin>
+    </collision>
+  </link>
+
+  <joint name="joint5" type="revolute">
+    <parent link="link4"/>
+    <child link="link5"/>
+    <origin xyz="0 0 0" rpy="1.5708 0 0"/>
+    <axis xyz="0 0 1"/>
+    <limit lower="-2.1642" upper="2.1642" effort="20" velocity="3.14"/>
+  </joint>
+
+  <link name="link5">
+    <visual>
+      <geometry>
+        <mesh filename="package://xarm_lite6_description/meshes/link5.stl"/>
+      </geometry>
+      <material name="Grey"/>
+    </visual>
+    <collision>
+        <geometry>
+            <sphere radius="0.051029"></sphere>
+        </geometry>
+        <origin xyz="-0.000856399 -0.007079826 0.005001641" rpy="0 0 0"></origin>
+    </collision>
+    <collision>
+        <geometry>
+            <sphere radius="0.042822"></sphere>
+        </geometry>
+        <origin xyz="-0.009705399 -0.001652826 0.013601641" rpy="0 0 0"></origin>
+    </collision>
+    <collision>
+        <geometry>
+            <sphere radius="0.038771"></sphere>
+        </geometry>
+        <origin xyz="0.013669601 -0.004716826 0.018028641" rpy="0 0 0"></origin>
+    </collision>
+    <collision>
+        <geometry>
+            <sphere radius="0.042496"></sphere>
+        </geometry>
+        <origin xyz="0.009128601 0.014592174 0.014413641" rpy="0 0 0"></origin>
+    </collision>
+    <collision>
+        <geometry>
+            <sphere radius="0.039474"></sphere>
+        </geometry>
+        <origin xyz="-0.013014399 0.017511174 0.011434641" rpy="0 0 0"></origin>
+    </collision>
+    <collision>
+        <geometry>
+            <sphere radius="0.043124"></sphere>
+        </geometry>
+        <origin xyz="-0.009643399 0.013737174 -0.007169359" rpy="0 0 0"></origin>
+    </collision>
+    <collision>
+        <geometry>
+            <sphere radius="0.036323"></sphere>
+        </geometry>
+        <origin xyz="0.015524601 0.019440174 -0.005243359" rpy="0 0 0"></origin>
+    </collision>
+    <collision>
+        <geometry>
+            <sphere radius="0.035311"></sphere>
+        </geometry>
+        <origin xyz="0.004813601 0.021422174 -0.017781359" rpy="0 0 0"></origin>
+    </collision>
+  </link>
+
+  <joint name="joint6" type="revolute">
+    <parent link="link5"/>
+    <child link="link6"/>
+    <origin xyz="0 0.0615 0" rpy="-1.5708 0 0"/>
+    <axis xyz="0 0 1"/>
+    <limit lower="-3.14159" upper="3.14159" effort="10" velocity="3.14"/>
+  </joint>
+
+  <link name="link6">
+    <visual>
+      <geometry>
+        <mesh filename="package://xarm_lite6_description/meshes/link6.stl"/>
+      </geometry>
+      <material name="Grey"/>
+    </visual>
+    <collision>
+        <geometry>
+            <sphere radius="0.023786"></sphere>
+        </geometry>
+        <origin xyz="-0.007645947 -0.00344408 -0.013864063" rpy="0 0 0"></origin>
+    </collision>
+    <collision>
+        <geometry>
+            <sphere radius="0.019002"></sphere>
+        </geometry>
+        <origin xyz="-0.014706947 -0.02296708 -0.011504063" rpy="0 0 0"></origin>
+    </collision>
+    <collision>
+        <geometry>
+            <sphere radius="0.024119"></sphere>
+        </geometry>
+        <origin xyz="-0.000452947 0.02913592 -0.011517063" rpy="0 0 0"></origin>
+    </collision>
+    <collision>
+        <geometry>
+            <sphere radius="0.024815"></sphere>
+        </geometry>
+        <origin xyz="0.021980053 0.01396192 -0.011778063" rpy="0 0 0"></origin>
+    </collision>
+    <collision>
+        <geometry>
+            <sphere radius="0.025455"></sphere>
+        </geometry>
+        <origin xyz="0.022531053 -0.01389608 -0.011788063" rpy="0 0 0"></origin>
+    </collision>
+    <collision>
+        <geometry>
+            <sphere radius="0.023278"></sphere>
+        </geometry>
+        <origin xyz="-0.021995947 0.01392992 -0.011723063" rpy="0 0 0"></origin>
+    </collision>
+    <collision>
+        <geometry>
+            <sphere radius="0.024813"></sphere>
+        </geometry>
+        <origin xyz="-0.024840947 -0.01024408 -0.011858063" rpy="0 0 0"></origin>
+    </collision>
+    <collision>
+        <geometry>
+            <sphere radius="0.025721"></sphere>
+        </geometry>
+        <origin xyz="-0.000329947 -0.02573308 -0.011807063" rpy="0 0 0"></origin>
+    </collision>
+  </link>
+
+<joint name="miller_fixed_joint" type="fixed">
+    <parent link="link6"/>
+    <child link="spine_miller"/>
+    <origin xyz="0 0 0" rpy="0 0 0"/>
+  </joint>
+
+  <link name="spine_miller">
+    <collision>
+      <geometry>
+        <sphere radius="0.038024"></sphere>
+      </geometry>
+      <origin xyz="0.000943114 0.000844981 0.161787984" rpy="0 0 0"></origin>
+    </collision>
+    <collision>
+      <geometry>
+        <sphere radius="0.042246"></sphere>
+      </geometry>
+      <origin xyz="6.11139e-05 7.19808e-05 0.098552984" rpy="0 0 0"></origin>
+    </collision>
+    <collision>
+      <geometry>
+        <sphere radius="0.047313"></sphere>
+      </geometry>
+      <origin xyz="-0.006026886 -0.000756019 0.034267984" rpy="0 0 0"></origin>
+    </collision>
+    <collision>
+      <geometry>
+        <sphere radius="0.0455"></sphere>
+      </geometry>
+      <origin xyz="0.020299114 0.011635981 0.025136984" rpy="0 0 0"></origin>
+    </collision>
+    <collision>
+      <geometry>
+        <sphere radius="0.051148"></sphere>
+      </geometry>
+      <origin xyz="-0.009283886 0.018272981 0.028299984" rpy="0 0 0"></origin>
+    </collision>
+    <collision>
+      <geometry>
+        <sphere radius="0.048566"></sphere>
+      </geometry>
+      <origin xyz="-0.016280886 -0.014149019 0.026597984" rpy="0 0 0"></origin>
+    </collision>
+    <collision>
+      <geometry>
+        <sphere radius="0.04581"></sphere>
+      </geometry>
+      <origin xyz="0.015391114 -0.016799019 0.025698984" rpy="0 0 0"></origin>
+    </collision>
+    <collision>
+      <geometry>
+        <sphere radius="0.015713"></sphere>
+      </geometry>
+      <origin xyz="-0.000315886 -0.000186019 0.213518984" rpy="0 0 0"></origin>
+    </collision>
+  </link>
+
+  <link name="miller_tcp"/>
+  <joint name="miller_tcp_joint" type="fixed">
+    <parent link="spine_miller"/>
+    <child link="miller_tcp"/>
+    <origin xyz="0 0 0.22" rpy="0 0 0"/>
+  </joint>
+
+</robot>

@@ -89,10 +89,27 @@ if __name__ == '__main__':
     tgt_rotmat = np.eye(3)
     tgt_rotmat[:3,2] = np.array([0,0,-1])
     jnt_ik = robot.ik(tgt_pos=tgt_pos, tgt_rotmat=tgt_rotmat)
+    jnt_ik = robot.rand_conf()  # --- IGNORE ---
     robot.goto_given_conf(jnt_values=jnt_ik)
     robot.gen_meshmodel().attach_to(base)
     mgm.gen_frame(pos=tgt_pos, rotmat=tgt_rotmat).attach_to(base)
     print("jnt from ik:", jnt_ik)
     print(tgt_pos)
     print(tgt_rotmat)
+    
+
+    from sphere_collision_checker import SphereCollisionChecker
+    model = SphereCollisionChecker('wrs/robot_sim/robots/xarmlite6_wg/xarm6_sphere_visuals.urdf')
+    import time
+    import jax.numpy as jnp
+    q_gpu = jnp.array(jnt_ik)
+    _ = model.update(q_gpu)
+    t1 = time.time()
+    positions = model.update(q_gpu).block_until_ready()
+    t2 = time.time()
+    print("[INFO] Time for sphere collision check update:", t2 - t1)
+
+    for id in range(positions.shape[0]):
+        sphere = mcm.gen_sphere(radius=model.sphere_radii[id], pos=positions[id], rgb=[1,1,0], alpha=0.5)
+        sphere.attach_to(base)
     base.run()
