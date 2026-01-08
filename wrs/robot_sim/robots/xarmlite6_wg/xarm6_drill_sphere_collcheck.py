@@ -92,7 +92,7 @@ if __name__ == '__main__':
     jnt_ik = robot.rand_conf()  # --- IGNORE ---
     # jnt_ik = np.array([-0.51425886, 1.61529928, 4.88470885, 2.42885323, 1.0333872, 0.98597998])
     robot.goto_given_conf(jnt_values=jnt_ik)
-    robot.gen_meshmodel(alpha=0.2).attach_to(base)
+    robot.gen_meshmodel(alpha=0.8).attach_to(base)
     # mgm.gen_frame(pos=tgt_pos, rotmat=tgt_rotmat).attach_to(base)
     print("jnt from ik:", jnt_ik)
     print(tgt_pos)
@@ -112,7 +112,9 @@ if __name__ == '__main__':
     print("[INFO] Time for sphere collision check update:", t2 - t1)
 
     # collision visualization
-    spheres_pos, collision_flags = model.check_collisions(q_gpu)
+    spheres_pos, collision_flags = model._jit_check_collisions(q_gpu)
+    spheres_pos = spheres_pos.block_until_ready()
+    collision_flags = collision_flags.block_until_ready()
     radii = model.sphere_radii
 
     for id in range(positions.shape[0]):
