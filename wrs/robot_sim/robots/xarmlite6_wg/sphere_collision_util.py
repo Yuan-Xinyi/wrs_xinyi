@@ -1,3 +1,7 @@
+#-----------------------------------------------------------------------------------------------------
+# this code is from https://github.com/CoMMALab/SPaSM/blob/73ee134cab756f9ffb7f93ac404fee6e9eeb7b97/kinematics/util.py
+# -----------------------------------------------------------------------------------------------------
+
 import jax
 import jax.numpy as jnp
 import numpy as np
