@@ -96,7 +96,7 @@ class SphereCollisionChecker:
         _, margin_matrix = self._compute_collision_data(q)
         return jnp.min(jnp.where(self.collision_mask, margin_matrix, 1e6))
 
-    def self_collision_cost(self, q, scale=100, min_margin=-0.005):
+    def self_collision_cost(self, q, scale=1, min_margin=-0.005):
         _, margin_matrix = self._compute_collision_data(q)
         return jnp.sum(jax.nn.relu(min_margin - margin_matrix) * self.collision_mask) * scale
 

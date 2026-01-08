@@ -13,6 +13,10 @@ import torch
 from matplotlib.path import Path
 warnings.filterwarnings("ignore", message=".*To copy construct from a tensor.*")
 
+from wrs.robot_sim.robots.xarmlite6_wg.sphere_collision_checker import SphereCollisionChecker 
+import jax2torch
+import jax
+
 class LineSampler:
     def __init__(self, contour_path, z_value=0.0, device='cuda'):
         with open(contour_path, 'rb') as f:
@@ -125,19 +129,26 @@ def sample_line_batch(xc, d, L, num_points, visulize=False):
     return points
 
 
-def optimize_path_batch(pos_targets, steps=50):
+def optimize_path_batch(pos_targets, cc=None, steps=50):
     B, N, _ = pos_targets.shape # B=100, N=32
     num_jnts = robot.n_dof
     
     q_traj = (torch.randn((B, N, num_jnts), device=device) * 0.1).detach().requires_grad_(True)
     optimizer = torch.optim.LBFGS([q_traj], lr=1, max_iter=20)
+
+    ## collision checker setup
+    vmap_jax_cost = jax.jit(jax.vmap(cc.self_collision_cost, in_axes=(0, None, None)))
+    torch_collision_vmap = jax2torch.get(lambda q_batch: vmap_jax_cost(q_batch))
     
     jnt_min = torch.tensor(robot.jnt_ranges[:,0], device=device, dtype=torch.float32)
     jnt_max = torch.tensor(robot.jnt_ranges[:,1], device=device, dtype=torch.float32)
 
     def closure():
         optimizer.zero_grad()
-        pos_fk, rot_fk = robot.fk_batch(q_traj.view(-1, num_jnts))
+        q_flat = q_traj.view(-1, num_jnts)
+        
+        ## fk distance loss
+        pos_fk, rot_fk = robot.fk_batch(q_flat)
         pos_fk = pos_fk.view(B, N, 3)
         rot_fk = rot_fk.view(B, N, 3, 3)
 
@@ -152,7 +163,9 @@ def optimize_path_batch(pos_targets, steps=50):
         
         loss_limit = torch.mean(torch.relu(jnt_min - q_traj)**2 + torch.relu(q_traj - jnt_max)**2)
 
-        total_loss = 1000.0 * loss_pos + 10.0 * loss_smooth + 50.0 * loss_rot + 100.0 * loss_limit
+        loss_cc = torch_collision_vmap(q_flat).mean()
+
+        total_loss = 1000.0 * loss_pos + 10.0 * loss_smooth + 50.0 * loss_rot + 100.0 * loss_limit + 10.0 * loss_cc
         total_loss.backward()
         return total_loss
 
@@ -165,6 +178,7 @@ def optimize_path_batch(pos_targets, steps=50):
 # ------------------------------------------------------------
 import wrs.robot_sim.robots.xarmlite6_wg.xarm6_drill as xarm6_sim
 import helper_functions as helpers
+import jax.numpy as jnp
 rbt_sim = xarm6_sim.XArmLite6Miller(enable_cc=True)
 
 if __name__ == "__main__":
@@ -183,12 +197,19 @@ if __name__ == "__main__":
     # helpers.visualize_anime_path(base, rbt_sim, q_np)
 
     '''if randomly sample line within workspace:'''
+    ## task sampler
     sampler = LineSampler(contour_path='0000_test_programs/surgery_diff/CleanDiffuser/Drawing_neuro_straight/xarm_contour_z0.pkl')
     xcs, ds, Ls = sampler.sample_tasks(batch_size=10, L_range=(0.8, 1.6))
     pos_paths = sample_line_batch(xcs, ds, Ls, num_points=32, visulize=True)
     print("[INFO] optimizing sampled lines...")
+
+    ## collision checker setup
+    cc_model = SphereCollisionChecker('wrs/robot_sim/robots/xarmlite6_wg/xarm6_sphere_visuals.urdf')
+    _ = cc_model.update(jnp.array(np.zeros(robot.n_dof)))  # to warm up jax
+    
+    ## optimization with collision checking
     start_t = time.time()
-    q_optimized_batch = optimize_path_batch(pos_paths, steps=100)
+    q_optimized_batch = optimize_path_batch(pos_paths, cc=cc_model, steps=100)
     print(f"[INFO] total time for batch optimization: {time.time()-start_t:.2f}s")
     print("[INFO] visualizing...")
     q_optimized_batch = q_optimized_batch.reshape(-1, 6).cpu().numpy()
