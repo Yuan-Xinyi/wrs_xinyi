@@ -138,7 +138,7 @@ def optimize_path_batch(pos_targets, cc=None, steps=50):
 
     ## collision checker setup
     vmap_jax_cost = jax.jit(jax.vmap(cc.self_collision_cost, in_axes=(0, None, None)))
-    torch_collision_vmap = jax2torch.get(lambda q_batch: vmap_jax_cost(q_batch))
+    torch_collision_vmap = jax2torch.jax2torch(lambda q_batch: vmap_jax_cost(q_batch, 100.0, 0.01))
     
     jnt_min = torch.tensor(robot.jnt_ranges[:,0], device=device, dtype=torch.float32)
     jnt_max = torch.tensor(robot.jnt_ranges[:,1], device=device, dtype=torch.float32)
