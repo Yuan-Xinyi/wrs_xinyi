@@ -224,45 +224,114 @@ if dummy_q.grad is not None:
 print("[INFO] Collision checker (JAX + jax2torch) warm-up finished.")
 
 if __name__ == "__main__":
-    '''if manually specify line:'''
-    # xc = torch.tensor([0.4, 0.0, 0.02], device=device)
-    # d = torch.tensor([0.0, 1.0, 0.0], device=device) # along y axis
-    # pos_path = sample_line(xc, d, 1.4, num_points=40)
-    # start_t = time.time()
-    # q_optimized = optimize_path(pos_path)
-    # print(f"total time: {time.time()-start_t:.2f}s")
 
-    # q_np = q_optimized.cpu().numpy()
-    # for i in range(len(q_np)):
-    #     mgm.gen_sphere(pos_path[i].cpu().numpy(), radius=0.003, rgb=[1,0,0]).attach_to(base)
+    # ============================================================
+    # 固定中心 xc
+    # ============================================================
+    sampler = LineSampler(
+        contour_path='0000_test_programs/surgery_diff/CleanDiffuser/Drawing_neuro_straight/xarm_contour_z0.pkl'
+    )
 
-    # helpers.visualize_anime_path(base, rbt_sim, q_np)
+    xcs, _, _ = sampler.sample_tasks(batch_size=1, L_range=(0.1, 0.1))
+    xc = xcs[0:1]   # (1,3)
+    print("[INFO] Fixed center xc:", xc.cpu().numpy())
 
-    '''if randomly sample line within workspace:'''
-    ## task sampler
-    sampler = LineSampler(contour_path='0000_test_programs/surgery_diff/CleanDiffuser/Drawing_neuro_straight/xarm_contour_z0.pkl')
-    xcs, ds, Ls = sampler.sample_tasks(batch_size=100, L_range=(0.8, 0.8))
-    pos_paths = sample_line_batch(xcs, ds, Ls, num_points=32, visulize=True)
-    print("[INFO] optimizing sampled lines...")
+    # ============================================================
+    # 方向集合（并行维度）
+    # ============================================================
+    num_dirs = 128
+    thetas = np.linspace(0, 2 * np.pi, num_dirs, endpoint=False)
 
-    
-    ## optimization with collision checking
-    start_t = time.time()
-    q_optimized_batch = optimize_path_batch(pos_paths, cc=None, steps=100)
-    success_flag, pos_err = evaluate_trajectory_batch(cc_model, q_optimized_batch, pos_paths)
-    print(f"[INFO] total time for batch optimization: {time.time()-start_t:.2f}s")
-    print(f"[Result] success rate: {torch.sum(success_flag)}/{len(success_flag)}")
-    print(f"[Result] position errors (mean over trajectory): {pos_err}")
-    print("[INFO] visualizing...")
-    # print("optimized q:", repr(q_optimized_batch))
+    d_all = torch.tensor(
+        np.stack([np.cos(thetas), np.sin(thetas), np.zeros_like(thetas)], axis=1),
+        device=device,
+        dtype=torch.float32
+    )  # (B,3)
 
-    success_idx = torch.nonzero(success_flag).squeeze(-1)
+    xc_all = xc.repeat(num_dirs, 1)  # (B,3)
 
-    if len(success_idx) == 0:
-        print("[WARN] No successful trajectories to visualize.")
-    else:
-        q_success = q_optimized_batch[success_idx]      # (K, N, 6)
-        q_success = q_success.reshape(-1, 6).cpu().numpy()
+    # ============================================================
+    # 搜索参数
+    # ============================================================
+    L_start = 0.6
+    L_expand_ratio = 1.1
+    L_max_cap = 1.4
+    num_points = 32
 
-        print(f"[INFO] Visualizing {len(success_idx)} successful trajectories.")
-        helpers.visualize_anime_path(base, rbt_sim, q_success)
+    alive_mask = torch.ones(num_dirs, dtype=torch.bool, device=device)
+    best_L_per_dir = torch.zeros(num_dirs, device=device)
+    best_q_per_dir = [None for _ in range(num_dirs)]
+
+    L = L_start
+
+    # ============================================================
+    # 主循环：长度层级（并行方向 + 单调剪枝）
+    # ============================================================
+    while L <= L_max_cap and alive_mask.any():
+
+        print(f"\n[LAYER] Trying L = {L:.3f}, alive dirs = {alive_mask.sum().item()}")
+
+        idx = torch.nonzero(alive_mask).squeeze(-1)
+
+        xc_batch = xc_all[idx]
+        d_batch = d_all[idx]
+        L_batch = torch.full((len(idx),), L, device=device)
+
+        pos_paths = sample_line_batch(
+            xc_batch, d_batch, L_batch,
+            num_points=num_points,
+            visulize=False
+        )
+
+        q_optimized = optimize_path_batch(
+            pos_paths,
+            cc=None,
+            steps=80
+        )
+
+        success_flags, pos_err = evaluate_trajectory_batch(
+            cc_model,
+            q_optimized,
+            pos_paths,
+            pos_threshold=0.005
+        )
+
+        # ========================================================
+        # 剪枝：失败方向永久失效
+        # ========================================================
+        failed_idx = idx[~success_flags]
+        alive_mask[failed_idx] = False
+
+        # 记录成功结果
+        success_idx = idx[success_flags]
+        for i, dir_id in enumerate(success_idx.tolist()):
+            best_L_per_dir[dir_id] = L
+            best_q_per_dir[dir_id] = q_optimized[i]
+
+        print(f"  success = {success_flags.sum().item()}, pruned = {(~success_flags).sum().item()}")
+
+        L *= L_expand_ratio
+
+    # ============================================================
+    # 汇总结果
+    # ============================================================
+    best_dir = torch.argmax(best_L_per_dir).item()
+    best_L = best_L_per_dir[best_dir].item()
+    best_theta = thetas[best_dir]
+    best_q = best_q_per_dir[best_dir]
+
+    print("\n==============================")
+    print("[RESULT]")
+    print(f"Best direction index = {best_dir}")
+    print(f"Best theta = {best_theta:.3f} rad")
+    print(f"Longest feasible L = {best_L:.3f}")
+    print("==============================")
+
+    # ============================================================
+    # 可视化
+    # ============================================================
+    if best_q is not None:
+        q_vis = best_q.reshape(-1, robot.n_dof).cpu().numpy()
+        helpers.visualize_anime_path(base, rbt_sim, q_vis)
+
+
