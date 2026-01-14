@@ -241,7 +241,7 @@ if __name__ == "__main__":
     '''if randomly sample line within workspace:'''
     ## task sampler
     sampler = LineSampler(contour_path='0000_test_programs/surgery_diff/CleanDiffuser/Drawing_neuro_straight/xarm_contour_z0.pkl')
-    xcs, ds, Ls = sampler.sample_tasks(batch_size=100, L_range=(0.9, 0.9))
+    xcs, ds, Ls = sampler.sample_tasks(batch_size=1024, L_range=(0.8, 0.8))
     pos_paths = sample_line_batch(xcs, ds, Ls, num_points=32, visulize=True)
     print("[INFO] optimizing sampled lines...")
 

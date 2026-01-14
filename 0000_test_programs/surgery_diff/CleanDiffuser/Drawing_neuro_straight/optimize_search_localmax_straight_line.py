@@ -18,6 +18,19 @@ from wrs.robot_sim.robots.xarmlite6_wg.sphere_collision_checker import SphereCol
 import jax2torch
 import jax
 
+centers = [
+            # [0.22667526, -0.11776538, 0],
+            # [0.21146455, 0.16981612, 0],
+            # [0.23369516, 0.14750803, 0],
+            # [0.40307793, 0.34884274, 0],
+            # [0.24711241, -0.10846166, 0],
+            # [0.14937423, 0.10832477, 0],
+            # [0.45417136, -0.3653374, 0],
+            # [0.17260942, -0.51152927, 0],
+            # [0.25486058, 0.03350953, 0],
+            [0.2801755, 0.13957125, 0]
+]
+
 class LineSampler:
     def __init__(self, contour_path, z_value=0.0, device='cuda'):
         with open(contour_path, 'rb') as f:
@@ -27,10 +40,10 @@ class LineSampler:
         self.z_value = z_value
         self.device = device
         
-        # self.min_x, self.min_y = np.min(self.contour, axis=0)
-        # self.max_x, self.max_y = np.max(self.contour, axis=0)
-        self.min_y, self.max_y = 0, 0 # -0.1, 0.1
-        self.min_x, self.max_x = 0.3, 0.3 # 0.2, 0.4
+        self.min_x, self.min_y = np.min(self.contour, axis=0)
+        self.max_x, self.max_y = np.max(self.contour, axis=0)
+        # self.min_y, self.max_y = 0, 0 # -0.1, 0.1
+        # self.min_x, self.max_x = 0.3, 0.3 # 0.2, 0.4
 
     def is_in_workspace(self, points_xy):
         # return self.path.contains_points(points_xy)
@@ -228,75 +241,82 @@ if __name__ == "__main__":
     sampler = LineSampler(
         contour_path='0000_test_programs/surgery_diff/CleanDiffuser/Drawing_neuro_straight/xarm_contour_z0.pkl'
     )
-    xcs, _, _ = sampler.sample_tasks(batch_size=1, L_range=(0.5, 0.5))
-    xc = xcs[0:1]  # (1,3)
-    print("[INFO] Fixed center xc:", xc.cpu().numpy())
-
     num_points = 32
     epsilon = 0.01     
     L_low = 0.6    
     L_high = 2.0                  
-    batch_size = 1024              
+    batch_size = 1024     
 
-    best_q = None
-    best_pos = None
-    best_L = L_low
+    for id, center in enumerate(centers):
+        xc_center = torch.tensor(center, device=device)
+        xcs = xc_center.unsqueeze(0).expand(batch_size, 3)
 
-    iter_id = 0
-    while (L_high - L_low) > epsilon:
-        iter_id += 1
-        L_mid = 0.5 * (L_low + L_high)
+        xc = xcs[0:1]  # (1,3)
+        print("[INFO] Fixed center xc:", xc.cpu().numpy())         
 
-        print(f"\n[BINARY {iter_id}] Try L = {L_mid:.3f}")
+        best_q = None
+        best_pos = None
+        best_L = L_low
 
-        xcs, ds, Ls = sampler.sample_tasks(batch_size=batch_size, L_range=(L_mid, L_mid))
-        pos_paths = sample_line_batch(xcs, ds, Ls, num_points=32, visulize=False)
+        iter_id = 0
+        while (L_high - L_low) > epsilon:
+            iter_id += 1
+            L_mid = 0.5 * (L_low + L_high)
 
-        start_t = time.time()
-        q_optimized_batch = optimize_path_batch(
-            pos_paths,
-            cc=None,
-            steps=50
-        )
-        success_flag, pos_err = evaluate_trajectory_batch(
-            cc_model,
-            q_optimized_batch,
-            pos_paths,
-            pos_threshold=0.005
-        )
-        print(f"[INFO] optimization time: {time.time()-start_t:.2f}s")
+            print(f"\n[BINARY {iter_id}] Try L = {L_mid:.3f}")
 
-        num_success = success_flag.sum().item()
-        print(f"[INFO] success directions: {num_success}/{batch_size}")
+            _, ds, Ls = sampler.sample_tasks(batch_size=batch_size, L_range=(L_mid, L_mid))
+            pos_paths = sample_line_batch(xcs, ds, Ls, num_points=32, visulize=False)
 
-        if num_success > 0:
-            L_low = L_mid
-            best_L = L_mid
+            start_t = time.time()
+            q_optimized_batch = optimize_path_batch(
+                pos_paths,
+                cc=None,
+                steps=50
+            )
+            success_flag, pos_err = evaluate_trajectory_batch(
+                cc_model,
+                q_optimized_batch,
+                pos_paths,
+                pos_threshold=0.005
+            )
+            print(f"[INFO] optimization time: {time.time()-start_t:.2f}s")
 
-            first_success_idx = torch.nonzero(success_flag).squeeze(-1)[0]
-            best_q = q_optimized_batch[first_success_idx]
-            best_pos = pos_paths[first_success_idx]
+            num_success = success_flag.sum().item()
+            print(f"[INFO] success directions: {num_success}/{batch_size}")
 
-            print("[BINARY] L feasible → move lower bound up")
+            if num_success > 0:
+                L_low = L_mid
+                best_L = L_mid
+
+                first_success_idx = torch.nonzero(success_flag).squeeze(-1)[0]
+                best_q = q_optimized_batch[first_success_idx]
+                best_pos = pos_paths[first_success_idx]
+
+                print("[BINARY] L feasible → move lower bound up")
+            else:
+                L_high = L_mid
+                print("[BINARY] L infeasible → move upper bound down")
+
+        print("\n============================================================")
+        print("[RESULT]")
+        print(f"Max feasible length L* ≈ {best_L:.3f}")
+        print("Center:", xc.cpu().numpy())
+        print("Direction:", (best_pos[-1] - best_pos[0]).cpu().numpy())
+        print("============================================================\n")
+
+        if best_q is not None:
+            print("[INFO] Found feasible trajectory for best L.")
+            continue
+            print("[INFO] Visualizing one successful trajectory.")
+            mgm.gen_stick(best_pos[0].cpu().numpy(),
+                                    best_pos[-1].cpu().numpy(),
+                                    radius=0.0025,
+                                    rgb=[0,0,1]).attach_to(base)
+            q_vis = best_q.reshape(-1, robot.n_dof).cpu().numpy()
+            helpers.visualize_anime_path(base, rbt_sim, q_vis)
         else:
-            L_high = L_mid
-            print("[BINARY] L infeasible → move upper bound down")
-
-    print("\n==============================")
-    print("[RESULT]")
-    print(f"Max feasible length L* ≈ {best_L:.3f}")
-    print("==============================")
-
-    if best_q is not None:
-        print("[INFO] Visualizing one successful trajectory.")
-        mgm.gen_stick(best_pos[0].cpu().numpy(),
-                                best_pos[-1].cpu().numpy(),
-                                radius=0.0025,
-                                rgb=[0,0,1]).attach_to(base)
-        q_vis = best_q.reshape(-1, robot.n_dof).cpu().numpy()
-        helpers.visualize_anime_path(base, rbt_sim, q_vis)
-    else:
-        print("[WARN] No feasible trajectory found in entire search range.")
+            print("[WARN] No feasible trajectory found in entire search range.")
 
 
 

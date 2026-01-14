@@ -90,8 +90,8 @@ if __name__ == '__main__':
     tgt_rotmat[:3,2] = np.array([0,0,-1])
     jnt_ik = robot.ik(tgt_pos=tgt_pos, tgt_rotmat=tgt_rotmat)
     jnt_ik = robot.rand_conf()  # --- IGNORE ---
-    jnt_ik = np.array([ 1.6741e-01,  1.2690e-01,  3.1629e-01,  1.8541e-01, -4.0393e-01,
-          -5.5097e-01])
+    # jnt_ik = np.array([ 1.6741e-01,  1.2690e-01,  3.1629e-01,  1.8541e-01, -4.0393e-01,
+    #       -5.5097e-01])
     robot.goto_given_conf(jnt_values=jnt_ik)
     robot.gen_meshmodel(alpha=0.8).attach_to(base)
     # mgm.gen_frame(pos=tgt_pos, rotmat=tgt_rotmat).attach_to(base)
