@@ -62,8 +62,8 @@ def optimize_multi_seeds_parallel(sampler, robot, torch_collision_vmap, base, nu
         theta.requires_grad = is_sliding
         
         # 权重调度：后期大幅增加对碰撞和轨迹误差的惩罚
-        p_weight = 20000.0 if is_sliding else 8000.0
-        c_weight = 100000.0 if is_sliding else 3000.0 
+        p_weight = 50000.0 if is_sliding else 20000.0
+        c_weight = 200000.0 if is_sliding else 1000.0 
 
         optimizer.zero_grad()
         
@@ -156,7 +156,8 @@ if __name__ == "__main__":
     
     sampler = LineSampler(contour_path='0000_test_programs/surgery_diff/CleanDiffuser/Drawing_neuro_straight/xarm_contour_z0.pkl', device=device)
     
-    best_res = optimize_multi_seeds_parallel(sampler, robot, torch_collision_vmap, base, num_seeds=32, dirs_per_seed=32)
+    best_res = optimize_multi_seeds_parallel(sampler, robot, torch_collision_vmap, base, 
+                                             num_seeds=32, dirs_per_seed=32, steps_total=1000)
 
     if best_res:
         mgm.gen_stick(best_res['pos_path'][0].cpu().numpy(), 
