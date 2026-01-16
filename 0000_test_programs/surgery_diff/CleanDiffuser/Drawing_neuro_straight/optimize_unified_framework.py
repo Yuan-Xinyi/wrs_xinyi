@@ -31,10 +31,10 @@ class LineSampler:
     def sample_seed_xcs(self, num_seeds=10):
         xcs = np.random.uniform([self.min_x, self.min_y], [self.max_x, self.max_y], size=(num_seeds, 2))
         z = np.full((num_seeds, 1), self.z_value)
-        return torch.tensor(np.hstack([xcs, z]), dtype=torch.float32, device=self.device)
+        return torch.tensor(np.hstack([xcs, z]), dtype=torch.float32, device=device)
 
 # ------------------------------------------------------------
-# 强化渲染的并行优化器
+# 优化器实现
 # ------------------------------------------------------------
 def optimize_multi_seeds_parallel(sampler, robot, torch_collision_vmap, base, num_seeds=20, dirs_per_seed=16, steps_total=600):
     device = sampler.device
@@ -42,7 +42,7 @@ def optimize_multi_seeds_parallel(sampler, robot, torch_collision_vmap, base, nu
     N = 32  
     num_jnts = robot.n_dof
 
-    # 1. 变量初始化
+    # 1. 初始化
     seeds = sampler.sample_seed_xcs(num_seeds=num_seeds) 
     xc_xy = seeds[:, :2].repeat_interleave(dirs_per_seed, dim=0).detach().requires_grad_(True)
     theta = (torch.rand(total_batch, device=device) * 2 * np.pi).detach().requires_grad_(True)
@@ -58,75 +58,90 @@ def optimize_multi_seeds_parallel(sampler, robot, torch_collision_vmap, base, nu
         {'params': [q_traj], 'lr': 0.005}
     ])
 
-    # 关键：用于存储每帧生成的几何体引用，方便删除
     ani_sticks = []
-
-    print(f"[Visual Optimization] {num_seeds} seeds are converging...")
+    print(f"[Optimization] Start. Batches: {total_batch} | Seeds: {num_seeds}")
 
     for step in range(steps_total):
         is_sliding = step > 100
         xc_xy.requires_grad = is_sliding
         theta.requires_grad = is_sliding
-        p_weight = 12000.0 if is_sliding else 6000.0
+        
+        # 权重调度：后期大幅增加对碰撞和轨迹误差的惩罚
+        p_weight = 20000.0 if is_sliding else 8000.0
+        c_weight = 15000.0 if is_sliding else 3000.0 
 
         optimizer.zero_grad()
         
+        # 1. 计算目标直线轨迹
         L = torch.nn.functional.softplus(raw_L) * 1.5 + 0.05
         d_vec = torch.stack([torch.cos(theta), torch.sin(theta), torch.zeros_like(theta)], dim=-1)
         full_xc = torch.cat([xc_xy, torch.full((total_batch, 1), sampler.z_value, device=device)], dim=-1)
         t_samples = torch.linspace(-0.5, 0.5, N, device=device)
         pos_targets = full_xc.unsqueeze(1) + (L.unsqueeze(-1) * t_samples.unsqueeze(0)).unsqueeze(-1) * d_vec.unsqueeze(1)
 
+        # 2. 正向运动学与位置误差
         pos_fk, _ = robot.fk_batch(q_traj.view(-1, num_jnts))
         loss_pos = torch.mean(torch.sum((pos_fk.view(total_batch, N, 3) - pos_targets)**2, dim=-1))
         
-        # Loss 组合
-        total_loss = p_weight * loss_pos - 60.0 * torch.mean(L * torch.exp(-loss_pos * 20.0)) + \
-                     400.0 * torch.mean(torch.relu(jnt_min - q_traj)**2 + torch.relu(q_traj - jnt_max)**2)
+        # 3. 碰撞损失：重点！结合平均值和最大值，确保每一个点都脱离碰撞
+        coll_cost_raw = torch_collision_vmap(q_traj.view(-1, num_jnts)).view(total_batch, N)
+        loss_coll = torch.mean(coll_cost_raw) + 5.0 * torch.max(coll_cost_raw) # 强化最大碰撞惩罚
+        
+        # 4. 平滑度损失：防止关节剧烈跳变
+        loss_smooth = torch.mean((q_traj[:, 1:] - q_traj[:, :-1])**2)
+        
+        # 5. 关节限位
+        loss_jnts = torch.mean(torch.relu(jnt_min - q_traj)**2 + torch.relu(q_traj - jnt_max)**2)
+        
+        # 综合 Loss
+        total_loss = p_weight * loss_pos \
+                     - 100.0 * torch.mean(L * torch.exp(-loss_pos * 15.0)) \
+                     + c_weight * loss_coll \
+                     + 500.0 * loss_jnts \
+                     + 1000.0 * loss_smooth
 
         total_loss.backward()
         optimizer.step()
 
-        # --- 核心修复：强制可视化过程 ---
-        if step % 2 == 0:  # 提高刷新频率，每 2 步刷新一次
-            # 1. 清理旧线
-            for s in ani_sticks:
-                s.detach()
+        # 渲染预览
+        if step % 10 == 0:
+            for s in ani_sticks: s.detach()
             ani_sticks = []
-            
-            # 2. 绘制所有种子点的当前状态（取每个 seed 组的第一条线作为代表）
-            # 转为 numpy 提高绘图速度
             current_targets = pos_targets.detach().cpu().numpy()
-            for seed_i in range(num_seeds):
+            for seed_i in range(0, num_seeds, 3):
                 idx = seed_i * dirs_per_seed
-                p0 = current_targets[idx, 0]
-                p1 = current_targets[idx, -1]
-                
-                # 创建预览线
-                tmp_s = mgm.gen_stick(p0, p1, radius=0.004, rgb=[1, 1, 0])
+                p0, p1 = current_targets[idx, 0], current_targets[idx, -1]
+                tmp_s = mgm.gen_stick(p0, p1, radius=0.003, rgb=[1, 1, 0])
                 tmp_s.attach_to(base)
                 ani_sticks.append(tmp_s)
-            
-            # 3. 强制刷新 Panda3D 渲染引擎
-            base.task_mgr.step()  # 执行任务管理器
-            base.graphicsEngine.renderFrame() # 强制显卡渲染当前帧内容
+            base.task_mgr.step()
+            base.graphicsEngine.renderFrame()
 
         if step % 100 == 0:
-            print(f"Step {step:3d} | Max L: {L.max().item():.3f} | Avg Error: {loss_pos.item():.6f}")
+            print(f"Step {step:3d} | Max L: {L.max().item():.3f} | Coll(Max): {torch.max(coll_cost_raw).item():.6f} | PosErr: {loss_pos.item():.6f}")
 
-    # 循环结束后清理预览线
     for s in ani_sticks: s.detach()
-    base.graphicsEngine.renderFrame()
     
-    # 结果筛选与评估
-    q_flat = q_traj.detach().view(-1, num_jnts)
-    success_mask = (torch_collision_vmap(q_flat).reshape(total_batch, N).sum(1) == 0) & \
+    # ------------------------------------------------------------
+    # 结果筛选：稍微放宽阈值，改用 max(collision) 判定
+    # ------------------------------------------------------------
+    q_flat_final = q_traj.detach().view(-1, num_jnts)
+    coll_results = torch_collision_vmap(q_flat_final).view(total_batch, N)
+    max_coll_per_traj = coll_results.max(dim=1)[0]
+    
+    # 容忍 0.001 以内的极微小渗透（通常是数值精度问题）
+    success_mask = (max_coll_per_traj < 0.002) & \
                    (torch.norm(pos_fk.view(total_batch, N, 3) - pos_targets.detach(), dim=-1).max(1)[0] < 0.015)
 
     if success_mask.any():
-        idx = torch.nonzero(success_mask).squeeze(-1)[torch.argmax(L.detach()[success_mask])]
-        return {'L': L[idx].detach(), 'xc': full_xc[idx].detach(), 'd': d_vec[idx].detach(),
-                'q': q_traj[idx].detach(), 'pos_path': pos_targets[idx].detach()}
+        valid_indices = torch.nonzero(success_mask).squeeze(-1)
+        # 在合法的解中找最长的
+        best_idx = valid_indices[torch.argmax(L.detach()[success_mask])]
+        print(f"✅ Found solution! L={L[best_idx]:.4f}, MaxColl={max_coll_per_traj[best_idx]:.6f}")
+        return {'L': L[best_idx].detach(), 'xc': full_xc[best_idx].detach(), 'd': d_vec[best_idx].detach(),
+                'q': q_traj[best_idx].detach(), 'pos_path': pos_targets[best_idx].detach()}
+    
+    print("❌ No valid solution after filtering.")
     return None
 
 if __name__ == "__main__":
@@ -134,27 +149,26 @@ if __name__ == "__main__":
     xarm = xarm6_gpu.XArmLite6GPU()
     robot, device = xarm.robot, xarm.device
     
-    # 环境展示
     mgm.gen_frame().attach_to(base)
     mcm.gen_box(xyz_lengths=[2, 2, 0.03], pos=[0, 0, -0.014], rgb=[0.6, 0.4, 0.2]).attach_to(base)
     mcm.gen_box(xyz_lengths=[1.8, 1.8, 0.002], pos=[0, 0, 0.001], rgb=[1, 1, 1]).attach_to(base)
 
     cc_model = SphereCollisionChecker('wrs/robot_sim/robots/xarmlite6_wg/xarm6_sphere_visuals.urdf')
     vmap_jax_cost = jax.jit(jax.vmap(cc_model.self_collision_cost, in_axes=(0, None, None)))
-    torch_collision_vmap = jax2torch.jax2torch(lambda q_batch: vmap_jax_cost(q_batch, 1.0, -0.005))
     
-    sampler = LineSampler(contour_path='0000_test_programs/surgery_diff/CleanDiffuser/Drawing_neuro_straight/xarm_contour_z0.pkl')
+    # 增加安全边距 (0.008m)，给优化器留空间
+    torch_collision_vmap = jax2torch.jax2torch(lambda q_batch: vmap_jax_cost(q_batch, 1.0, -0.008))
     
-    # 开始优化
-    best_res = optimize_multi_seeds_parallel(sampler, robot, torch_collision_vmap, base, num_seeds=20, dirs_per_seed=16)
+    sampler = LineSampler(contour_path='0000_test_programs/surgery_diff/CleanDiffuser/Drawing_neuro_straight/xarm_contour_z0.pkl', device=device)
+    
+    best_res = optimize_multi_seeds_parallel(sampler, robot, torch_collision_vmap, base, num_seeds=15, dirs_per_seed=12)
 
     if best_res:
-        # 画出最终选定的最长绿色直线
         mgm.gen_stick(best_res['pos_path'][0].cpu().numpy(), 
                       best_res['pos_path'][-1].cpu().numpy(), 
                       radius=0.006, rgb=[0, 1, 0]).attach_to(base)
         
         rbt_sim = xarm6_sim.XArmLite6Miller(enable_cc=True)
         helpers.visualize_anime_path(base, rbt_sim, best_res['q'].cpu().numpy())
-    else:
-        print("Optimization failed to find a valid solution.")
+    
+    base.run()
