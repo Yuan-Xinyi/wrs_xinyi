@@ -15,9 +15,6 @@ import helper_functions as helpers
 
 warnings.filterwarnings("ignore", message=".*To copy construct from a tensor.*")
 
-# ------------------------------------------------------------
-# 基础组件
-# ------------------------------------------------------------
 class LineSampler:
     def __init__(self, contour_path, z_value=0.0, device='cuda'):
         with open(contour_path, 'rb') as f:
@@ -33,9 +30,7 @@ class LineSampler:
         z = np.full((num_seeds, 1), self.z_value)
         return torch.tensor(np.hstack([xcs, z]), dtype=torch.float32, device=device)
 
-# ------------------------------------------------------------
-# 优化器实现
-# ------------------------------------------------------------
+
 def optimize_multi_seeds_parallel(sampler, robot, torch_collision_vmap, base, num_seeds=20, dirs_per_seed=16, steps_total=600):
     device = sampler.device
     total_batch = num_seeds * dirs_per_seed  
@@ -68,7 +63,7 @@ def optimize_multi_seeds_parallel(sampler, robot, torch_collision_vmap, base, nu
         
         # 权重调度：后期大幅增加对碰撞和轨迹误差的惩罚
         p_weight = 20000.0 if is_sliding else 8000.0
-        c_weight = 15000.0 if is_sliding else 3000.0 
+        c_weight = 100000.0 if is_sliding else 3000.0 
 
         optimizer.zero_grad()
         
@@ -157,11 +152,11 @@ if __name__ == "__main__":
     vmap_jax_cost = jax.jit(jax.vmap(cc_model.self_collision_cost, in_axes=(0, None, None)))
     
     # 增加安全边距 (0.008m)，给优化器留空间
-    torch_collision_vmap = jax2torch.jax2torch(lambda q_batch: vmap_jax_cost(q_batch, 1.0, -0.008))
+    torch_collision_vmap = jax2torch.jax2torch(lambda q_batch: vmap_jax_cost(q_batch, 1.0, -0.005))
     
     sampler = LineSampler(contour_path='0000_test_programs/surgery_diff/CleanDiffuser/Drawing_neuro_straight/xarm_contour_z0.pkl', device=device)
     
-    best_res = optimize_multi_seeds_parallel(sampler, robot, torch_collision_vmap, base, num_seeds=15, dirs_per_seed=12)
+    best_res = optimize_multi_seeds_parallel(sampler, robot, torch_collision_vmap, base, num_seeds=32, dirs_per_seed=32)
 
     if best_res:
         mgm.gen_stick(best_res['pos_path'][0].cpu().numpy(), 
