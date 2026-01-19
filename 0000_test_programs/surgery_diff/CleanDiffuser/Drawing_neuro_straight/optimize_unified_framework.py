@@ -151,13 +151,12 @@ if __name__ == "__main__":
     cc_model = SphereCollisionChecker('wrs/robot_sim/robots/xarmlite6_wg/xarm6_sphere_visuals.urdf')
     vmap_jax_cost = jax.jit(jax.vmap(cc_model.self_collision_cost, in_axes=(0, None, None)))
     
-    # 增加安全边距 (0.008m)，给优化器留空间
     torch_collision_vmap = jax2torch.jax2torch(lambda q_batch: vmap_jax_cost(q_batch, 1.0, -0.005))
     
     sampler = LineSampler(contour_path='0000_test_programs/surgery_diff/CleanDiffuser/Drawing_neuro_straight/xarm_contour_z0.pkl', device=device)
     
     best_res = optimize_multi_seeds_parallel(sampler, robot, torch_collision_vmap, base, 
-                                             num_seeds=32, dirs_per_seed=32, steps_total=1000)
+                                             num_seeds=64, dirs_per_seed=32, steps_total=2000)
 
     if best_res:
         mgm.gen_stick(best_res['pos_path'][0].cpu().numpy(), 
