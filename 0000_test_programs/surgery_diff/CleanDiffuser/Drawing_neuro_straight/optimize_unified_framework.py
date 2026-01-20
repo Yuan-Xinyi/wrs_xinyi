@@ -149,7 +149,7 @@ if __name__ == "__main__":
     sampler = LineSampler(contour_path='0000_test_programs/surgery_diff/CleanDiffuser/Drawing_neuro_straight/xarm_contour_z0.pkl', device=device)
     
     best_res = optimize_multi_seeds_parallel(sampler, robot, torch_collision_vmap, base, 
-                                             num_seeds=64, dirs_per_seed=32, steps_total=2000)
+                                             num_seeds=32, dirs_per_seed=16, steps_total=2000)
 
     if best_res:
         mgm.gen_stick(best_res['pos_path'][0].cpu().numpy(), 
