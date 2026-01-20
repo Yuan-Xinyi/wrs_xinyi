@@ -33,7 +33,7 @@ class LineSampler:
 
 def optimize_multi_seeds_parallel(sampler, robot, torch_collision_vmap, base, num_seeds=20, dirs_per_seed=16, steps_total=600):
     device = sampler.device
-    total_batch = num_seeds * dirs_per_seed  
+    total_batch = num_seeds * dirs_per_seed
     N = 32  
     num_jnts = robot.n_dof
 
@@ -61,34 +61,34 @@ def optimize_multi_seeds_parallel(sampler, robot, torch_collision_vmap, base, nu
         xc_xy.requires_grad = is_sliding
         theta.requires_grad = is_sliding
         
-        # 权重调度：后期大幅增加对碰撞和轨迹误差的惩罚
+        # weight scheduling: accentuate collision avoidance after initial settling
         p_weight = 50000.0 if is_sliding else 20000.0
         c_weight = 200000.0 if is_sliding else 1000.0 
 
         optimizer.zero_grad()
         
-        # 1. 计算目标直线轨迹
+        # calculate forward kinematics and losses
         L = torch.nn.functional.softplus(raw_L) * 1.5 + 0.05
         d_vec = torch.stack([torch.cos(theta), torch.sin(theta), torch.zeros_like(theta)], dim=-1)
         full_xc = torch.cat([xc_xy, torch.full((total_batch, 1), sampler.z_value, device=device)], dim=-1)
         t_samples = torch.linspace(-0.5, 0.5, N, device=device)
         pos_targets = full_xc.unsqueeze(1) + (L.unsqueeze(-1) * t_samples.unsqueeze(0)).unsqueeze(-1) * d_vec.unsqueeze(1)
 
-        # 2. 正向运动学与位置误差
+        # forward kinematics and positional loss
         pos_fk, _ = robot.fk_batch(q_traj.view(-1, num_jnts))
         loss_pos = torch.mean(torch.sum((pos_fk.view(total_batch, N, 3) - pos_targets)**2, dim=-1))
         
-        # 3. 碰撞损失：重点！结合平均值和最大值，确保每一个点都脱离碰撞
+        # collision loss and penalty
         coll_cost_raw = torch_collision_vmap(q_traj.view(-1, num_jnts)).view(total_batch, N)
         loss_coll = torch.mean(coll_cost_raw) + 5.0 * torch.max(coll_cost_raw) # 强化最大碰撞惩罚
         
-        # 4. 平滑度损失：防止关节剧烈跳变
+        # smoothness loss
         loss_smooth = torch.mean((q_traj[:, 1:] - q_traj[:, :-1])**2)
         
-        # 5. 关节限位
+        # joint limit loss
         loss_jnts = torch.mean(torch.relu(jnt_min - q_traj)**2 + torch.relu(q_traj - jnt_max)**2)
         
-        # 综合 Loss
+        # sum up total loss
         total_loss = p_weight * loss_pos \
                      - 100.0 * torch.mean(L * torch.exp(-loss_pos * 15.0)) \
                      + c_weight * loss_coll \
@@ -98,7 +98,6 @@ def optimize_multi_seeds_parallel(sampler, robot, torch_collision_vmap, base, nu
         total_loss.backward()
         optimizer.step()
 
-        # 渲染预览
         if step % 10 == 0:
             for s in ani_sticks: s.detach()
             ani_sticks = []
@@ -117,26 +116,22 @@ def optimize_multi_seeds_parallel(sampler, robot, torch_collision_vmap, base, nu
 
     for s in ani_sticks: s.detach()
     
-    # ------------------------------------------------------------
-    # 结果筛选：稍微放宽阈值，改用 max(collision) 判定
-    # ------------------------------------------------------------
+    # calculate final collisions and filter valid solutions
     q_flat_final = q_traj.detach().view(-1, num_jnts)
     coll_results = torch_collision_vmap(q_flat_final).view(total_batch, N)
     max_coll_per_traj = coll_results.max(dim=1)[0]
     
-    # 容忍 0.001 以内的极微小渗透（通常是数值精度问题）
     success_mask = (max_coll_per_traj < 0.002) & \
                    (torch.norm(pos_fk.view(total_batch, N, 3) - pos_targets.detach(), dim=-1).max(1)[0] < 0.015)
 
     if success_mask.any():
         valid_indices = torch.nonzero(success_mask).squeeze(-1)
-        # 在合法的解中找最长的
         best_idx = valid_indices[torch.argmax(L.detach()[success_mask])]
-        print(f"✅ Found solution! L={L[best_idx]:.4f}, MaxColl={max_coll_per_traj[best_idx]:.6f}")
+        print(f"Found solution! L={L[best_idx]:.4f}, MaxColl={max_coll_per_traj[best_idx]:.6f}")
         return {'L': L[best_idx].detach(), 'xc': full_xc[best_idx].detach(), 'd': d_vec[best_idx].detach(),
                 'q': q_traj[best_idx].detach(), 'pos_path': pos_targets[best_idx].detach()}
     
-    print("❌ No valid solution after filtering.")
+    print("No valid solution after filtering.")
     return None
 
 if __name__ == "__main__":
