@@ -80,23 +80,21 @@ def optimize_multi_seeds_parallel(sampler, robot, torch_collision_vmap, base, nu
         
         # collision loss and penalty
         coll_cost_raw = torch_collision_vmap(q_traj.view(-1, num_jnts)).view(total_batch, N)
-        loss_coll = torch.mean(coll_cost_raw) + 5.0 * torch.max(coll_cost_raw) # 强化最大碰撞惩罚
+        loss_coll = torch.mean(coll_cost_raw) + 5.0 * torch.max(coll_cost_raw) # penalty on max collision
         
         # smoothness loss
         loss_smooth = torch.mean((q_traj[:, 1:] - q_traj[:, :-1])**2)
-        
-        # joint limit loss
-        loss_jnts = torch.mean(torch.relu(jnt_min - q_traj)**2 + torch.relu(q_traj - jnt_max)**2)
         
         # sum up total loss
         total_loss = p_weight * loss_pos \
                      - 100.0 * torch.mean(L * torch.exp(-loss_pos * 15.0)) \
                      + c_weight * loss_coll \
-                     + 500.0 * loss_jnts \
                      + 1000.0 * loss_smooth
 
         total_loss.backward()
         optimizer.step()
+        with torch.no_grad():
+            q_traj.clamp_(jnt_min, jnt_max)
 
         if step % 10 == 0:
             for s in ani_sticks: s.detach()
