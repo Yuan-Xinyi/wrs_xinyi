@@ -37,7 +37,6 @@ def optimize_multi_seeds_parallel(sampler, robot, torch_collision_vmap, base, nu
     N = 32  
     num_jnts = robot.n_dof
 
-    # 1. 初始化
     seeds = sampler.sample_seed_xcs(num_seeds=num_seeds) 
     xc_xy = seeds[:, :2].repeat_interleave(dirs_per_seed, dim=0).detach().requires_grad_(True)
     theta = (torch.rand(total_batch, device=device) * 2 * np.pi).detach().requires_grad_(True)
