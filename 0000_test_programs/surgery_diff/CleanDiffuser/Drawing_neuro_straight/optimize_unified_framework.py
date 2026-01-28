@@ -16,7 +16,7 @@ import helper_functions as helpers
 warnings.filterwarnings("ignore", message=".*To copy construct from a tensor.*")
 warnings.filterwarnings("ignore")
 
-
+MAX_L = 1.5
 class LineSampler:
     def __init__(self, contour_path, z_value=0.0, device='cuda'):
         with open(contour_path, 'rb') as f:
@@ -87,11 +87,11 @@ def optimize_multi_seeds_parallel(
 
     rho_coll = 8000.0
     rho_min, rho_max = 2000.0, 400000.0
-    gate_eps = 5e-4
 
     warmup_steps = 300
     allow_L_coll_margin = 1.5 * coll_thresh
     allow_L_pos_mse = 0.002
+    # allow_L_pos_mse = 1e-4
 
     ani_sticks = []
 
@@ -100,7 +100,7 @@ def optimize_multi_seeds_parallel(
     for step in range(steps_total):
         optimizer.zero_grad(set_to_none=True)
 
-        L_max_physical = 1.3
+        L_max_physical = MAX_L
         L = 0.05 + (L_max_physical - 0.05) * torch.sigmoid(raw_L)
 
         d_vec = torch.stack([torch.cos(theta), torch.sin(theta), torch.zeros_like(theta)], dim=-1)
@@ -113,10 +113,17 @@ def optimize_multi_seeds_parallel(
         pos_fk, _ = robot.fk_batch(q_traj.reshape(-1, num_jnts))
         pos_fk = pos_fk.view(total_batch, N, 3)
 
-        loss_pos = torch.mean(torch.sum((pos_fk - pos_targets) ** 2, dim=-1))
+        # for lengeth loss gating
+        mse_pos = torch.mean(torch.sum((pos_fk - pos_targets) ** 2, dim=-1))
+        # for real position loss on gradients
+        per_point_err = torch.norm(pos_fk - pos_targets, dim=-1)      # [B,N]
+        err_mean = per_point_err.mean(dim=1)                          # [B]
+        err_max  = per_point_err.max(dim=1).values                    # [B]
+        loss_pos = (err_mean + 2.0 * err_max).mean()                  # ✅
 
         coll_cost_raw = torch_collision_vmap(q_traj.reshape(-1, num_jnts)).view(total_batch, N)
         max_coll_now = torch.max(coll_cost_raw).detach()
+        # max_coll_now = coll_cost_raw.max(dim=1).values.detach()
         loss_coll = torch.mean(coll_cost_raw) + 10.0 * torch.max(coll_cost_raw)
 
         if init_pos is None:
@@ -135,12 +142,19 @@ def optimize_multi_seeds_parallel(
             elif max_coll_now < 0.4 * coll_thresh:
                 rho_coll = max(rho_coll * 0.92, rho_min)
 
-        allow_L = (step >= warmup_steps) and (max_coll_now < allow_L_coll_margin) and (loss_pos.detach() < allow_L_pos_mse)
+        # allow_L = (step >= warmup_steps) and (max_coll_now < allow_L_coll_margin) and (loss_pos.detach() < allow_L_pos_mse)
+        allow_L = (
+            step >= warmup_steps
+            and max_coll_now < allow_L_coll_margin
+            and mse_pos.detach() < allow_L_pos_mse
+        )
+
 
         if step < warmup_steps:
             loss_length = torch.tensor(0.0, device=device)
         else:
-            gate = 1.0 / (1.0 + (loss_pos.detach() / gate_eps))
+            # gate = 1.0 / (1.0 + (loss_pos.detach() / gate_eps))
+            gate = 1.0 / (1.0 + (mse_pos.detach() / allow_L_pos_mse))
             loss_length = -torch.mean(L) * gate
 
         total_loss = 1.0 * pos_term + (rho_coll / 1000.0) * coll_term + (0.15 * loss_length if allow_L else 0.0)
@@ -176,6 +190,7 @@ def optimize_multi_seeds_parallel(
                 f"L_max={L.max().item():.3f} | "
                 f"CollMax={max_coll_now.item():.6f} | "
                 f"loss_pos={loss_pos.item():.6f} | "
+                f"mse_pos={mse_pos.item():.6f} | "
                 f"rho={rho_coll:.1f} | "
                 f"allow_L={int(allow_L)}"
             )
@@ -184,7 +199,7 @@ def optimize_multi_seeds_parallel(
         s.detach()
 
     with torch.no_grad():
-        L_max_physical = 1.3
+        L_max_physical = MAX_L
         L = 0.05 + (L_max_physical - 0.05) * torch.sigmoid(raw_L)
         d_vec = torch.stack([torch.cos(theta), torch.sin(theta), torch.zeros_like(theta)], dim=-1)
         full_xc = torch.cat([xc_xy, torch.full((total_batch, 1), sampler.z_value, device=device)], dim=-1)
@@ -249,7 +264,7 @@ if __name__ == "__main__":
         base,
         num_seeds=32,
         dirs_per_seed=16,
-        steps_total=10000,
+        steps_total=6000,
         vis_every=20,
         print_every=100
     )
