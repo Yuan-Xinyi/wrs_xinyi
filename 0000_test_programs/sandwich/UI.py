@@ -25,7 +25,7 @@ class ModernSandwichKitchen:
             "Meat Sandwich": ["Bread", "Ham", "Ham", "Bread"]
         }
         
-        self.colors = {"Bread": "#E3A04F", "Lettuce": "#32CD32", "Ham": "#FF82AB"}
+        self.colors = {"Bread": "#F5E7C6", "Lettuce": "#A3D78A", "Ham": "#FFAAB8"}
         self.font_msg = ("DejaVu Sans", 20)
         self.font_btn = ("DejaVu Sans", 22, "bold")
 
@@ -71,7 +71,7 @@ class ModernSandwichKitchen:
         self.log("Staff", "Welcome to Sandwich Kitchen! How can I help you today?")
         for w in self.action_frame.winfo_children(): w.destroy()
         tk.Button(self.action_frame, text="Sure, can I see the menu?", command=self.handle_see_menu, font=("DejaVu Sans", 18), width=25, pady=10).pack(pady=5)
-        tk.Button(self.action_frame, text="Emm, what do you recommend?", command=self.handle_recommendation, font=("DejaVu Sans", 18), width=25, pady=10).pack(pady=5)
+        tk.Button(self.action_frame, text="Umm, what do you recommend?", command=self.handle_recommendation, font=("DejaVu Sans", 18), width=25, pady=10).pack(pady=5)
 
     def handle_see_menu(self):
         self.log("Customer", "Can I see the menu?")
@@ -97,13 +97,13 @@ class ModernSandwichKitchen:
         
         if type == "Bread":
             points = [cx-w/2, cy+h/2, cx+w/2, cy+h/2, cx, cy-h/2]
-            self.canvas.create_polygon(points, fill=self.colors["Bread"], outline="#8B4513", width=3)
+            self.canvas.create_polygon(points, fill=self.colors["Bread"], outline="#F5E7C6", width=3)
         elif type == "Ham":
-            self.canvas.create_arc(cx-w/2, cy-h/2, cx+w/2, cy+h/2, start=0, extent=180, fill=self.colors["Ham"], outline="#CD6090", width=2)
+            self.canvas.create_arc(cx-w/2, cy-h/2, cx+w/2, cy+h/2, start=0, extent=180, fill=self.colors["Ham"], outline="#FFAAB8", width=2)
         elif type == "Lettuce":
             offset = random.randint(-20, 20)
             points = [cx-w/2+offset, cy+h/2, cx+w/2+offset, cy+h/2, cx+offset, cy-h/2]
-            self.canvas.create_polygon(points, fill=self.colors["Lettuce"], outline="#228B22", width=2)
+            self.canvas.create_polygon(points, fill=self.colors["Lettuce"], outline="#A3D78A", width=2)
 
     def cook(self, name):
         for w in self.action_frame.winfo_children(): w.destroy()
