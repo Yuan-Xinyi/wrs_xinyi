@@ -171,7 +171,7 @@ class XArmLite6(mi.ManipulatorInterface):
             b = np.linalg.norm(self.jlc.jnts[3].loc_pos)
             tmp_acos_target = (a ** 2 + b ** 2 - c ** 2) / (2 * a * b)
             if tmp_acos_target > 1 or tmp_acos_target < -1:
-                print("Analytical IK Failure: The triangle formed by the robot arm is violated!")
+                # print("Analytical IK Failure: The triangle formed by the robot arm is violated!")
                 continue
             
             j2_value_candidates = []
@@ -188,7 +188,7 @@ class XArmLite6(mi.ManipulatorInterface):
                     continue
                 tmp_acos_target = (a ** 2 + c ** 2 - b ** 2) / (2 * a * c)
                 if tmp_acos_target > 1 or tmp_acos_target < -1:
-                    print("Analytical IK Failure: The triangle formed by the robot arm is violated!")
+                    # print("Analytical IK Failure: The triangle formed by the robot arm is violated!")
                     continue
                 j1_value_upper = math.acos(tmp_acos_target)
                 # assume d, c, e are the edges of the lower triangle formed with the ground
