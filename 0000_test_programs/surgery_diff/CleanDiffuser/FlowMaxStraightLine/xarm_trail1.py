@@ -12,12 +12,13 @@ from wrs import wd
 
 warnings.filterwarnings("ignore")
 
-NUM_RANDOM_STARTS = 5000
+NUM_RANDOM_STARTS = 250
 STEP_SIZE = 0.005
 MAX_STEPS = 240
 TOP_K = 15
 LOCAL_SAMPLING = True
-LOCAL_RANGE_SCALE = 0.35
+LOCAL_RANGE_RADIUS = 0.05
+LOCAL_RANGE_SCALE = 2 * LOCAL_RANGE_RADIUS
 RESULT_PATH = Path("0000_test_programs/surgery_diff/CleanDiffuser/FlowMaxStraightLine/xarm_trail1_xyz_results.pkl")
 COMBINED_FIG_PATH = Path("0000_test_programs/surgery_diff/CleanDiffuser/FlowMaxStraightLine/xarm_trail1_xyz_joint_trends.png")
 
@@ -168,8 +169,8 @@ def evaluate_direction(robot, contour, start_q_batch, direction_name, direction_
         result["global_index"] = idx
         result["direction"] = direction_name
         all_results.append(result)
-        if (idx + 1) % 50 == 0:
-            print(f"[INFO][{direction_name}] Processed {idx + 1}/{len(start_q_batch)}")
+        # if (idx + 1) % 50 == 0:
+        #     print(f"[INFO][{direction_name}] Processed {idx + 1}/{len(start_q_batch)}")
 
     successful_results = [item for item in all_results if item["success"]]
     successful_results.sort(key=lambda x: x["line_length"], reverse=True)
@@ -292,7 +293,9 @@ if __name__ == "__main__":
     sample_low = None
     sample_high = None
     if LOCAL_SAMPLING:
-        center_q = np.asarray(robot.rand_conf(), dtype=float)
+        # center_q = np.asarray(robot.rand_conf(), dtype=float)
+        # center_q = np.array([-0.804,  1.791,  5.193,  0.565, -0.265,  2.875], dtype=float)
+        center_q = np.array([-1.228,  1.207,  5.228,  1.323, -0.67 ,  2.91 ], dtype=float)
         all_start_q, sample_low, sample_high = sample_local_start_q(
             robot=robot,
             num_samples=NUM_RANDOM_STARTS,
