@@ -298,7 +298,7 @@ if __name__ == "__main__":
     sample_high = None
     if LOCAL_SAMPLING:
         center_q = np.asarray(robot.rand_conf(), dtype=float)
-        center_q = np.array([ 1.395,  0.856,  2.673, -1.812, -1.947, -0.562], dtype=float)
+        # center_q = np.array([ 1.395,  0.856,  2.673, -1.812, -1.947, -0.562], dtype=float)
         # center_q = np.array([-1.228,  1.207,  5.228,  1.323, -0.67 ,  2.91 ], dtype=float)
         all_start_q, sample_low, sample_high = sample_local_start_q(
             robot=robot,
