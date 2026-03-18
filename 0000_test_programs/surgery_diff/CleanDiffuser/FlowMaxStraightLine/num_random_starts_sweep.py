@@ -9,7 +9,7 @@ from matplotlib.path import Path as MplPath
 import wrs.robot_sim.robots.xarmlite6_wg.xarm6_drill as xarm6_sim
 
 BASE_DIR = Path("0000_test_programs/surgery_diff/CleanDiffuser/FlowMaxStraightLine")
-RESULTS_DIR = BASE_DIR / "Results"
+RESULTS_DIR = BASE_DIR / "results"
 DATASET_DIR = BASE_DIR / "dataset"
 
 N_VALUES = [100, 500, 800, 1000, 2000, 5000, 8000, 10000]

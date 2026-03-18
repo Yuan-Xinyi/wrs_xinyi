@@ -19,7 +19,7 @@ DATASET_DIR = BASE_DIR / "dataset"
 NUM_RANDOM_STARTS = 500
 STEP_SIZE = 0.005
 MAX_STEPS = 240
-TOP_K = 10
+TOP_K = 5
 LOCAL_SAMPLING = True
 LOCAL_RANGE_RADIUS = 0.1
 LOCAL_RANGE_SCALE = 2 * LOCAL_RANGE_RADIUS
@@ -298,7 +298,7 @@ if __name__ == "__main__":
     sample_high = None
     if LOCAL_SAMPLING:
         center_q = np.asarray(robot.rand_conf(), dtype=float)
-        # center_q = np.array([-0.804,  1.791,  5.193,  0.565, -0.265,  2.875], dtype=float)
+        center_q = np.array([ 1.395,  0.856,  2.673, -1.812, -1.947, -0.562], dtype=float)
         # center_q = np.array([-1.228,  1.207,  5.228,  1.323, -0.67 ,  2.91 ], dtype=float)
         all_start_q, sample_low, sample_high = sample_local_start_q(
             robot=robot,
