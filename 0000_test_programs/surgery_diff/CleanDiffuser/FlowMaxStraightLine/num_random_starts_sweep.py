@@ -8,6 +8,10 @@ from matplotlib.path import Path as MplPath
 
 import wrs.robot_sim.robots.xarmlite6_wg.xarm6_drill as xarm6_sim
 
+BASE_DIR = Path("0000_test_programs/surgery_diff/CleanDiffuser/FlowMaxStraightLine")
+RESULTS_DIR = BASE_DIR / "Results"
+DATASET_DIR = BASE_DIR / "dataset"
+
 N_VALUES = [100, 500, 800, 1000, 2000, 5000, 8000, 10000]
 NUM_RANDOM_CENTERS = 1
 STEP_SIZE = 0.005
@@ -23,8 +27,8 @@ DIRECTION_CONFIGS = {
     "z": {"vec": np.array([0.0, 0.0, 1.0], dtype=float), "color": "blue"},
 }
 
-RESULT_JSON_PATH = Path("0000_test_programs/surgery_diff/CleanDiffuser/FlowMaxStraightLine/num_random_starts_sweep.json")
-RESULT_FIG_PATH = Path("0000_test_programs/surgery_diff/CleanDiffuser/FlowMaxStraightLine/num_random_starts_sweep.png")
+RESULT_JSON_PATH = RESULTS_DIR / "num_random_starts_sweep.json"
+RESULT_FIG_PATH = RESULTS_DIR / "num_random_starts_sweep.png"
 
 
 class WorkspaceContour:
@@ -344,7 +348,7 @@ if __name__ == "__main__":
         "aggregated": aggregated,
         "figure_path": str(RESULT_FIG_PATH),
     }
-    RESULT_JSON_PATH.parent.mkdir(parents=True, exist_ok=True)
+    RESULTS_DIR.mkdir(parents=True, exist_ok=True)
     with open(RESULT_JSON_PATH, "w", encoding="utf-8") as f:
         json.dump(summary, f, ensure_ascii=False, indent=2)
     print(f"[INFO] Saved sweep summary to: {RESULT_JSON_PATH}")

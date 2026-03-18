@@ -6,6 +6,10 @@ import samply
 
 import wrs.robot_sim.robots.xarmlite6_wg.xarm6_drill as xarm6_sim
 
+BASE_DIR = Path("0000_test_programs/surgery_diff/CleanDiffuser/FlowMaxStraightLine")
+RESULTS_DIR = BASE_DIR / "Results"
+DATASET_DIR = BASE_DIR / "dataset"
+
 
 def generate_cvt_kernels(robot, n_kernels=10000):
     print(f"Generating {n_kernels} CVT kernels in {robot.n_dof}D...")
@@ -47,9 +51,10 @@ if __name__ == "__main__":
     n_kernels = 50000
     kernels = generate_cvt_kernels(robot, n_kernels=n_kernels)
 
-    save_path = Path("0000_test_programs/surgery_diff/CleanDiffuser/FlowMaxStraightLine/cvt_kernels_raw.npy")
-    fig_path = Path("0000_test_programs/surgery_diff/CleanDiffuser/FlowMaxStraightLine/cvt_kernels_joint_distribution.png")
-    save_path.parent.mkdir(parents=True, exist_ok=True)
+    save_path = DATASET_DIR / "cvt_kernels_raw.npy"
+    fig_path = RESULTS_DIR / "cvt_kernels_joint_distribution.png"
+    DATASET_DIR.mkdir(parents=True, exist_ok=True)
+    RESULTS_DIR.mkdir(parents=True, exist_ok=True)
 
     np.save(save_path, kernels)
     plot_joint_space_distribution(kernels, fig_path)

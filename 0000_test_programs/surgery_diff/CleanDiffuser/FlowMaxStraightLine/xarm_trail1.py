@@ -12,6 +12,10 @@ from wrs import wd
 
 warnings.filterwarnings("ignore")
 
+BASE_DIR = Path("0000_test_programs/surgery_diff/CleanDiffuser/FlowMaxStraightLine")
+RESULTS_DIR = BASE_DIR / "results"
+DATASET_DIR = BASE_DIR / "dataset"
+
 NUM_RANDOM_STARTS = 500
 STEP_SIZE = 0.005
 MAX_STEPS = 240
@@ -19,8 +23,8 @@ TOP_K = 10
 LOCAL_SAMPLING = True
 LOCAL_RANGE_RADIUS = 0.1
 LOCAL_RANGE_SCALE = 2 * LOCAL_RANGE_RADIUS
-RESULT_PATH = Path("0000_test_programs/surgery_diff/CleanDiffuser/FlowMaxStraightLine/xarm_trail1_xyz_results.pkl")
-COMBINED_FIG_PATH = Path("0000_test_programs/surgery_diff/CleanDiffuser/FlowMaxStraightLine/xarm_trail1_xyz_joint_trends.png")
+RESULT_PATH = DATASET_DIR / "xarm_trail1_xyz_results.pkl"
+COMBINED_FIG_PATH = RESULTS_DIR / "xarm_trail1_xyz_joint_trends.png"
 
 DIRECTION_CONFIGS = {
     "x": {"vec": np.array([1.0, 0.0, 0.0], dtype=float), "color": "red"},
@@ -334,7 +338,8 @@ if __name__ == "__main__":
     )
     print(f"\n[INFO] Saved combined XYZ joint trend figure to: {COMBINED_FIG_PATH}")
 
-    RESULT_PATH.parent.mkdir(parents=True, exist_ok=True)
+    RESULTS_DIR.mkdir(parents=True, exist_ok=True)
+    DATASET_DIR.mkdir(parents=True, exist_ok=True)
     with open(RESULT_PATH, "wb") as f:
         pickle.dump(
             {
