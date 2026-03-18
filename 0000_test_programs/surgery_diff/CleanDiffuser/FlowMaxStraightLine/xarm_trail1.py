@@ -12,12 +12,12 @@ from wrs import wd
 
 warnings.filterwarnings("ignore")
 
-NUM_RANDOM_STARTS = 250
+NUM_RANDOM_STARTS = 500
 STEP_SIZE = 0.005
 MAX_STEPS = 240
-TOP_K = 15
+TOP_K = 10
 LOCAL_SAMPLING = True
-LOCAL_RANGE_RADIUS = 0.05
+LOCAL_RANGE_RADIUS = 0.1
 LOCAL_RANGE_SCALE = 2 * LOCAL_RANGE_RADIUS
 RESULT_PATH = Path("0000_test_programs/surgery_diff/CleanDiffuser/FlowMaxStraightLine/xarm_trail1_xyz_results.pkl")
 COMBINED_FIG_PATH = Path("0000_test_programs/surgery_diff/CleanDiffuser/FlowMaxStraightLine/xarm_trail1_xyz_joint_trends.png")
@@ -293,9 +293,9 @@ if __name__ == "__main__":
     sample_low = None
     sample_high = None
     if LOCAL_SAMPLING:
-        # center_q = np.asarray(robot.rand_conf(), dtype=float)
+        center_q = np.asarray(robot.rand_conf(), dtype=float)
         # center_q = np.array([-0.804,  1.791,  5.193,  0.565, -0.265,  2.875], dtype=float)
-        center_q = np.array([-1.228,  1.207,  5.228,  1.323, -0.67 ,  2.91 ], dtype=float)
+        # center_q = np.array([-1.228,  1.207,  5.228,  1.323, -0.67 ,  2.91 ], dtype=float)
         all_start_q, sample_low, sample_high = sample_local_start_q(
             robot=robot,
             num_samples=NUM_RANDOM_STARTS,

@@ -1,44 +1,58 @@
+from pathlib import Path
+
+import matplotlib.pyplot as plt
 import numpy as np
 import samply
-from pathlib import Path
 
 import wrs.robot_sim.robots.xarmlite6_wg.xarm6_drill as xarm6_sim
 
+
 def generate_cvt_kernels(robot, n_kernels=10000):
-    """
-    仅生成CVT核，不进行物理合法性检查
-    """
-    print(f"正在 6 维空间中计算 {n_kernels} 个 CVT 核...")
-    
-    # 1. 在归一化 [0, 1]^6 空间生成均匀分布的核
-    # samply.hypercube.cvt 是目前处理高维均匀分布最稳健的库之一
+    print(f"Generating {n_kernels} CVT kernels in {robot.n_dof}D...")
     normalized_kernels = samply.hypercube.cvt(n_kernels, robot.n_dof)
-    
-    # 2. 将核从 [0, 1] 映射到机器人的实际关节量程 [min, max]
     jnt_mins = robot.jnt_ranges[:, 0]
     jnt_maxs = robot.jnt_ranges[:, 1]
-    
-    # 线性插值映射
     kernels_q = jnt_mins + normalized_kernels * (jnt_maxs - jnt_mins)
-    
-    print(f"核生成完毕。形状: {kernels_q.shape}")
+    print(f"Kernel shape: {kernels_q.shape}")
     return kernels_q
 
+
+def plot_joint_space_distribution(kernels_q, fig_path):
+    colors = plt.cm.tab10(np.linspace(0.0, 0.9, kernels_q.shape[1]))
+    fig, ax = plt.subplots(figsize=(10.5, 5.8))
+    for joint_idx in range(kernels_q.shape[1]):
+        hist, bin_edges = np.histogram(kernels_q[:, joint_idx], bins=80, density=True)
+        bin_centers = 0.5 * (bin_edges[:-1] + bin_edges[1:])
+        ax.plot(
+            bin_centers,
+            hist,
+            color=colors[joint_idx],
+            linewidth=1.8,
+            label=f"q{joint_idx + 1}",
+        )
+
+    ax.set_xlabel("Joint value (rad)")
+    ax.set_ylabel("Frequency density")
+    ax.set_title("Joint-space frequency distribution of CVT kernels")
+    ax.grid(True, alpha=0.25)
+    ax.legend(frameon=True, ncol=3)
+    fig.tight_layout()
+    fig.savefig(fig_path, dpi=220, bbox_inches="tight")
+    plt.close(fig)
+
+
 if __name__ == "__main__":
-    # 初始化机器人（仅用于获取关节限位参数）
     robot = xarm6_sim.XArmLite6Miller()
 
-    # 执行生成
     n_kernels = 50000
     kernels = generate_cvt_kernels(robot, n_kernels=n_kernels)
 
-    # 保存数据
-    # 建议使用 .npy 格式，读写速度最快，且保留高精度浮点数
     save_path = Path("0000_test_programs/surgery_diff/CleanDiffuser/FlowMaxStraightLine/cvt_kernels_raw.npy")
+    fig_path = Path("0000_test_programs/surgery_diff/CleanDiffuser/FlowMaxStraightLine/cvt_kernels_joint_distribution.png")
     save_path.parent.mkdir(parents=True, exist_ok=True)
-    np.save(save_path, kernels)
 
-    print("-" * 50)
-    print(f"数据已保存至: {save_path}")
-    print(f"每个核的维度: {kernels.shape[1]} (对应 xArm 6-DOF)")
-    print("-" * 50)
+    np.save(save_path, kernels)
+    plot_joint_space_distribution(kernels, fig_path)
+
+    print(f"Saved kernels to: {save_path}")
+    print(f"Saved joint distribution figure to: {fig_path}")

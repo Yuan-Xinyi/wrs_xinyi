@@ -1,0 +1,304 @@
+{
+  "n_values": [
+    100,
+    200,
+    300,
+    400,
+    500
+  ],
+  "num_random_centers": 1,
+  "step_size": 0.005,
+  "max_steps": 240,
+  "local_sampling": true,
+  "local_range_scale": 0.2,
+  "saturation_eps": 0.005,
+  "directions": {
+    "x": [
+      1.0,
+      0.0,
+      0.0
+    ],
+    "y": [
+      0.0,
+      1.0,
+      0.0
+    ],
+    "z": [
+      0.0,
+      0.0,
+      1.0
+    ]
+  },
+  "center_runs": [
+    {
+      "center_index": 0,
+      "sampling_center_q": [
+        -1.228,
+        1.207,
+        5.228,
+        1.323,
+        -0.67,
+        2.91
+      ],
+      "sample_low": [
+        -1.8563185307179586,
+        0.6834020000000001,
+        4.6982925,
+        0.6946814692820413,
+        -1.10284,
+        2.2816814692820415
+      ],
+      "sample_high": [
+        -0.5996814692820414,
+        1.730598,
+        5.235988,
+        1.9513185307179586,
+        -0.23715999999999998,
+        3.141592653589793
+      ],
+      "directions": {
+        "x": {
+          "records": [
+            {
+              "N": 100,
+              "L_max": 0.44,
+              "best_index_within_prefix": 33,
+              "best_reason": "ik_failed",
+              "success_count": 39
+            },
+            {
+              "N": 200,
+              "L_max": 0.44,
+              "best_index_within_prefix": 33,
+              "best_reason": "ik_failed",
+              "success_count": 81,
+              "delta_from_prev": 0.0
+            },
+            {
+              "N": 300,
+              "L_max": 0.44,
+              "best_index_within_prefix": 33,
+              "best_reason": "ik_failed",
+              "success_count": 113
+            },
+            {
+              "N": 400,
+              "L_max": 0.445,
+              "best_index_within_prefix": 326,
+              "best_reason": "ik_failed",
+              "success_count": 143
+            },
+            {
+              "N": 500,
+              "L_max": 0.445,
+              "best_index_within_prefix": 326,
+              "best_reason": "ik_failed",
+              "success_count": 172
+            }
+          ],
+          "saturation_n": 200
+        },
+        "y": {
+          "records": [
+            {
+              "N": 100,
+              "L_max": 0.41000000000000003,
+              "best_index_within_prefix": 24,
+              "best_reason": "ik_failed",
+              "success_count": 39
+            },
+            {
+              "N": 200,
+              "L_max": 0.41000000000000003,
+              "best_index_within_prefix": 24,
+              "best_reason": "ik_failed",
+              "success_count": 83,
+              "delta_from_prev": 0.0
+            },
+            {
+              "N": 300,
+              "L_max": 0.41000000000000003,
+              "best_index_within_prefix": 24,
+              "best_reason": "ik_failed",
+              "success_count": 116
+            },
+            {
+              "N": 400,
+              "L_max": 0.41000000000000003,
+              "best_index_within_prefix": 24,
+              "best_reason": "ik_failed",
+              "success_count": 146
+            },
+            {
+              "N": 500,
+              "L_max": 0.41000000000000003,
+              "best_index_within_prefix": 24,
+              "best_reason": "ik_failed",
+              "success_count": 175
+            }
+          ],
+          "saturation_n": 200
+        },
+        "z": {
+          "records": [
+            {
+              "N": 100,
+              "L_max": 0.3,
+              "best_index_within_prefix": 22,
+              "best_reason": "ik_failed",
+              "success_count": 38
+            },
+            {
+              "N": 200,
+              "L_max": 0.305,
+              "best_index_within_prefix": 129,
+              "best_reason": "ik_failed",
+              "success_count": 79,
+              "delta_from_prev": 0.0050000000000000044
+            },
+            {
+              "N": 300,
+              "L_max": 0.305,
+              "best_index_within_prefix": 129,
+              "best_reason": "ik_failed",
+              "success_count": 111,
+              "delta_from_prev": 0.0
+            },
+            {
+              "N": 400,
+              "L_max": 0.305,
+              "best_index_within_prefix": 129,
+              "best_reason": "ik_failed",
+              "success_count": 141
+            },
+            {
+              "N": 500,
+              "L_max": 0.31,
+              "best_index_within_prefix": 458,
+              "best_reason": "ik_failed",
+              "success_count": 169
+            }
+          ],
+          "saturation_n": 300
+        }
+      }
+    }
+  ],
+  "aggregated": {
+    "x": {
+      "records": [
+        {
+          "N": 100,
+          "L_max_mean": 0.44,
+          "L_max_std": 0.0
+        },
+        {
+          "N": 200,
+          "L_max_mean": 0.44,
+          "L_max_std": 0.0,
+          "delta_from_prev_mean": 0.0
+        },
+        {
+          "N": 300,
+          "L_max_mean": 0.44,
+          "L_max_std": 0.0,
+          "delta_from_prev_mean": 0.0
+        },
+        {
+          "N": 400,
+          "L_max_mean": 0.445,
+          "L_max_std": 0.0,
+          "delta_from_prev_mean": 0.0050000000000000044
+        },
+        {
+          "N": 500,
+          "L_max_mean": 0.445,
+          "L_max_std": 0.0,
+          "delta_from_prev_mean": 0.0
+        }
+      ],
+      "saturation_n_mean_based": 200,
+      "saturation_n_across_centers_mean": 200.0,
+      "saturation_n_across_centers_all": [
+        200
+      ]
+    },
+    "y": {
+      "records": [
+        {
+          "N": 100,
+          "L_max_mean": 0.41000000000000003,
+          "L_max_std": 0.0
+        },
+        {
+          "N": 200,
+          "L_max_mean": 0.41000000000000003,
+          "L_max_std": 0.0,
+          "delta_from_prev_mean": 0.0
+        },
+        {
+          "N": 300,
+          "L_max_mean": 0.41000000000000003,
+          "L_max_std": 0.0,
+          "delta_from_prev_mean": 0.0
+        },
+        {
+          "N": 400,
+          "L_max_mean": 0.41000000000000003,
+          "L_max_std": 0.0,
+          "delta_from_prev_mean": 0.0
+        },
+        {
+          "N": 500,
+          "L_max_mean": 0.41000000000000003,
+          "L_max_std": 0.0,
+          "delta_from_prev_mean": 0.0
+        }
+      ],
+      "saturation_n_mean_based": 200,
+      "saturation_n_across_centers_mean": 200.0,
+      "saturation_n_across_centers_all": [
+        200
+      ]
+    },
+    "z": {
+      "records": [
+        {
+          "N": 100,
+          "L_max_mean": 0.3,
+          "L_max_std": 0.0
+        },
+        {
+          "N": 200,
+          "L_max_mean": 0.305,
+          "L_max_std": 0.0,
+          "delta_from_prev_mean": 0.0050000000000000044
+        },
+        {
+          "N": 300,
+          "L_max_mean": 0.305,
+          "L_max_std": 0.0,
+          "delta_from_prev_mean": 0.0
+        },
+        {
+          "N": 400,
+          "L_max_mean": 0.305,
+          "L_max_std": 0.0,
+          "delta_from_prev_mean": 0.0
+        },
+        {
+          "N": 500,
+          "L_max_mean": 0.31,
+          "L_max_std": 0.0,
+          "delta_from_prev_mean": 0.0050000000000000044
+        }
+      ],
+      "saturation_n_mean_based": 300,
+      "saturation_n_across_centers_mean": 300.0,
+      "saturation_n_across_centers_all": [
+        300
+      ]
+    }
+  },
+  "figure_path": "0000_test_programs/surgery_diff/CleanDiffuser/FlowMaxStraightLine/num_random_starts_sweep.png"
+}
