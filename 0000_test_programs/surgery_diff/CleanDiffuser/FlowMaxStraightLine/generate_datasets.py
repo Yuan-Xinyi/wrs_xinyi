@@ -1,5 +1,6 @@
 import argparse
 import os
+import shutil
 import time
 from pathlib import Path
 
@@ -30,7 +31,7 @@ CONTOUR_PATH = Path("0000_test_programs/surgery_diff/CleanDiffuser/Drawing_neuro
 N_RAW = 100
 MIN_LINE_LENGTH = 0.1
 TOP_K = 5
-CHECKPOINT_INTERVAL = 1000
+CHECKPOINT_INTERVAL = 5
 NUM_DIRECTIONS = len(DIRECTION_CONFIGS)
 TOTAL_TOP_K = TOP_K * NUM_DIRECTIONS
 KERNEL_PROGRESS_EVERY = 50
@@ -211,15 +212,27 @@ def write_kernel_result(h5_file, result):
     h5_file["done_mask"][idx] = True
 
 
-def flush_checkpoint(h5_file, output_path, started_at):
+def save_checkpoint_snapshots(output_path, checkpoint_dir, done_count):
+    checkpoint_dir.mkdir(parents=True, exist_ok=True)
+    latest_path = checkpoint_dir / "latest.h5"
+    indexed_path = checkpoint_dir / f"checkpoint_{done_count:05d}.h5"
+    shutil.copy2(output_path, latest_path)
+    if not indexed_path.exists():
+        shutil.copy2(output_path, indexed_path)
+    return latest_path, indexed_path
+
+
+def flush_checkpoint(h5_file, output_path, checkpoint_dir, started_at):
     done_count = int(np.count_nonzero(h5_file["done_mask"][:]))
     h5_file.attrs["completed_kernels"] = done_count
     h5_file.attrs["last_flush_unix_time"] = time.time()
     h5_file.flush()
+    latest_path, indexed_path = save_checkpoint_snapshots(output_path, checkpoint_dir, done_count)
     elapsed = time.time() - started_at
     print(
         f"[Checkpoint] completed={done_count}/{h5_file['done_mask'].shape[0]} | "
-        f"elapsed={elapsed / 60.0:.1f} min | file={output_path}",
+        f"elapsed={elapsed / 60.0:.1f} min | "
+        f"file={output_path} | latest={latest_path} | snapshot={indexed_path}",
         flush=True,
     )
 
@@ -309,10 +322,10 @@ def main():
             )
 
             if processed_since_flush >= args.checkpoint_interval:
-                flush_checkpoint(h5_file, args.output_h5, started_at)
+                flush_checkpoint(h5_file, args.output_h5, CHECKPOINT_DIR, started_at)
                 processed_since_flush = 0
     finally:
-        flush_checkpoint(h5_file, args.output_h5, started_at)
+        flush_checkpoint(h5_file, args.output_h5, CHECKPOINT_DIR, started_at)
         h5_file.close()
 
 
