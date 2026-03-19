@@ -7,6 +7,12 @@ import samply
 import wrs.robot_sim.robots.xarmlite6_wg.xarm6_drill as xarm6_sim
 from collision_checker import XarmCollisionChecker
 
+# Notes:
+# 1. This script generates CVT kernels in the joint space of the XArmLite
+# 2. It visualizes the joint-space distribution of the generated kernels.
+# 3. It performs collision checking on the kernels and 
+# splits them into collision-free and in-collision sets.
+
 BASE_DIR = Path("0000_test_programs/surgery_diff/CleanDiffuser/FlowMaxStraightLine")
 RESULTS_DIR = BASE_DIR / "results"
 DATASET_DIR = BASE_DIR / "datasets"

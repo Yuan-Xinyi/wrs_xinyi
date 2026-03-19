@@ -7,10 +7,8 @@ except ModuleNotFoundError as exc:
     _IMPORT_ERROR = exc
 
 try:
-    import wrs.neuro.xarm_lite6_neuro as xarm6_gpu
     from wrs.robot_sim.robots.xarmlite6_wg.sphere_collision_checker import SphereCollisionChecker
 except ModuleNotFoundError as exc:
-    xarm6_gpu = None
     SphereCollisionChecker = None
     _IMPORT_ERROR = exc
 
@@ -31,6 +29,7 @@ class XarmCollisionChecker:
         urdf_path="wrs/robot_sim/robots/xarmlite6_wg/xarm6_sphere_visuals.urdf",
         margin=1.0,
         penetration_threshold=-0.005,
+        device="cpu",
     ):
         if _IMPORT_ERROR is not None:
             raise ImportError(
@@ -40,10 +39,10 @@ class XarmCollisionChecker:
         self.urdf_path = urdf_path
         self.margin = margin
         self.penetration_threshold = penetration_threshold
+        self.requested_device = device
 
-        self.xarm = xarm6_gpu.XArmLite6GPU()
-        self.robot, self.device = self.xarm.robot, self.xarm.device
-        self.dof = self.robot.n_dof
+        self.device = torch.device(device)
+        self.dof = 6
 
         self.build_cc(margin=margin, penetration_threshold=penetration_threshold)
 
@@ -65,7 +64,14 @@ class XarmCollisionChecker:
         )
 
     def _ensure_torch_q(self, q):
-        q = torch.as_tensor(q, dtype=torch.float32, device=self.device)
+        if isinstance(q, torch.Tensor):
+            q = q.to(device=self.device, dtype=torch.float32)
+            if not q.is_contiguous():
+                q = q.contiguous()
+            # Force owned storage to avoid repeated DLPack alignment fallback copies in jax2torch.
+            q = q.clone()
+        else:
+            q = torch.tensor(q, dtype=torch.float32, device=self.device)
         if q.shape[-1] != self.dof:
             raise ValueError(f"Expected last dim = {self.dof}, got {q.shape[-1]}.")
         return q
