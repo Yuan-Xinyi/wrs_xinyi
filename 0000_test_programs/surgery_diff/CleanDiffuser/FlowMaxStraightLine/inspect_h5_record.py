@@ -14,9 +14,9 @@ from xarm_trail1 import MAX_STEPS, STEP_SIZE, WorkspaceContour, trace_line_by_ik
 
 
 BASE_DIR = Path("0000_test_programs/surgery_diff/CleanDiffuser/FlowMaxStraightLine")
-DEFAULT_H5_PATH = BASE_DIR / "datasets" / "xarm_trail1_large_scale_top10.h5"
+DEFAULT_H5_PATH = BASE_DIR / "datasets" / "checkpoints" / "checkpoint_00100.h5"
 CONTOUR_PATH = Path("0000_test_programs/surgery_diff/CleanDiffuser/Drawing_neuro_straight/xarm_contour_z0.pkl")
-DEFAULT_KERNEL_IDX = 2
+DEFAULT_KERNEL_IDX = 0
 DEFAULT_SLOT_IDX = None
 DEFAULT_DIRECTION = None
 DEFAULT_LIST_ONLY = False
