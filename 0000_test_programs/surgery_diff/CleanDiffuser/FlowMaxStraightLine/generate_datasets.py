@@ -242,6 +242,8 @@ def parse_args():
     parser.add_argument("--input-npy", type=Path, default=INPUT_KERNEL_PATH)
     parser.add_argument("--output-h5", type=Path, default=OUTPUT_H5_PATH)
     parser.add_argument("--checkpoint-interval", type=int, default=CHECKPOINT_INTERVAL)
+    parser.add_argument("--start-idx", type=int, default=None, help="Inclusive kernel index lower bound.")
+    parser.add_argument("--end-idx", type=int, default=None, help="Exclusive kernel index upper bound.")
     parser.add_argument("--resume", action="store_true", help="Resume from existing HDF5 if present.")
     return parser.parse_args()
 
@@ -266,10 +268,15 @@ def main():
     )
     done_mask = h5_file["done_mask"][:]
     pending_indices = np.flatnonzero(~done_mask)
+    if args.start_idx is not None:
+        pending_indices = pending_indices[pending_indices >= int(args.start_idx)]
+    if args.end_idx is not None:
+        pending_indices = pending_indices[pending_indices < int(args.end_idx)]
 
     print(f"[Config] input={args.input_npy}", flush=True)
     print(f"[Config] output={args.output_h5}", flush=True)
     print(f"[Config] kernels={len(kernel_qs)} | pending={len(pending_indices)}", flush=True)
+    print(f"[Config] start_idx={args.start_idx} | end_idx={args.end_idx}", flush=True)
     print(f"[Config] execution=single_process | aligned_with=xarm_trail1.py", flush=True)
     print(
         f"[Config] local_range_radius={LOCAL_RANGE_RADIUS} | "
