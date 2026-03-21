@@ -35,7 +35,7 @@ def parse_direction(direction: str):
 
 
 def load_bundle(bundle_path: Path):
-    payload = torch.load(bundle_path, map_location="cpu")
+    payload = torch.load(bundle_path, map_location="cpu", weights_only=False)
     stats = {k: np.asarray(v, dtype=np.float32) for k, v in payload["stats"].items()}
     x_min = np.asarray(payload["x_min"], dtype=np.float32)
     x_max = np.asarray(payload["x_max"], dtype=np.float32)

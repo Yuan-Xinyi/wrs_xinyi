@@ -12,3 +12,4 @@
 **/artifacts/
 **/runs/
 *.pt
+*.json
