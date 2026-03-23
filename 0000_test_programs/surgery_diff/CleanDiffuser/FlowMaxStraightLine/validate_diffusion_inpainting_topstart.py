@@ -25,7 +25,7 @@ from validate_topstart_common import (
 )
 
 
-DEFAULT_MODEL_DIR = BASE_DIR / "diffusion_inpainting_runs" / "ddpm_dit_inpaint_q_from_posdir"
+DEFAULT_MODEL_DIR = BASE_DIR / "diffusion_inpainting_runs" / "ddpm32_dit_inpaint_q_from_posdir"
 DEFAULT_RESULTS_DIR = BASE_DIR / "validation_diffusion_inpainting"
 
 
@@ -44,14 +44,16 @@ def load_model(model_dir: Path, device: torch.device):
     x_min = np.asarray(payload["x_min"], dtype=np.float32)
     x_max = np.asarray(payload["x_max"], dtype=np.float32)
     metadata = payload.get("metadata", {})
-    model = create_model(device=device, x_min=x_min, x_max=x_max)
+    train_args = payload.get("args", {})
+    diffusion_steps = int(train_args.get("diffusion_steps", 32))
+    model = create_model(device=device, x_min=x_min, x_max=x_max, diffusion_steps=diffusion_steps)
     model.load(str(model_path))
     model.eval()
     return model, stats, metadata, bundle_path, model_path
 
 
 @torch.no_grad()
-def infer_samples(model, stats, condition, device, n_samples):
+def infer_samples(model, stats, condition, device, n_samples, sample_steps=32):
     cond_norm = normalize_condition(condition[None, :].astype(np.float32), stats)[0]
     prior = np.zeros((n_samples, 1, 12), dtype=np.float32)
     prior[:, 0, 6:] = cond_norm[None, :]
@@ -59,7 +61,7 @@ def infer_samples(model, stats, condition, device, n_samples):
     samples, _ = model.sample(
         prior=prior_t,
         n_samples=n_samples,
-        sample_steps=model.diffusion_steps,
+        sample_steps=sample_steps,
         use_ema=True,
         temperature=1.0,
     )
@@ -75,6 +77,7 @@ def parse_args():
     parser.add_argument("--device", type=str, default="cuda" if torch.cuda.is_available() else "cpu")
     parser.add_argument("--num-val-samples", type=int, default=2000)
     parser.add_argument("--n-candidates", type=int, default=8)
+    parser.add_argument("--sample-steps", type=int, default=32)
     parser.add_argument("--seed", type=int, default=20260321)
     parser.add_argument("--visualize-rank", type=int, default=0)
     parser.add_argument("--visualize-only", action="store_true", help="Skip full evaluation and only visualize one random validation sample.")
@@ -112,6 +115,7 @@ def main():
             condition=condition,
             device=device,
             n_samples=args.n_candidates,
+            sample_steps=args.sample_steps,
         )
 
         gt_result = evaluate_q_with_ground_truth_method(robot, contour, gt_q, direction_vec)

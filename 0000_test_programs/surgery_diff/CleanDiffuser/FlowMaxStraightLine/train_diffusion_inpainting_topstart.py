@@ -27,7 +27,7 @@ from cleandiffuser.nn_diffusion.dit import DiT1d
 
 DEFAULT_H5_PATH = BASE_DIR / "datasets" / "xarm_trail1_large_scale_top10.h5"
 DEFAULT_WORKDIR = BASE_DIR / "diffusion_inpainting_runs"
-DEFAULT_RUN_NAME = "ddpm_dit_inpaint_q_from_posdir"
+DEFAULT_RUN_NAME = "ddpm32_dit_inpaint_q_from_posdir"
 
 
 def set_seed(seed: int):
@@ -153,7 +153,7 @@ def create_loader(dataset: InpaintingDataset, batch_size: int, weighted: bool):
     return DataLoader(dataset, batch_size=batch_size, shuffle=False, num_workers=0, drop_last=False)
 
 
-def create_model(device: torch.device, x_min: np.ndarray, x_max: np.ndarray):
+def create_model(device: torch.device, x_min: np.ndarray, x_max: np.ndarray, diffusion_steps: int):
     x_dim = 12
     nn_diffusion = DiT1d(
         in_dim=x_dim,
@@ -170,7 +170,7 @@ def create_model(device: torch.device, x_min: np.ndarray, x_max: np.ndarray):
         fix_mask=fix_mask,
         loss_weight=np.ones((1, x_dim), dtype=np.float32),
         grad_clip_norm=1.0,
-        diffusion_steps=1000,
+        diffusion_steps=diffusion_steps,
         ema_rate=0.999,
         optim_params={"lr": 2e-4, "weight_decay": 1e-4},
         x_min=torch.tensor(x_min, dtype=torch.float32, device=device).view(1, 1, x_dim),
@@ -244,6 +244,7 @@ def parse_args():
     parser.add_argument("--seed", type=int, default=20260321)
     parser.add_argument("--device", type=str, default="cuda" if torch.cuda.is_available() else "cpu")
     parser.add_argument("--epochs", type=int, default=200)
+    parser.add_argument("--diffusion-steps", type=int, default=32)
     parser.add_argument("--batch-size", type=int, default=512)
     parser.add_argument("--eval-batch-size", type=int, default=1024)
     parser.add_argument("--val-size", type=int, default=2000)
@@ -281,7 +282,12 @@ def main():
     val_loader = create_loader(val_dataset, args.eval_batch_size, weighted=False)
 
     device = torch.device(args.device)
-    model = create_model(device=device, x_min=x_min, x_max=x_max)
+    model = create_model(
+        device=device,
+        x_min=x_min,
+        x_max=x_max,
+        diffusion_steps=args.diffusion_steps,
+    )
 
     run_dir = args.workdir / args.run_name
     run_dir.mkdir(parents=True, exist_ok=True)
@@ -326,7 +332,7 @@ def main():
     )
     print(
         f"[Config] train_entries={len(train_dataset)} | val_entries={len(val_dataset)} | "
-        f"batch_size={args.batch_size}",
+        f"batch_size={args.batch_size} | diffusion_steps={model.diffusion_steps}",
         flush=True,
     )
     print(f"[Config] run_dir={run_dir}", flush=True)
