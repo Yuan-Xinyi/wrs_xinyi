@@ -264,6 +264,7 @@ class JLChain(object):
             self._ik_solver = ikd.DDIKSolver(self, identifier_str=identifier_str)
         if ik_solver == 's':
             self._ik_solver = iks.SELIKSolver(self, identifier_str=identifier_str)
+            print("SELIK solver is currently used.")
         elif ik_solver == 'n':
             self._ik_solver = ikn.NumIKSolver(self)
         elif ik_solver == 'o':
