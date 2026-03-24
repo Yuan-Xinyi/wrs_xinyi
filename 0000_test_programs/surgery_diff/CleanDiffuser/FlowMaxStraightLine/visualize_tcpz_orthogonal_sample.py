@@ -6,6 +6,7 @@ import numpy as np
 import wrs.modeling.geometric_model as mgm
 import wrs.robot_sim.robots.franka_research_3.franka_research_3 as franka_sim
 from wrs import wd
+from analyze_nullspace_validation_point import compute_nullspace_svd, project_to_target_position, unique_projected_candidates
 from helper_functions import visualize_anime_path
 from xarm_trail1 import (
     MAX_STEPS,
@@ -25,13 +26,20 @@ def parse_args():
         description="Visualize one random q_start sample with a fixed drawing plane, while allowing end-effector orientation to tilt slightly."
     )
     parser.add_argument("--seed", type=int, default=None)
-    parser.add_argument("--sampling-mode", type=str, default="orientation_cone", choices=["orthogonal_circle", "orientation_cone"])
-    parser.add_argument("--num-direction-samples", type=int, default=72, help="How many straight-line directions to search in the fixed plane.")
+    parser.add_argument("--sampling-mode", type=str, default="nullspace_gt", choices=["orthogonal_circle", "orientation_cone", "nullspace_gt"])
+    parser.add_argument("--num-direction-samples", type=int, default=36, help="How many straight-line directions to search in the fixed plane.")
     parser.add_argument("--num-orientation-samples", type=int, default=24, help="How many tilted end-effector orientations to sample in the cone.")
     parser.add_argument("--cone-angle-deg", type=float, default=15.0, help="Max orientation tilt angle relative to the original end-effector orientation.")
     parser.add_argument("--position-tol", type=float, default=1e-5, help="Exact TCP position tolerance for orientation-perturbed IK candidates.")
+    parser.add_argument("--nullspace-amplitude", type=float, default=0.35)
+    parser.add_argument("--nullspace-grid-resolution", type=int, default=7)
+    parser.add_argument("--nullspace-svd-tol", type=float, default=1e-6)
+    parser.add_argument("--nullspace-damping", type=float, default=1e-4)
+    parser.add_argument("--nullspace-projection-iters", type=int, default=60)
+    parser.add_argument("--nullspace-dedup-tol", type=float, default=1e-3)
+    parser.add_argument("--nullspace-keep-candidates", type=int, default=20)
     parser.add_argument("--min-best-length", type=float, default=0.10)
-    parser.add_argument("--max-sample-retries", type=int, default=200)
+    parser.add_argument("--max-sample-retries", type=int, default=20)
     parser.add_argument("--show-all-directions", type=bool, default=True)
     parser.add_argument("--show-all-trajectories", type=bool, default=True)
     return parser.parse_args()
@@ -43,6 +51,10 @@ def normalize_vec(vec: np.ndarray):
     if norm < 1e-12:
         raise ValueError("Vector norm too small.")
     return vec / norm
+
+
+def wrap_angle_difference(delta: np.ndarray):
+    return (delta + np.pi) % (2.0 * np.pi) - np.pi
 
 
 def make_orthonormal_basis(axis: np.ndarray):
@@ -156,6 +168,83 @@ def solve_orientation_candidates(robot, start_pos: np.ndarray, orientation_rotma
     return candidates
 
 
+def solve_nullspace_candidates(
+    robot,
+    start_q: np.ndarray,
+    start_pos: np.ndarray,
+    svd_tol: float,
+    amplitude: float,
+    grid_resolution: int,
+    projection_iters: int,
+    projection_damping: float,
+    position_tol: float,
+    dedup_tol: float,
+    keep_candidates: int,
+):
+    svd_info = compute_nullspace_svd(robot, start_q, tol=svd_tol)
+    null_basis = svd_info["null_basis"]
+    if null_basis.size == 0:
+        return []
+
+    coeff_axis = np.linspace(-amplitude, amplitude, grid_resolution, dtype=np.float64)
+    mesh = np.meshgrid(*([coeff_axis] * null_basis.shape[1]), indexing="ij")
+    coeff_mat = np.stack([m.reshape(-1) for m in mesh], axis=1)
+
+    projected = []
+    for coeff in coeff_mat:
+        q_seed = start_q + null_basis @ coeff
+        projected_item = project_to_target_position(
+            robot=robot,
+            q_init=q_seed,
+            target_pos=start_pos,
+            position_tol=position_tol,
+            max_iters=projection_iters,
+            damping=projection_damping,
+        )
+        if projected_item is None:
+            continue
+        projected.append(projected_item)
+
+    projected = unique_projected_candidates(projected, tol=dedup_tol)
+    candidates = []
+    for orientation_idx, projected_item in enumerate(projected):
+        q_candidate = np.asarray(projected_item["q"], dtype=np.float64)
+        if not robot.are_jnts_in_ranges(q_candidate):
+            continue
+        robot.goto_given_conf(q_candidate)
+        if robot.is_collided():
+            continue
+        candidate_pos, candidate_rot = robot.fk(q_candidate)
+        candidate_pos = np.asarray(candidate_pos, dtype=np.float64)
+        candidate_rot = np.asarray(candidate_rot, dtype=np.float64)
+        if np.linalg.norm(candidate_pos - start_pos) > position_tol:
+            continue
+        candidates.append(
+            {
+                "orientation_idx": int(orientation_idx),
+                "q": q_candidate,
+                "start_rot": candidate_rot,
+                "tcp_z_axis": normalize_vec(candidate_rot[:, 2]),
+            }
+        )
+    if len(candidates) <= keep_candidates:
+        return candidates
+
+    q_mat = np.stack([np.asarray(item["q"], dtype=np.float64) for item in candidates], axis=0)
+    selected = [0]
+    min_dist = np.full(len(candidates), np.inf, dtype=np.float64)
+    while len(selected) < keep_candidates:
+        last_q = q_mat[selected[-1]]
+        dist = np.linalg.norm(wrap_angle_difference(q_mat - last_q), axis=1)
+        min_dist = np.minimum(min_dist, dist)
+        min_dist[selected] = -np.inf
+        next_idx = int(np.argmax(min_dist))
+        if next_idx in selected or not np.isfinite(min_dist[next_idx]):
+            break
+        selected.append(next_idx)
+    return [candidates[idx] for idx in selected]
+
+
 def evaluate_best_direction(robot, contour, start_q: np.ndarray, directions: np.ndarray, orientation_idx: int):
     best_direction = None
     best_result = None
@@ -191,6 +280,13 @@ def sample_visualizable_case(
     num_orientation_samples: int,
     cone_angle_deg: float,
     position_tol: float,
+    nullspace_amplitude: float,
+    nullspace_grid_resolution: int,
+    nullspace_svd_tol: float,
+    nullspace_damping: float,
+    nullspace_projection_iters: int,
+    nullspace_dedup_tol: float,
+    nullspace_keep_candidates: int,
     min_best_length: float,
     max_sample_retries: int,
 ):
@@ -224,6 +320,28 @@ def sample_visualizable_case(
                 position_tol=position_tol,
             )
             print(f"[OrientationIK] valid orientation candidates={len(orientation_candidates)}", flush=True)
+        elif sampling_mode == "nullspace_gt":
+            print(
+                f"[Nullspace] solving candidates | amplitude={nullspace_amplitude:.3f} | grid_resolution={nullspace_grid_resolution}",
+                flush=True,
+            )
+            orientation_candidates = solve_nullspace_candidates(
+                robot=robot,
+                start_q=sampled["start_q"],
+                start_pos=sampled["start_pos"],
+                svd_tol=nullspace_svd_tol,
+                amplitude=nullspace_amplitude,
+                grid_resolution=nullspace_grid_resolution,
+                projection_iters=nullspace_projection_iters,
+                projection_damping=nullspace_damping,
+                position_tol=position_tol,
+                dedup_tol=nullspace_dedup_tol,
+                keep_candidates=nullspace_keep_candidates,
+            )
+            print(
+                f"[Nullspace] representative nullspace candidates={len(orientation_candidates)} | keep={nullspace_keep_candidates}",
+                flush=True,
+            )
         else:
             orientation_candidates = [
                 {
@@ -315,10 +433,11 @@ def visualize_sample(
     mgm.gen_sphere(start_pos, radius=0.005, rgb=[0.95, 0.15, 0.15]).attach_to(base)
     mgm.gen_arrow(start_pos, start_pos + plane_normal_fixed * 0.10, stick_radius=0.0022, rgb=[0.95, 0.15, 0.15]).attach_to(base)
 
-    if record["sampling_mode"] == "orientation_cone":
+    if record["sampling_mode"] in ("orientation_cone", "nullspace_gt"):
         for candidate in orientation_candidates:
+            axis_rgb = [0.95, 0.50, 0.50] if record["sampling_mode"] == "orientation_cone" else [0.60, 0.80, 1.00]
             axis_end = start_pos + candidate["tcp_z_axis"] * 0.08
-            mgm.gen_stick(start_pos, axis_end, radius=0.0008, rgb=[0.95, 0.50, 0.50], alpha=0.2).attach_to(base)
+            mgm.gen_stick(start_pos, axis_end, radius=0.0008, rgb=axis_rgb, alpha=0.2).attach_to(base)
             robot.goto_given_conf(candidate["q"])
             robot.gen_meshmodel(rgb=[0.96, 0.96, 0.96], alpha=0.2).attach_to(base)
 
@@ -361,6 +480,10 @@ def visualize_sample(
         print(f"num_orientation_candidates: {len(orientation_candidates)}")
         if best_candidate is not None:
             print(f"best_tcp_z_axis: {np.array2string(best_candidate['tcp_z_axis'], precision=4, separator=', ')}")
+    elif record["sampling_mode"] == "nullspace_gt":
+        print(f"num_nullspace_candidates: {len(orientation_candidates)}")
+        if best_candidate is not None:
+            print(f"best_tcp_z_axis: {np.array2string(best_candidate['tcp_z_axis'], precision=4, separator=', ')}")
     print(f"best_direction: {np.array2string(best_direction, precision=4, separator=', ')}")
     print(f"dot(plane_normal_fixed, best_direction): {float(np.dot(plane_normal_fixed, best_direction)):.8f}")
     print(f"best_line_length: {best_result['line_length']:.4f} m")
@@ -387,6 +510,13 @@ def main():
         num_orientation_samples=args.num_orientation_samples,
         cone_angle_deg=args.cone_angle_deg,
         position_tol=args.position_tol,
+        nullspace_amplitude=args.nullspace_amplitude,
+        nullspace_grid_resolution=args.nullspace_grid_resolution,
+        nullspace_svd_tol=args.nullspace_svd_tol,
+        nullspace_damping=args.nullspace_damping,
+        nullspace_projection_iters=args.nullspace_projection_iters,
+        nullspace_dedup_tol=args.nullspace_dedup_tol,
+        nullspace_keep_candidates=args.nullspace_keep_candidates,
         min_best_length=args.min_best_length,
         max_sample_retries=args.max_sample_retries,
     )
