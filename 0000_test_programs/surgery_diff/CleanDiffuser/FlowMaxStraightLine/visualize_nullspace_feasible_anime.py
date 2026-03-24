@@ -5,13 +5,14 @@ import numpy as np
 
 import wrs.modeling.geometric_model as mgm
 import wrs.robot_sim.robots.franka_research_3.franka_research_3 as franka_sim
+import wrs.robot_sim.robots.xarmlite6_wg.xarm6_drill as xarm6_sim
 from wrs import wd
 from analyze_nullspace_validation_point import (
     compute_nullspace_svd,
     farthest_point_sampling_jointspace,
     unique_projected_candidates,
 )
-from helper_functions import visualize_anime_path
+from helper_functions import visualize_anime_path, visualize_static_path
 from xarm_trail1 import WorkspaceContour, is_pose_inside_workspace
 
 
@@ -21,16 +22,17 @@ MAX_START_ATTEMPTS = 5000
 
 def parse_args():
     parser = argparse.ArgumentParser(
-        description="Visualize feasible nullspace solutions only, with TCP z-axis constrained to lie inside a cone around a plane normal."
+        description="Visualize feasible nullspace solutions using position nullspace in the cone interior and [J_p; J_g] boundary correction."
     )
+    parser.add_argument("--robot", type=str, default="xarmlite6", choices=["franka", "xarmlite6"])
     parser.add_argument("--seed", type=int, default=None)
     parser.add_argument("--svd-tol", type=float, default=1e-6)
     parser.add_argument("--amplitude", type=float, default=0.35)
-    parser.add_argument("--grid-resolution", type=int, default=8)
+    parser.add_argument("--grid-resolution", type=int, default=3)
     parser.add_argument("--projection-iters", type=int, default=60)
     parser.add_argument("--projection-damping", type=float, default=1e-4)
     parser.add_argument("--position-tol", type=float, default=1e-5)
-    parser.add_argument("--cone-angle-deg", type=float, default=30.0)
+    parser.add_argument("--cone-angle-deg", type=float, default=60.0)
     parser.add_argument("--normal-x", type=float, default=None)
     parser.add_argument("--normal-y", type=float, default=None)
     parser.add_argument("--normal-z", type=float, default=None)
@@ -39,12 +41,26 @@ def parse_args():
     return parser.parse_args()
 
 
+def create_robot(robot_name: str, enable_cc: bool):
+    if robot_name == "franka":
+        return franka_sim.FrankaResearch3(enable_cc=enable_cc)
+    if robot_name == "xarmlite6":
+        return xarm6_sim.XArmLite6Miller(enable_cc=enable_cc)
+    raise ValueError(f"Unsupported robot: {robot_name}")
+
+
 def normalize_vec(vec: np.ndarray):
     vec = np.asarray(vec, dtype=np.float64)
     norm = np.linalg.norm(vec)
     if norm < 1e-12:
         raise ValueError("Vector norm too small.")
     return vec / norm
+
+
+def resolve_plane_normal(start_rot: np.ndarray, args):
+    if args.normal_x is not None and args.normal_y is not None and args.normal_z is not None:
+        return normalize_vec(np.array([args.normal_x, args.normal_y, args.normal_z], dtype=np.float64))
+    return normalize_vec(np.asarray(start_rot[:, 2], dtype=np.float64))
 
 
 def sample_valid_start_conf(robot, contour, rng: np.random.Generator):
@@ -67,17 +83,6 @@ def sample_valid_start_conf(robot, contour, rng: np.random.Generator):
     raise RuntimeError(f"Failed to sample a valid q_start after {MAX_START_ATTEMPTS} attempts.")
 
 
-def make_orthonormal_basis(normal: np.ndarray):
-    normal = normalize_vec(normal)
-    ref = np.array([1.0, 0.0, 0.0], dtype=np.float64)
-    if abs(np.dot(ref, normal)) > 0.9:
-        ref = np.array([0.0, 1.0, 0.0], dtype=np.float64)
-    tangent1 = ref - np.dot(ref, normal) * normal
-    tangent1 = normalize_vec(tangent1)
-    tangent2 = normalize_vec(np.cross(normal, tangent1))
-    return normal, tangent1, tangent2
-
-
 def axis_angle_error_deg(axis_a: np.ndarray, axis_b: np.ndarray):
     axis_a = normalize_vec(axis_a)
     axis_b = normalize_vec(axis_b)
@@ -85,11 +90,18 @@ def axis_angle_error_deg(axis_a: np.ndarray, axis_b: np.ndarray):
     return float(np.rad2deg(np.arccos(dot_val)))
 
 
-def angle_to_normal_rad(axis: np.ndarray, normal: np.ndarray):
+def cone_constraint_value(axis: np.ndarray, normal: np.ndarray, cone_angle_rad: float):
     axis = normalize_vec(axis)
     normal = normalize_vec(normal)
-    dot_val = float(np.clip(np.dot(axis, normal), -1.0, 1.0))
-    return float(np.arccos(dot_val))
+    return float(np.dot(normal, axis) - np.cos(cone_angle_rad))
+
+
+def skew(vec: np.ndarray):
+    x, y, z = np.asarray(vec, dtype=np.float64)
+    return np.array(
+        [[0.0, -z, y], [z, 0.0, -x], [-y, x, 0.0]],
+        dtype=np.float64,
+    )
 
 
 def damped_pseudoinverse_step(j_mat: np.ndarray, err: np.ndarray, damping: float):
@@ -98,42 +110,48 @@ def damped_pseudoinverse_step(j_mat: np.ndarray, err: np.ndarray, damping: float
     return j_mat.T @ np.linalg.solve(damped, err)
 
 
-def finite_difference_angle_gradient(robot, q: np.ndarray, plane_normal: np.ndarray, eps: float = 1e-5):
-    q = np.asarray(q, dtype=np.float64)
-    grad = np.zeros_like(q)
-    for i in range(len(q)):
-        dq = np.zeros_like(q)
-        dq[i] = eps
-        _, rot_p = robot.fk(q + dq, update=False)
-        _, rot_m = robot.fk(q - dq, update=False)
-        phi_p = angle_to_normal_rad(np.asarray(rot_p, dtype=np.float64)[:, 2], plane_normal)
-        phi_m = angle_to_normal_rad(np.asarray(rot_m, dtype=np.float64)[:, 2], plane_normal)
-        grad[i] = (phi_p - phi_m) / (2.0 * eps)
-    return grad
+def position_jacobian(robot, q: np.ndarray):
+    robot.fk(np.asarray(q, dtype=np.float64), update=True)
+    j_full = np.asarray(robot.jacobian(), dtype=np.float64)
+    return j_full[:3, :]
 
 
-def project_to_target_position(
+def cone_constraint_jacobian(robot, q: np.ndarray, plane_normal: np.ndarray):
+    robot.fk(np.asarray(q, dtype=np.float64), update=True)
+    j_full = np.asarray(robot.jacobian(), dtype=np.float64)
+    j_w = j_full[3:, :]
+    _, rot = robot.fk(np.asarray(q, dtype=np.float64), update=False)
+    axis = normalize_vec(np.asarray(rot, dtype=np.float64)[:, 2])
+    j_g = plane_normal.reshape(1, 3) @ (-skew(axis) @ j_w)
+    return np.asarray(j_g, dtype=np.float64), axis
+
+
+def project_to_position_or_boundary(
     robot,
     q_init: np.ndarray,
     target_pos: np.ndarray,
     plane_normal: np.ndarray,
-    target_angle_rad: float | None,
+    cone_angle_rad: float,
+    project_to_boundary: bool,
     position_tol: float,
     max_iters: int,
     damping: float,
-    angle_tol_rad: float = 1e-3,
 ):
     q = np.asarray(q_init, dtype=np.float64).copy()
+    g_tol = 1e-5
 
     for iter_idx in range(max_iters):
         if not robot.are_jnts_in_ranges(q):
             return None
+
         pos, rot = robot.fk(q, update=True)
         pos = np.asarray(pos, dtype=np.float64)
         rot = np.asarray(rot, dtype=np.float64)
         axis = normalize_vec(rot[:, 2])
         pos_err = np.asarray(target_pos - pos, dtype=np.float64)
-        if target_angle_rad is None:
+        g_val = cone_constraint_value(axis, plane_normal, cone_angle_rad)
+
+        if not project_to_boundary:
             if np.linalg.norm(pos_err) <= position_tol:
                 return {
                     "q": q.copy(),
@@ -143,14 +161,11 @@ def project_to_target_position(
                     "position_error": float(np.linalg.norm(pos_err)),
                     "on_boundary": False,
                 }
-            j_full = np.asarray(robot.jacobian(), dtype=np.float64)
-            j_pos = j_full[:3, :]
+            j_pos = position_jacobian(robot, q)
             q = q + damped_pseudoinverse_step(j_pos, pos_err, damping=damping)
             continue
 
-        phi = angle_to_normal_rad(axis, plane_normal)
-        angle_err = np.array([target_angle_rad - phi], dtype=np.float64)
-        if np.linalg.norm(pos_err) <= position_tol and abs(angle_err[0]) <= angle_tol_rad:
+        if np.linalg.norm(pos_err) <= position_tol and abs(g_val) <= g_tol:
             return {
                 "q": q.copy(),
                 "pos": pos.copy(),
@@ -159,19 +174,14 @@ def project_to_target_position(
                 "position_error": float(np.linalg.norm(pos_err)),
                 "on_boundary": True,
             }
-        j_full = np.asarray(robot.jacobian(), dtype=np.float64)
-        j_pos = j_full[:3, :]
-        j_phi = finite_difference_angle_gradient(robot, q, plane_normal).reshape(1, -1)
-        j_aug = np.vstack([j_pos, j_phi])
-        err_aug = np.concatenate([pos_err, angle_err], axis=0)
+
+        j_pos = position_jacobian(robot, q)
+        j_g, _ = cone_constraint_jacobian(robot, q, plane_normal)
+        j_aug = np.vstack([j_pos, j_g])
+        err_aug = np.concatenate([pos_err, np.array([-g_val], dtype=np.float64)], axis=0)
         q = q + damped_pseudoinverse_step(j_aug, err_aug, damping=damping)
+
     return None
-
-
-def resolve_plane_normal(start_rot: np.ndarray, args):
-    if args.normal_x is not None and args.normal_y is not None and args.normal_z is not None:
-        return normalize_vec(np.array([args.normal_x, args.normal_y, args.normal_z], dtype=np.float64))
-    return normalize_vec(np.asarray(start_rot[:, 2], dtype=np.float64))
 
 
 def solve_nullspace_candidates(
@@ -209,14 +219,14 @@ def solve_nullspace_candidates(
         q_seed = start_q + null_basis @ coeff
         _, seed_rot = robot.fk(q_seed, update=False)
         seed_axis = normalize_vec(np.asarray(seed_rot, dtype=np.float64)[:, 2])
-        seed_phi = angle_to_normal_rad(seed_axis, plane_normal)
-        target_angle_rad = None if seed_phi <= cone_angle_rad else cone_angle_rad
-        projected_item = project_to_target_position(
+        seed_g = cone_constraint_value(seed_axis, plane_normal, cone_angle_rad)
+        projected_item = project_to_position_or_boundary(
             robot=robot,
             q_init=q_seed,
             target_pos=start_pos,
             plane_normal=plane_normal,
-            target_angle_rad=target_angle_rad,
+            cone_angle_rad=cone_angle_rad,
+            project_to_boundary=(seed_g < 0.0),
             position_tol=position_tol,
             max_iters=projection_iters,
             damping=projection_damping,
@@ -274,13 +284,13 @@ def solve_nullspace_candidates(
     return svd_info, final_candidates
 
 
-def visualize_candidates(start_record: dict, candidates: list[dict]):
+def visualize_candidates(start_record: dict, candidates: list[dict], robot_name: str):
     base = wd.World(cam_pos=[1.15, 0.45, 0.5], lookat_pos=[0.25, 0.0, 0.0])
     mgm.gen_frame().attach_to(base)
 
-    preview_robot = franka_sim.FrankaResearch3(enable_cc=False)
+    preview_robot = create_robot(robot_name, enable_cc=False)
     preview_robot.goto_given_conf(start_record["start_q"])
-    preview_robot.gen_meshmodel(rgb=[0.20, 0.70, 0.95], alpha=0.55).attach_to(base)
+    preview_robot.gen_meshmodel(rgb=[0.20, 0.70, 0.95], alpha=0.28).attach_to(base)
 
     start_pos = start_record["start_pos"]
     plane_normal_fixed = normalize_vec(start_record["plane_normal"])
@@ -290,22 +300,25 @@ def visualize_candidates(start_record: dict, candidates: list[dict]):
     for item in candidates:
         axis_end = start_pos + item["tcp_z_axis"] * 0.08
         axis_rgb = [1.00, 0.72, 0.35] if item["on_boundary"] else [0.60, 0.80, 1.00]
-        mgm.gen_stick(start_pos, axis_end, radius=0.0008, rgb=axis_rgb, alpha=0.18).attach_to(base)
-        preview_robot.goto_given_conf(item["q"])
-        # preview_robot.gen_meshmodel(rgb=[0.96, 0.96, 0.96], alpha=0.12).attach_to(base)
+        mgm.gen_stick(start_pos, axis_end, radius=0.0012, rgb=axis_rgb, alpha=0.42).attach_to(base)
+        mgm.gen_sphere(axis_end, radius=0.0019, rgb=axis_rgb, alpha=0.55).attach_to(base)
 
     print(f"sampling_attempts: {start_record['attempts']}")
     print(f"start_q: {np.array2string(start_record['start_q'], precision=4, separator=', ')}")
     print(f"start_pos: {np.array2string(start_pos, precision=4, separator=', ')}")
     print(f"plane_normal_fixed: {np.array2string(plane_normal_fixed, precision=4, separator=', ')}")
+    print(f"robot: {robot_name}")
     print(f"num_nullspace_candidates: {len(candidates)}")
     print(f"max_axis_error_deg: {max(item['axis_error_deg'] for item in candidates):.4f}")
     print(f"boundary_candidates: {sum(int(item['on_boundary']) for item in candidates)}")
+    unique_axis_count = len({tuple(np.round(normalize_vec(item['tcp_z_axis']), 3)) for item in candidates})
+    print(f"approx_unique_tcpz_dirs_rounded_1e-3: {unique_axis_count}")
 
-    anime_robot = franka_sim.FrankaResearch3(enable_cc=False)
+    anime_robot = create_robot(robot_name, enable_cc=False)
     path = np.asarray([item["q"] for item in candidates], dtype=np.float64)
-    base.run()  # Run the visualizer first to avoid potential OpenGL context issues with jax2torch in collision checking during projection. Then start the animation after the visualizer window is open.
     # visualize_anime_path(base, anime_robot, path)
+    visualize_static_path(base, anime_robot, path)
+    # base.run()
 
 
 def main():
@@ -313,7 +326,7 @@ def main():
     rng = np.random.default_rng(args.seed)
 
     contour = WorkspaceContour(contour_path=str(CONTOUR_PATH), z_value=0.0)
-    robot = franka_sim.FrankaResearch3(enable_cc=True)
+    robot = create_robot(args.robot, enable_cc=True)
 
     start_record = sample_valid_start_conf(robot=robot, contour=contour, rng=rng)
     plane_normal = resolve_plane_normal(start_record["start_rot"], args)
@@ -336,7 +349,7 @@ def main():
     if len(candidates) == 0:
         raise RuntimeError("No feasible nullspace candidates found for this sample.")
 
-    visualize_candidates(start_record, candidates)
+    visualize_candidates(start_record, candidates, robot_name=args.robot)
 
 
 if __name__ == "__main__":
