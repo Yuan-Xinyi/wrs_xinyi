@@ -90,10 +90,10 @@ def split_kernels_by_collision(
 
 
 if __name__ == "__main__":
-    save_path = DATASET_DIR / "cvt_kernels_raw.npy"
-    collision_free_save_path = DATASET_DIR / "cvt_kernels_collision_free.npy"
-    collision_save_path = DATASET_DIR / "cvt_kernels_in_collision.npy"
-    fig_path = RESULTS_DIR / "cvt_kernels_joint_distribution.png"
+    save_path = DATASET_DIR / "cvt_kernels_raw_10000.npy"
+    collision_free_save_path = DATASET_DIR / "cvt_kernels_collision_free_10000.npy"
+    collision_save_path = DATASET_DIR / "cvt_kernels_in_collision_10000.npy"
+    fig_path = RESULTS_DIR / "cvt_kernels_joint_distribution_10000.png"
     DATASET_DIR.mkdir(parents=True, exist_ok=True)
     RESULTS_DIR.mkdir(parents=True, exist_ok=True)
 
@@ -102,7 +102,7 @@ if __name__ == "__main__":
         print(f"Loaded existing kernels from: {save_path}")
     else:
         robot = xarm6_sim.XArmLite6Miller()
-        kernels = generate_cvt_kernels(robot, n_kernels=50000)
+        kernels = generate_cvt_kernels(robot, n_kernels=10000)
         np.save(save_path, kernels)
         print(f"Saved kernels to: {save_path}")
 

@@ -5,6 +5,7 @@ import numpy as np
 
 import wrs.modeling.geometric_model as mgm
 import wrs.robot_sim.robots.franka_research_3.franka_research_3 as franka_sim
+import wrs.robot_sim.robots.xarmlite6_wg.xarm6_drill as xarm6_sim
 from wrs import wd
 from helper_functions import visualize_anime_path
 from xarm_trail1 import (
@@ -24,6 +25,7 @@ def parse_args():
     parser = argparse.ArgumentParser(
         description="Visualize one random q_start sample with a fixed drawing plane, while allowing end-effector orientation to tilt slightly."
     )
+    parser.add_argument("--robot", type=str, default="xarm", choices=["xarm", "franka"])
     parser.add_argument("--seed", type=int, default=None)
     parser.add_argument("--sampling-mode", type=str, default="orientation_cone", choices=["orthogonal_circle", "orientation_cone"])
     parser.add_argument("--num-direction-samples", type=int, default=12, help="How many straight-line directions to search in the fixed plane.")
@@ -35,6 +37,14 @@ def parse_args():
     parser.add_argument("--show-all-directions", type=bool, default=True)
     parser.add_argument("--show-all-trajectories", type=bool, default=True)
     return parser.parse_args()
+
+
+def make_robot(robot_name: str, enable_cc: bool):
+    if robot_name == "xarm":
+        return xarm6_sim.XArmLite6Miller(enable_cc=enable_cc)
+    if robot_name == "franka":
+        return franka_sim.FrankaResearch3(enable_cc=enable_cc)
+    raise ValueError(f"Unsupported robot: {robot_name}")
 
 
 def normalize_vec(vec: np.ndarray):
@@ -292,6 +302,7 @@ def color_from_length(length: float, max_length: float):
 
 
 def visualize_sample(
+    robot_name: str,
     record: dict,
     line_directions: np.ndarray,
     orientation_candidates: list[dict],
@@ -305,7 +316,7 @@ def visualize_sample(
     base = wd.World(cam_pos=[1.15, 0.45, 0.5], lookat_pos=[0.25, 0.0, 0.0])
     mgm.gen_frame().attach_to(base)
 
-    robot = franka_sim.FrankaResearch3(enable_cc=False)
+    robot = make_robot(robot_name, enable_cc=False)
     robot.goto_given_conf(record["start_q"])
     robot.gen_meshmodel(rgb=[0.20, 0.70, 0.95], alpha=0.55).attach_to(base)
 
@@ -350,6 +361,7 @@ def visualize_sample(
     if len(traj) >= 2:
         mgm.gen_stick(traj[0], traj[-1], radius=0.0018, rgb=[0.3, 0.90, 0.28]).attach_to(base)
 
+    print(f"robot: {robot_name}")
     print(f"sampling_attempts: {record['attempts']}")
     print(f"base_seed_q: {np.array2string(record['start_q'], precision=4, separator=', ')}")
     print(f"start_q: {np.array2string(record['start_q'], precision=4, separator=', ')}")
@@ -367,7 +379,7 @@ def visualize_sample(
     print(f"termination_reason: {best_result['termination_reason']}")
     if show_all_trajectories:
         print("all trajectories are visualized as faint line segments; greener/longer means farther reach.")
-    anime_robot = franka_sim.FrankaResearch3(enable_cc=False)
+    anime_robot = make_robot(robot_name, enable_cc=False)
     visualize_anime_path(base, anime_robot, np.asarray(best_result["traj_q"], dtype=np.float64))
 
 
@@ -376,7 +388,7 @@ def main():
     rng = np.random.default_rng(args.seed)
 
     contour = WorkspaceContour(contour_path=str(CONTOUR_PATH), z_value=0.0)
-    robot = franka_sim.FrankaResearch3(enable_cc=True)
+    robot = make_robot(args.robot, enable_cc=True)
 
     sampled, plane_normal_fixed, line_directions, orientation_candidates, best_candidate, best_direction, best_result, all_results = sample_visualizable_case(
         robot=robot,
@@ -400,6 +412,7 @@ def main():
         "cone_angle_deg": float(args.cone_angle_deg),
     }
     visualize_sample(
+        robot_name=args.robot,
         record=record,
         line_directions=line_directions,
         orientation_candidates=orientation_candidates,
