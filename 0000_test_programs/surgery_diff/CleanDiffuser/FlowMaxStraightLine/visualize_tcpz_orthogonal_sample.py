@@ -27,7 +27,7 @@ def parse_args():
     parser.add_argument("--seed", type=int, default=None)
     parser.add_argument("--svd-tol", type=float, default=1e-6)
     parser.add_argument("--amplitude", type=float, default=0.35)
-    parser.add_argument("--grid-resolution", type=int, default=3)
+    parser.add_argument("--grid-resolution", type=int, default=2)
     parser.add_argument("--projection-iters", type=int, default=60)
     parser.add_argument("--projection-damping", type=float, default=1e-4)
     parser.add_argument("--position-tol", type=float, default=1e-5)
@@ -41,6 +41,7 @@ def parse_args():
     parser.add_argument("--min-best-length", type=float, default=0.10)
     parser.add_argument("--max-sample-retries", type=int, default=20)
     parser.add_argument("--max-joint-step-norm", type=float, default=1)
+    parser.add_argument("--collision-check-substeps", type=int, default=10)
     parser.add_argument("--show-all-directions", action="store_true")
     parser.add_argument("--show-all-trajectories", action="store_true")
     return parser.parse_args()
@@ -64,7 +65,7 @@ def sample_plane_directions(plane_normal: np.ndarray, num_samples: int, rng: np.
     return np.asarray(directions, dtype=np.float64)
 
 
-def evaluate_best_direction(robot, contour, start_q: np.ndarray, directions: np.ndarray, candidate_idx: int, max_joint_step_norm: float):
+def evaluate_best_direction(robot, contour, start_q: np.ndarray, directions: np.ndarray, candidate_idx: int, max_joint_step_norm: float, collision_check_substeps: int):
     best_direction = None
     best_result = None
     all_results = []
@@ -109,6 +110,7 @@ def sample_visualizable_case(
     min_best_length: float,
     max_sample_retries: int,
     max_joint_step_norm: float,
+    collision_check_substeps: int,
 ):
     last_payload = None
     for retry_idx in range(1, max_sample_retries + 1):
@@ -155,13 +157,14 @@ def sample_visualizable_case(
                 directions=line_directions,
                 candidate_idx=candidate_idx - 1,
                 max_joint_step_norm=max_joint_step_norm,
+                collision_check_substeps=collision_check_substeps,
             )
             for item in candidate_results:
                 item["candidate_q"] = orientation_candidate["q"]
                 item["candidate_tcp_z_axis"] = orientation_candidate["tcp_z_axis"]
                 item["candidate_on_boundary"] = bool(orientation_candidate.get("on_boundary", False))
             all_results.extend(candidate_results)
-            if not bool(candidate_best_result.get("continuity_ok", False)):
+            if candidate_best_result is None:
                 continue
             if best_result is None or candidate_best_result["line_length"] > best_result["line_length"]:
                 best_candidate = orientation_candidate
@@ -182,7 +185,7 @@ def sample_visualizable_case(
             all_results,
         )
         if best_result is None:
-            print("[Sample] rejected sample | no continuity-valid straight-line candidate", flush=True)
+            print("[Sample] rejected sample | no valid straight-line prefix candidate", flush=True)
             continue
         if float(best_result["line_length"]) >= float(min_best_length):
             print(f"[Sample] accepted sample with best_line_length={best_result['line_length']:.4f} m", flush=True)
@@ -306,6 +309,7 @@ def main():
         min_best_length=args.min_best_length,
         max_sample_retries=args.max_sample_retries,
         max_joint_step_norm=args.max_joint_step_norm,
+        collision_check_substeps=args.collision_check_substeps,
     )
     if sampled is None or best_candidate is None or best_direction is None or best_result is None:
         raise RuntimeError("Failed to find a visualizable nullspace sample with a valid straight-line trajectory.")

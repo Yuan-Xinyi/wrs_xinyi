@@ -28,7 +28,7 @@ def parse_args():
     parser.add_argument("--seed", type=int, default=None)
     parser.add_argument("--svd-tol", type=float, default=1e-6)
     parser.add_argument("--amplitude", type=float, default=0.35)
-    parser.add_argument("--grid-resolution", type=int, default=3)
+    parser.add_argument("--grid-resolution", type=int, default=2)
     parser.add_argument("--projection-iters", type=int, default=60)
     parser.add_argument("--projection-damping", type=float, default=1e-4)
     parser.add_argument("--position-tol", type=float, default=1e-5)

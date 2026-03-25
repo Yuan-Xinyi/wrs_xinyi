@@ -78,14 +78,37 @@ def select_closest_solution(solutions, seed_q):
 def check_trajectory_continuity(traj_q, max_joint_step_norm):
     traj_q = np.asarray(traj_q, dtype=float)
     if len(traj_q) <= 1:
-        return True, 0.0
+        return True, 0.0, 0
     joint_deltas = wrap_angle_difference(np.diff(traj_q, axis=0))
     step_norms = np.linalg.norm(joint_deltas, axis=1)
     max_step_norm = float(np.max(step_norms))
-    return bool(np.all(step_norms <= max_joint_step_norm)), max_step_norm
+    invalid_steps = np.flatnonzero(step_norms > max_joint_step_norm)
+    if len(invalid_steps) == 0:
+        return True, max_step_norm, len(traj_q) - 1
+    first_invalid_step = int(invalid_steps[0])
+    safe_steps = max(first_invalid_step, 0)
+    return False, max_step_norm, safe_steps
 
 
-def trace_line_by_ik(robot, contour, start_q, direction, step_size, max_steps, max_joint_step_norm=np.inf):
+def densify_collision_free_steps(robot, traj_q, substeps):
+    traj_q = np.asarray(traj_q, dtype=float)
+    if len(traj_q) <= 1:
+        return 0
+    substeps = max(int(substeps), 1)
+    safe_steps = len(traj_q) - 1
+    for idx in range(len(traj_q) - 1):
+        q0 = np.asarray(traj_q[idx], dtype=float)
+        q1 = np.asarray(traj_q[idx + 1], dtype=float)
+        delta = wrap_angle_difference(q1 - q0)
+        for alpha in np.linspace(0.0, 1.0, substeps + 2, endpoint=True, dtype=float)[1:-1]:
+            q_mid = q0 + alpha * delta
+            robot.goto_given_conf(q_mid)
+            if robot.is_collided():
+                return idx
+    return safe_steps
+
+
+def trace_line_by_ik(robot, contour, start_q, direction, step_size, max_steps, max_joint_step_norm=np.inf, collision_check_substeps=1):
     start_q = np.asarray(start_q, dtype=float)
     start_pos, start_rot = robot.fk(start_q)
     if not is_pose_inside_workspace(contour, start_pos):
@@ -101,6 +124,7 @@ def trace_line_by_ik(robot, contour, start_q, direction, step_size, max_steps, m
             "continuity_ok": True,
             "max_joint_step_norm": 0.0,
             "termination_reason": "start_outside_workspace",
+            "raw_termination_reason": "start_outside_workspace",
         }
 
     robot.goto_given_conf(start_q)
@@ -117,17 +141,18 @@ def trace_line_by_ik(robot, contour, start_q, direction, step_size, max_steps, m
             "continuity_ok": True,
             "max_joint_step_norm": 0.0,
             "termination_reason": "start_in_collision",
+            "raw_termination_reason": "start_in_collision",
         }
 
     traj_q = [start_q.copy()]
     traj_pos = [np.asarray(start_pos, dtype=float).copy()]
     current_q = start_q.copy()
-    termination_reason = "max_steps_reached"
+    raw_termination_reason = "max_steps_reached"
 
     for step_idx in range(1, max_steps + 1):
         tgt_pos = start_pos + direction * (step_idx * step_size)
         if not is_pose_inside_workspace(contour, tgt_pos):
-            termination_reason = "out_of_workspace"
+            raw_termination_reason = "out_of_workspace"
             break
 
         next_q = robot.ik(
@@ -136,17 +161,17 @@ def trace_line_by_ik(robot, contour, start_q, direction, step_size, max_steps, m
             seed_jnt_values=current_q,
         )
         if next_q is None:
-            termination_reason = "ik_failed"
+            raw_termination_reason = "ik_failed"
             break
 
         next_q = np.asarray(next_q, dtype=float)
         if not robot.are_jnts_in_ranges(next_q):
-            termination_reason = "joint_limit"
+            raw_termination_reason = "joint_limit"
             break
 
         robot.goto_given_conf(next_q)
         if robot.is_collided():
-            termination_reason = "self_collision"
+            raw_termination_reason = "self_collision"
             break
 
         tcp_pos, _ = robot.fk(next_q)
@@ -154,24 +179,35 @@ def trace_line_by_ik(robot, contour, start_q, direction, step_size, max_steps, m
         traj_pos.append(np.asarray(tcp_pos, dtype=float).copy())
         current_q = next_q.copy()
 
-    continuity_ok, observed_max_joint_step_norm = check_trajectory_continuity(traj_q, max_joint_step_norm)
-    if not continuity_ok:
-        termination_reason = "continuity_failed"
+    continuity_ok, observed_max_joint_step_norm, continuity_safe_steps = check_trajectory_continuity(traj_q, max_joint_step_norm)
+    dense_safe_steps = densify_collision_free_steps(robot, traj_q, collision_check_substeps)
+    num_success_steps = min(len(traj_q) - 1, continuity_safe_steps, dense_safe_steps)
 
-    num_success_steps = len(traj_q) - 1
-    success = (num_success_steps > 0) and continuity_ok
+    termination_reason = raw_termination_reason
+    if num_success_steps < len(traj_q) - 1:
+        if num_success_steps < continuity_safe_steps:
+            termination_reason = "dense_self_collision"
+        elif num_success_steps < dense_safe_steps:
+            termination_reason = "continuity_failed"
+        else:
+            termination_reason = raw_termination_reason
+
+    traj_q_safe = np.asarray(traj_q[: num_success_steps + 1], dtype=float)
+    traj_pos_safe = np.asarray(traj_pos[: num_success_steps + 1], dtype=float)
+    success = num_success_steps > 0
     return {
         "start_q": start_q,
         "start_pos": start_pos,
         "start_rot": start_rot,
-        "traj_q": np.asarray(traj_q),
-        "traj_pos": np.asarray(traj_pos),
-        "line_length": num_success_steps * step_size if continuity_ok else 0.0,
-        "num_success_steps": num_success_steps if continuity_ok else 0,
+        "traj_q": traj_q_safe,
+        "traj_pos": traj_pos_safe,
+        "line_length": num_success_steps * step_size,
+        "num_success_steps": num_success_steps,
         "success": success,
-        "continuity_ok": continuity_ok,
+        "continuity_ok": True,
         "max_joint_step_norm": observed_max_joint_step_norm,
         "termination_reason": termination_reason,
+        "raw_termination_reason": raw_termination_reason,
     }
 
 

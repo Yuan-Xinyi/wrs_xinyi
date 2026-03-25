@@ -66,6 +66,7 @@ def parse_args():
     parser.add_argument("--dedup-tol", type=float, default=DEDUP_TOL)
     parser.add_argument("--keep-candidates", type=int, default=KEEP_CANDIDATES)
     parser.add_argument("--max-joint-step-norm", type=float, default=MAX_JOINT_STEP_NORM)
+    parser.add_argument("--collision-check-substeps", type=int, default=10)
     return parser.parse_args()
 
 
@@ -87,7 +88,7 @@ def sample_plane_directions(plane_normal: np.ndarray, num_samples: int, rng: np.
     return np.asarray(directions, dtype=np.float64)
 
 
-def evaluate_best_direction(robot, contour, start_q: np.ndarray, directions: np.ndarray, max_joint_step_norm: float):
+def evaluate_best_direction(robot, contour, start_q: np.ndarray, directions: np.ndarray, max_joint_step_norm: float, collision_check_substeps: int):
     best_result = None
     best_direction = None
     reason_counts = {}
@@ -100,6 +101,7 @@ def evaluate_best_direction(robot, contour, start_q: np.ndarray, directions: np.
             step_size=STEP_SIZE,
             max_steps=MAX_STEPS,
             max_joint_step_norm=max_joint_step_norm,
+            collision_check_substeps=collision_check_substeps,
         )
         reason = str(result["termination_reason"])
         reason_counts[reason] = reason_counts.get(reason, 0) + 1
@@ -187,10 +189,11 @@ def collect_kernel_records(kernel_idx: int, kernel_q: np.ndarray, robot, contour
             start_q=orientation_candidate["q"],
             directions=line_directions,
             max_joint_step_norm=args.max_joint_step_norm,
+            collision_check_substeps=args.collision_check_substeps,
         )
         for reason, count in candidate_reason_counts.items():
             reason_counts[reason] = reason_counts.get(reason, 0) + int(count)
-        if best_result is None or not bool(best_result.get("continuity_ok", False)):
+        if best_result is None:
             continue
         if float(best_result["line_length"]) < float(args.min_line_length):
             continue
@@ -309,6 +312,7 @@ def create_or_open_h5(output_path: Path, kernel_qs: np.ndarray, args):
     h5_file.attrs["dedup_tol"] = float(args.dedup_tol)
     h5_file.attrs["keep_candidates"] = int(args.keep_candidates)
     h5_file.attrs["max_joint_step_norm"] = float(args.max_joint_step_norm)
+    h5_file.attrs["collision_check_substeps"] = int(args.collision_check_substeps)
     h5_file.attrs["execution_path"] = "collision_free_kernels_to_nullspace_straight_topk"
     return h5_file
 
@@ -381,7 +385,8 @@ def main():
     print(f"[Config] execution=single_process | aligned_with=nullspace_straight_mode", flush=True)
     print(
         f"[Config] top_k={args.top_k} | num_direction_samples={args.num_direction_samples} | "
-        f"step={STEP_SIZE} | max_steps={MAX_STEPS} | min_length={args.min_line_length} | max_joint_step_norm={args.max_joint_step_norm}",
+        f"step={STEP_SIZE} | max_steps={MAX_STEPS} | min_length={args.min_line_length} | "
+        f"max_joint_step_norm={args.max_joint_step_norm} | collision_check_substeps={args.collision_check_substeps}",
         flush=True,
     )
 
