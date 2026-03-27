@@ -24,6 +24,20 @@ def normalize_batch(vec: torch.Tensor) -> torch.Tensor:
     return vec / vec.norm(dim=-1, keepdim=True).clamp_min(1e-12)
 
 
+def project_direction_to_plane_batch(direction: torch.Tensor, target_normal: torch.Tensor) -> torch.Tensor:
+    target_normal = normalize_batch(target_normal)
+    proj_on_normal = torch.sum(direction * target_normal, dim=-1, keepdim=True)
+    direction_in_plane = direction - proj_on_normal * target_normal
+    tiny_mask = direction_in_plane.norm(dim=-1, keepdim=True) < 1e-8
+    if tiny_mask.any():
+        fallback = torch.zeros_like(direction_in_plane)
+        fallback[..., 0] = 1.0
+        fallback = fallback - torch.sum(fallback * target_normal, dim=-1, keepdim=True) * target_normal
+        fallback = normalize_batch(fallback)
+        direction_in_plane = torch.where(tiny_mask, fallback, direction_in_plane)
+    return normalize_batch(direction_in_plane)
+
+
 def position_jacobian_batch(robot, q_batch: torch.Tensor, create_graph: bool = False) -> tuple[torch.Tensor, torch.Tensor]:
     q_eval = q_batch.detach().clone().requires_grad_(True)
     tcp_pos, _ = robot.fk_batch(q_eval)
@@ -139,9 +153,10 @@ class GPUNullspaceStraightTracker:
         oversample = max(256, batch_size * 4)
         cos_theta_max = float(np.cos(self.config.theta_max))
         target_normal = normalize_batch(target_normal.unsqueeze(0)).squeeze(0)
+        target_normal_batch = target_normal.unsqueeze(0).expand(oversample, -1)
         while remaining > 0:
             q_cand = self.robot.rand_conf_batch(oversample).to(device)
-            d_cand = normalize_batch(torch.randn(oversample, 3, device=device))
+            d_cand = project_direction_to_plane_batch(torch.randn(oversample, 3, device=device), target_normal_batch)
             j_pos, _ = position_jacobian_batch(self.robot, q_cand, create_graph=False)
             mu = directional_manipulability_batch(j_pos, d_cand, self.config.damping)
             _, tcp_rot = self.robot.fk_batch(q_cand)
@@ -171,8 +186,8 @@ class GPUNullspaceStraightTracker:
         target_normal: torch.Tensor,
     ) -> BatchTrackerResult:
         q = q0_batch.clone()
-        direction = normalize_batch(direction_batch)
         target_normal = normalize_batch(target_normal.unsqueeze(0)).expand(q.shape[0], -1)
+        direction = project_direction_to_plane_batch(direction_batch, target_normal)
         start_pos, _ = self.robot.fk_batch(q)
         batch_size = q.shape[0]
         cos_theta_max = float(np.cos(self.config.theta_max))
@@ -332,16 +347,17 @@ def visualize_best_sample(result: BatchTrackerResult, vis_mode: str = "static") 
     end_pos = tcp_path[-1]
     direction = result.direction_batch[best_idx].detach().cpu().numpy()
     ideal_end = start_pos + direction * float(result.projected_length[best_idx].detach().cpu())
-    plane_size = 2
+    plane_size = 1.5
     plane_rotmat = rotation_matrix_from_normal(result.target_normal.detach().cpu().numpy())
+    plane_center = start_pos + 0.5 * plane_size * direction
 
     base = wd.World(cam_pos=[1.6, -1.4, 1.0], lookat_pos=[0.25, 0.0, 0.25])
     mcm.gen_box(
         xyz_lengths=[plane_size, plane_size, 0.001],
-        pos=start_pos,
+        pos=plane_center,
         rotmat=plane_rotmat,
-        rgb=[0.9, 0.95, 1.0],
-        alpha=0.25,
+        rgb=[180/255, 211/255, 217/255],
+        alpha=0.5,
     ).attach_to(base)
     mgm.gen_frame().attach_to(base)
     mgm.gen_arrow(spos=start_pos, epos=start_pos + 0.25 * direction, stick_radius=0.006, rgb=np.array([1.0, 0.2, 0.2])).attach_to(base)
@@ -374,7 +390,7 @@ def parse_args() -> argparse.Namespace:
     parser.add_argument("--speed", type=float, default=0.10)
     parser.add_argument("--damping", type=float, default=1e-3)
     parser.add_argument("--null-gain", type=float, default=0.6)
-    parser.add_argument("--theta-max-deg", type=float, default=45.0)
+    parser.add_argument("--theta-max-deg", type=float, default=30.0)
     parser.add_argument("--boundary-gain", type=float, default=10.0)
     parser.add_argument("--target-normal", type=float, nargs=3, default=[0.0, 0.0, 1.0])
     parser.add_argument("--fd-eps", type=float, default=1e-4)
