@@ -39,11 +39,11 @@ def position_jacobian_batch(robot, q_batch: torch.Tensor, create_graph: bool = F
     return torch.stack(grads, dim=1), q_eval
 
 
-def damped_pseudoinverse_batch(j_pos: torch.Tensor, damping: float) -> torch.Tensor:
-    batch = j_pos.shape[0]
-    eye = torch.eye(3, device=j_pos.device, dtype=j_pos.dtype).unsqueeze(0).expand(batch, -1, -1)
-    jj_t = j_pos @ j_pos.transpose(1, 2)
-    return j_pos.transpose(1, 2) @ torch.linalg.inv(jj_t + (damping ** 2) * eye)
+def damped_pseudoinverse_batch(j_mat: torch.Tensor, damping: float) -> torch.Tensor:
+    batch, task_dim, _ = j_mat.shape
+    eye = torch.eye(task_dim, device=j_mat.device, dtype=j_mat.dtype).unsqueeze(0).expand(batch, -1, -1)
+    jj_t = j_mat @ j_mat.transpose(1, 2)
+    return j_mat.transpose(1, 2) @ torch.linalg.inv(jj_t + (damping ** 2) * eye)
 
 
 def nullspace_projector_batch(j_pos: torch.Tensor, damping: float) -> torch.Tensor:
@@ -80,15 +80,28 @@ def joints_in_range_mask(robot, q_batch: torch.Tensor) -> torch.Tensor:
     return ((q_batch >= lower) & (q_batch <= upper)).all(dim=1)
 
 
+def rotation_matrix_from_normal(normal: np.ndarray) -> np.ndarray:
+    z_axis = normal / max(np.linalg.norm(normal), 1e-12)
+    helper = np.array([1.0, 0.0, 0.0]) if abs(z_axis[0]) < 0.9 else np.array([0.0, 1.0, 0.0])
+    x_axis = np.cross(helper, z_axis)
+    x_axis = x_axis / max(np.linalg.norm(x_axis), 1e-12)
+    y_axis = np.cross(z_axis, x_axis)
+    y_axis = y_axis / max(np.linalg.norm(y_axis), 1e-12)
+    return np.column_stack((x_axis, y_axis, z_axis))
+
+
 @dataclass
 class TrackerConfig:
     dt: float = 0.01
     task_speed: float = 0.1
     damping: float = 1e-3
     null_gain: float = 0.6
+    theta_max: float = np.deg2rad(20.0)
+    boundary_gain: float = 10.0
     grad_fd_eps: float = 1e-4
     max_steps: int = 2000
     mu_threshold: float = 0.01
+    pos_error_threshold: float = 0.01
     collision_margin: float = -0.005
 
 
@@ -96,6 +109,7 @@ class TrackerConfig:
 class BatchTrackerResult:
     q0_batch: torch.Tensor
     direction_batch: torch.Tensor
+    target_normal: torch.Tensor
     projected_length: torch.Tensor
     euclidean_length: torch.Tensor
     mean_mu: torch.Tensor
@@ -113,18 +127,33 @@ class GPUNullspaceStraightTracker:
         self.config = config
         self.print_every = max(0, int(print_every))
 
-    def sample_valid_batch(self, batch_size: int, device: torch.device) -> tuple[torch.Tensor, torch.Tensor]:
+    def sample_valid_batch(
+        self,
+        batch_size: int,
+        device: torch.device,
+        target_normal: torch.Tensor,
+    ) -> tuple[torch.Tensor, torch.Tensor]:
         q_list = []
         d_list = []
         remaining = batch_size
         oversample = max(256, batch_size * 4)
+        cos_theta_max = float(np.cos(self.config.theta_max))
+        target_normal = normalize_batch(target_normal.unsqueeze(0)).squeeze(0)
         while remaining > 0:
             q_cand = self.robot.rand_conf_batch(oversample).to(device)
             d_cand = normalize_batch(torch.randn(oversample, 3, device=device))
             j_pos, _ = position_jacobian_batch(self.robot, q_cand, create_graph=False)
             mu = directional_manipulability_batch(j_pos, d_cand, self.config.damping)
+            _, tcp_rot = self.robot.fk_batch(q_cand)
+            tcp_z = tcp_rot[:, :, 2]
+            cos_theta = torch.sum(tcp_z * target_normal.unsqueeze(0), dim=-1)
             coll_cost = self.collision_fn(q_cand)
-            valid_mask = joints_in_range_mask(self.robot, q_cand) & (coll_cost <= 0.0) & (mu > self.config.mu_threshold)
+            valid_mask = (
+                joints_in_range_mask(self.robot, q_cand)
+                & (coll_cost <= 0.0)
+                & (mu > self.config.mu_threshold)
+                & (cos_theta > cos_theta_max)
+            )
             if valid_mask.any():
                 take_q = q_cand[valid_mask][:remaining]
                 take_d = d_cand[valid_mask][:remaining]
@@ -135,11 +164,18 @@ class GPUNullspaceStraightTracker:
                 print(f"[sample] collected={collected}/{batch_size} valid starts")
         return torch.cat(q_list, dim=0), torch.cat(d_list, dim=0)
 
-    def run_batch(self, q0_batch: torch.Tensor, direction_batch: torch.Tensor) -> BatchTrackerResult:
+    def run_batch(
+        self,
+        q0_batch: torch.Tensor,
+        direction_batch: torch.Tensor,
+        target_normal: torch.Tensor,
+    ) -> BatchTrackerResult:
         q = q0_batch.clone()
         direction = normalize_batch(direction_batch)
+        target_normal = normalize_batch(target_normal.unsqueeze(0)).expand(q.shape[0], -1)
         start_pos, _ = self.robot.fk_batch(q)
         batch_size = q.shape[0]
+        cos_theta_max = float(np.cos(self.config.theta_max))
         active = torch.ones(batch_size, dtype=torch.bool, device=q.device)
         done = torch.zeros(batch_size, dtype=torch.bool, device=q.device)
         termination_code = torch.full((batch_size,), 3, dtype=torch.long, device=q.device)
@@ -152,7 +188,7 @@ class GPUNullspaceStraightTracker:
         q_history[0] = q
         tcp_history[0] = start_pos
 
-        def maybe_print_progress(step_idx: int, active_mask: torch.Tensor, mu_values: torch.Tensor) -> None:
+        def maybe_print_progress(step_idx: int, active_mask: torch.Tensor, mu_values: torch.Tensor, boundary_mask: torch.Tensor, cos_theta: torch.Tensor) -> None:
             if self.print_every <= 0:
                 return
             if step_idx == 0 or (step_idx + 1) % self.print_every != 0:
@@ -166,9 +202,11 @@ class GPUNullspaceStraightTracker:
             print(
                 f"[step {step_idx + 1:04d}] "
                 f"active={int(active_mask.sum().item())}/{batch_size} "
+                f"boundary={int(boundary_mask.sum().item())} "
                 f"mean_proj={proj_now.mean().item():.4f}m "
                 f"max_proj={proj_now.max().item():.4f}m "
                 f"mean_mu={mu_values.mean().item():.6f} "
+                f"mean_cos={cos_theta.mean().item():.6f} "
                 f"term_hist={term_hist}"
             )
 
@@ -177,7 +215,28 @@ class GPUNullspaceStraightTracker:
                 print(f"[step {step_idx:04d}] all samples terminated")
                 break
 
-            j_pos, _ = position_jacobian_batch(self.robot, q, create_graph=False)
+            q_eval = q.detach().clone().requires_grad_(True)
+            tcp_pos, tcp_rot = self.robot.fk_batch(q_eval)
+            tcp_z = tcp_rot[:, :, 2]
+            cos_theta = torch.sum(tcp_z * target_normal, dim=-1)
+
+            j_cols = []
+            for dim in range(3):
+                grad_dim = torch.autograd.grad(
+                    tcp_pos[:, dim].sum(),
+                    q_eval,
+                    retain_graph=True,
+                    create_graph=True,
+                )[0]
+                j_cols.append(grad_dim)
+            j_pos = torch.stack(j_cols, dim=1)
+            j_g = torch.autograd.grad(
+                cos_theta.sum(),
+                q_eval,
+                retain_graph=True,
+                create_graph=False,
+            )[0].unsqueeze(1)
+
             mu_val = directional_manipulability_batch(j_pos, direction, self.config.damping)
             mu_sum[active] += mu_val[active]
             mu_count[active] += 1.0
@@ -187,18 +246,21 @@ class GPUNullspaceStraightTracker:
             done[low_mu] = True
             active = active & (~low_mu)
             if not active.any():
-                maybe_print_progress(step_idx, active, mu_val)
+                maybe_print_progress(step_idx, active, mu_val, torch.zeros_like(active), cos_theta)
                 break
 
-            grad_mu = directional_manipulability_gradient_batch(
-                robot=self.robot,
-                q_batch=q,
-                direction=direction,
-                damping=self.config.damping,
-            )
-            j_pinv = damped_pseudoinverse_batch(j_pos, self.config.damping)
-            projector = nullspace_projector_batch(j_pos, self.config.damping)
-            v_task = (self.config.task_speed * direction).unsqueeze(-1)
+            grad_mu = torch.autograd.grad(mu_val.sum(), q_eval, retain_graph=False, create_graph=False)[0]
+
+            on_boundary = (cos_theta <= cos_theta_max).view(-1, 1, 1)
+            j_task = torch.cat([j_pos, j_g * on_boundary], dim=1)
+            j_pinv = damped_pseudoinverse_batch(j_task, self.config.damping)
+            projector = nullspace_projector_batch(j_task, self.config.damping)
+
+            v_pos = (self.config.task_speed * direction).unsqueeze(-1)
+            v_g = (self.config.boundary_gain * torch.clamp(cos_theta_max - cos_theta, min=0.0)).view(-1, 1, 1)
+            v_g = v_g * on_boundary.squeeze(-1).float().unsqueeze(-1)
+            v_task = torch.cat([v_pos, v_g], dim=1)
+
             q_dot_task = (j_pinv @ v_task).squeeze(-1)
             q_dot_null = self.config.null_gain * grad_mu
             q_dot = q_dot_task + (projector @ q_dot_null.unsqueeze(-1)).squeeze(-1)
@@ -214,7 +276,14 @@ class GPUNullspaceStraightTracker:
             termination_code[collided] = 2
             done[collided] = True
 
-            advance = active & in_range & (~collided)
+            tcp_pos_candidate, _ = self.robot.fk_batch(q_next)
+            expected_pos = start_pos + direction * ((step_idx + 1) * self.config.dt * self.config.task_speed)
+            pos_error = torch.linalg.norm(tcp_pos_candidate - expected_pos, dim=1)
+            pos_failed = active & (~joint_limit) & (~collided) & (pos_error > self.config.pos_error_threshold)
+            termination_code[pos_failed] = 4
+            done[pos_failed] = True
+
+            advance = active & in_range & (~collided) & (~pos_failed)
             q[advance] = q_next[advance]
             step_counter[advance] += 1
             active = advance
@@ -223,7 +292,7 @@ class GPUNullspaceStraightTracker:
             q_history[step_idx + 1] = q
             tcp_history[step_idx + 1] = tcp_pos_now
 
-            maybe_print_progress(step_idx, active, mu_val)
+            maybe_print_progress(step_idx, active, mu_val, on_boundary.view(-1), cos_theta)
 
         end_pos, _ = self.robot.fk_batch(q)
         delta = end_pos - start_pos
@@ -242,6 +311,7 @@ class GPUNullspaceStraightTracker:
         return BatchTrackerResult(
             q0_batch=q0_batch,
             direction_batch=direction,
+            target_normal=target_normal[0].detach().cpu().clone(),
             projected_length=projected_length,
             euclidean_length=euclidean_length,
             mean_mu=mean_mu,
@@ -262,8 +332,17 @@ def visualize_best_sample(result: BatchTrackerResult, vis_mode: str = "static") 
     end_pos = tcp_path[-1]
     direction = result.direction_batch[best_idx].detach().cpu().numpy()
     ideal_end = start_pos + direction * float(result.projected_length[best_idx].detach().cpu())
+    plane_size = 2
+    plane_rotmat = rotation_matrix_from_normal(result.target_normal.detach().cpu().numpy())
 
     base = wd.World(cam_pos=[1.6, -1.4, 1.0], lookat_pos=[0.25, 0.0, 0.25])
+    mcm.gen_box(
+        xyz_lengths=[plane_size, plane_size, 0.001],
+        pos=start_pos,
+        rotmat=plane_rotmat,
+        rgb=[0.9, 0.95, 1.0],
+        alpha=0.25,
+    ).attach_to(base)
     mgm.gen_frame().attach_to(base)
     mgm.gen_arrow(spos=start_pos, epos=start_pos + 0.25 * direction, stick_radius=0.006, rgb=np.array([1.0, 0.2, 0.2])).attach_to(base)
     line_segs = [[tcp_path[i], tcp_path[i + 1]] for i in range(len(tcp_path) - 1)]
@@ -285,19 +364,23 @@ def visualize_best_sample(result: BatchTrackerResult, vis_mode: str = "static") 
 
 
 def termination_label(code: int) -> str:
-    return {0: "low_mu", 1: "joint_limit", 2: "self_collision", 3: "max_steps"}.get(code, "unknown")
+    return {0: "low_mu", 1: "joint_limit", 2: "self_collision", 3: "max_steps", 4: "pos_tracking_error"}.get(code, "unknown")
 
 
 def parse_args() -> argparse.Namespace:
     parser = argparse.ArgumentParser(description="CUDA batched XArmLite6 null-space straight-line differential tracker.")
-    parser.add_argument("--batch-size", type=int, default=10000)
+    parser.add_argument("--batch-size", type=int, default=1024)
     parser.add_argument("--dt", type=float, default=0.01)
     parser.add_argument("--speed", type=float, default=0.10)
     parser.add_argument("--damping", type=float, default=1e-3)
     parser.add_argument("--null-gain", type=float, default=0.6)
+    parser.add_argument("--theta-max-deg", type=float, default=45.0)
+    parser.add_argument("--boundary-gain", type=float, default=10.0)
+    parser.add_argument("--target-normal", type=float, nargs=3, default=[0.0, 0.0, 1.0])
     parser.add_argument("--fd-eps", type=float, default=1e-4)
     parser.add_argument("--max-steps", type=int, default=2000)
     parser.add_argument("--mu-threshold", type=float, default=0.01)
+    parser.add_argument("--pos-error-threshold", type=float, default=0.01)
     parser.add_argument("--device", type=str, default="cuda")
     parser.add_argument("--print-every", type=int, default=50)
     parser.add_argument("--vis-mode", type=str, default="anime", choices=["static", "anime"])
@@ -324,14 +407,18 @@ def main() -> None:
             task_speed=args.speed,
             damping=args.damping,
             null_gain=args.null_gain,
+            theta_max=np.deg2rad(args.theta_max_deg),
+            boundary_gain=args.boundary_gain,
             grad_fd_eps=args.fd_eps,
             max_steps=args.max_steps,
             mu_threshold=args.mu_threshold,
+            pos_error_threshold=args.pos_error_threshold,
         ),
     )
 
-    q0_batch, direction_batch = tracker.sample_valid_batch(batch_size=args.batch_size, device=device)
-    result = tracker.run_batch(q0_batch=q0_batch, direction_batch=direction_batch)
+    target_normal = torch.tensor(args.target_normal, dtype=torch.float32, device=device)
+    q0_batch, direction_batch = tracker.sample_valid_batch(batch_size=args.batch_size, device=device, target_normal=target_normal)
+    result = tracker.run_batch(q0_batch=q0_batch, direction_batch=direction_batch, target_normal=target_normal)
 
     proj = result.projected_length.detach().cpu().numpy()
     euclid = result.euclidean_length.detach().cpu().numpy()
@@ -342,6 +429,10 @@ def main() -> None:
     print(f"euclidean_length_max = {euclid.max():.4f} m")
     print(f"euclidean_length_mean = {euclid.mean():.4f} m")
     print(f"mean_mu_mean = {mean_mu.mean():.6f}")
+    print("target_normal =", np.array2string(target_normal.detach().cpu().numpy(), precision=4, separator=", "))
+    print(f"theta_max_deg = {args.theta_max_deg:.2f}")
+    print(f"boundary_gain = {args.boundary_gain:.4f}")
+    print(f"pos_error_threshold = {args.pos_error_threshold:.4f} m")
     print(f"steps_mean = {steps.mean():.2f}")
     unique, counts = np.unique(term, return_counts=True)
     print("termination_hist =", {termination_label(int(k)): int(v) for k, v in zip(unique, counts)})
