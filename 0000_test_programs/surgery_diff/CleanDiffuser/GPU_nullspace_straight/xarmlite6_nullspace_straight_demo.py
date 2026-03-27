@@ -72,11 +72,11 @@ def sample_valid_start(robot: XArmLite6Miller, rng: np.random.Generator, mu_thre
 @dataclass
 class TrackerConfig:
     dt: float = 0.01
-    task_speed: float = 0.10
+    task_speed: float = 0.1
     damping: float = 1e-3
     null_gain: float = 0.6
     grad_fd_eps: float = 1e-4
-    max_steps: int = 500
+    max_steps: int = 2000
     mu_threshold: float = 0.03
 
 
@@ -207,8 +207,8 @@ def parse_args() -> argparse.Namespace:
     parser.add_argument("--damping", type=float, default=1e-3)
     parser.add_argument("--null-gain", type=float, default=0.6)
     parser.add_argument("--fd-eps", type=float, default=1e-4)
-    parser.add_argument("--max-steps", type=int, default=500)
-    parser.add_argument("--mu-threshold", type=float, default=0.03)
+    parser.add_argument("--max-steps", type=int, default=2000)
+    parser.add_argument("--mu-threshold", type=float, default=0.01)
     parser.add_argument("--seed", type=int, default=7)
     parser.add_argument("--show-waypoints", action="store_true")
     return parser.parse_args()
