@@ -1,5 +1,7 @@
 import argparse
 from dataclasses import dataclass
+from pathlib import Path
+import sys
 
 import jax
 import jax2torch
@@ -11,6 +13,11 @@ import wrs.modeling.geometric_model as mgm
 import wrs.neuro.xarm_lite6_neuro as xarm6_gpu
 import wrs.robot_sim.robots.xarmlite6_wg.xarm6_drill as xarm6_sim
 from wrs.robot_sim.robots.xarmlite6_wg.sphere_collision_checker import SphereCollisionChecker
+
+DRAWING_HELPER_DIR = Path(__file__).resolve().parents[1] / "Drawing_neuro_straight"
+if str(DRAWING_HELPER_DIR) not in sys.path:
+    sys.path.append(str(DRAWING_HELPER_DIR))
+import helper_functions as helpers
 
 
 def normalize_batch(vec: torch.Tensor) -> torch.Tensor:
@@ -246,7 +253,7 @@ class GPUNullspaceStraightTracker:
         )
 
 
-def visualize_best_sample(result: BatchTrackerResult) -> None:
+def visualize_best_sample(result: BatchTrackerResult, vis_mode: str = "static") -> None:
     sim_robot = xarm6_sim.XArmLite6Miller(enable_cc=True)
     q_path = result.q_path_best
     tcp_path = result.tcp_path_best
@@ -270,7 +277,11 @@ def visualize_best_sample(result: BatchTrackerResult) -> None:
     sim_robot.gen_meshmodel(rgb=np.array([0.2, 0.5, 1.0]), alpha=0.25, toggle_tcp_frame=True).attach_to(base)
     sim_robot.goto_given_conf(q_path[-1])
     sim_robot.gen_meshmodel(rgb=np.array([1.0, 0.5, 0.0]), alpha=0.9, toggle_tcp_frame=True).attach_to(base)
-    base.run()
+
+    if vis_mode == "anime":
+        helpers.visualize_anime_path(base, sim_robot, q_path)
+    else:
+        base.run()
 
 
 def termination_label(code: int) -> str:
@@ -279,7 +290,7 @@ def termination_label(code: int) -> str:
 
 def parse_args() -> argparse.Namespace:
     parser = argparse.ArgumentParser(description="CUDA batched XArmLite6 null-space straight-line differential tracker.")
-    parser.add_argument("--batch-size", type=int, default=1024)
+    parser.add_argument("--batch-size", type=int, default=10000)
     parser.add_argument("--dt", type=float, default=0.01)
     parser.add_argument("--speed", type=float, default=0.10)
     parser.add_argument("--damping", type=float, default=1e-3)
@@ -289,6 +300,7 @@ def parse_args() -> argparse.Namespace:
     parser.add_argument("--mu-threshold", type=float, default=0.01)
     parser.add_argument("--device", type=str, default="cuda")
     parser.add_argument("--print-every", type=int, default=50)
+    parser.add_argument("--vis-mode", type=str, default="anime", choices=["static", "anime"])
     parser.add_argument("--no-vis", action="store_true")
     return parser.parse_args()
 
@@ -341,7 +353,7 @@ def main() -> None:
     print("best_sample_termination =", termination_label(int(term[result.best_idx])))
 
     if not args.no_vis:
-        visualize_best_sample(result)
+        visualize_best_sample(result, vis_mode=args.vis_mode)
 
 
 if __name__ == "__main__":
