@@ -11,13 +11,13 @@ from xarm_trail1 import MAX_STEPS, STEP_SIZE, WorkspaceContour, is_pose_inside_w
 
 
 CONTOUR_PATH = Path("0000_test_programs/surgery_diff/CleanDiffuser/Drawing_neuro_straight/xarm_contour_z0.pkl")
-NUM_DIRECTIONS = 72
+NUM_DIRECTIONS = 256
 MAX_START_ATTEMPTS = 5000
 
 
 def parse_args():
     parser = argparse.ArgumentParser(description="Analyze planar mobility from Jacobian manipulability and compare it with actual straight-line feasibility.")
-    parser.add_argument("--robot", type=str, default="xarm", choices=["xarm", "franka"])
+    parser.add_argument("--robot", type=str, default="franka", choices=["xarm", "franka"])
     return parser.parse_args()
 
 
