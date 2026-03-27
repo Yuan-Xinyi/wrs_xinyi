@@ -165,7 +165,7 @@ class JLChain(object):
 
         # --- initialize H with anchor transform
         H = torch.eye(4, device=device).unsqueeze(0).repeat(B, 1, 1)
-        anchor_H = torch.tensor(self.anchor.gl_flange_homomat_list[0], device=device)
+        anchor_H = self.anchor.gl_flange_homomat_list[0].detach().clone().to(device)
         H = torch.bmm(H, anchor_H.unsqueeze(0).expand(B, -1, -1))
 
         # --- forward chain multiply
