@@ -110,7 +110,7 @@ class TrackerConfig:
     task_speed: float = 0.1
     damping: float = 1e-3
     null_gain: float = 0.6
-    theta_max: float = np.deg2rad(20.0)
+    theta_max: float = np.deg2rad(30.0)
     boundary_gain: float = 10.0
     grad_fd_eps: float = 1e-4
     max_steps: int = 2000
@@ -217,12 +217,12 @@ class GPUNullspaceStraightTracker:
             print(
                 f"[step {step_idx + 1:04d}] "
                 f"active={int(active_mask.sum().item())}/{batch_size} "
-                f"boundary={int(boundary_mask.sum().item())} "
-                f"mean_proj={proj_now.mean().item():.4f}m "
+                # f"boundary={int(boundary_mask.sum().item())} "
+                # f"mean_proj={proj_now.mean().item():.4f}m "
                 f"max_proj={proj_now.max().item():.4f}m "
-                f"mean_mu={mu_values.mean().item():.6f} "
-                f"mean_cos={cos_theta.mean().item():.6f} "
-                f"term_hist={term_hist}"
+                # f"mean_mu={mu_values.mean().item():.6f} "
+                # f"mean_cos={cos_theta.mean().item():.6f} "
+                # f"term_hist={term_hist}"
             )
 
         for step_idx in range(self.config.max_steps):
@@ -390,7 +390,7 @@ def parse_args() -> argparse.Namespace:
     parser.add_argument("--speed", type=float, default=0.10)
     parser.add_argument("--damping", type=float, default=1e-3)
     parser.add_argument("--null-gain", type=float, default=0.6)
-    parser.add_argument("--theta-max-deg", type=float, default=30.0)
+    parser.add_argument("--theta-max-deg", type=float, default=5.0)
     parser.add_argument("--boundary-gain", type=float, default=10.0)
     parser.add_argument("--target-normal", type=float, nargs=3, default=[0.0, 0.0, 1.0])
     parser.add_argument("--fd-eps", type=float, default=1e-4)
