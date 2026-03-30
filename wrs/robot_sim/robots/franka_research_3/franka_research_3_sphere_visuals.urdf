@@ -327,7 +327,7 @@
     </visual>
     <collision>
       <geometry>
-        <sphere radius="0.073912"></sphere>
+        <sphere radius="0.053912"></sphere>
       </geometry>
       <origin xyz="-0.000395398969283 0.0642849721043 0.258975522414" rpy="0 0 0"></origin>
     </collision>
@@ -571,7 +571,7 @@
   <joint name="finger_joint1" type="prismatic">
     <parent link="hand"/>
     <child link="left_finger"/>
-    <origin xyz="0 0.01 0.055" rpy="0 0 0"/>
+    <origin xyz="0 0.01 0.06" rpy="0 0 0"/>
     <axis xyz="0 1 0"/>
     <limit lower="0.0" upper="0.04" effort="50" velocity="0.2"/>
   </joint>
@@ -597,7 +597,7 @@
     </collision>
     <collision>
       <geometry>
-        <sphere radius="0.013966"></sphere>
+        <sphere radius="0.008966"></sphere>
       </geometry>
       <origin xyz="-4.9709321787674084e-05 0.0069720261200776545 0.04458656352067707" rpy="0 0 0"></origin>
     </collision>
@@ -621,13 +621,13 @@
     </collision>
     <collision>
       <geometry>
-        <sphere radius="0.009618"></sphere>
+        <sphere radius="0.002618"></sphere>
       </geometry>
       <origin xyz="0.005378290678212326 0.010453026120077653 0.003479563520677069" rpy="0 0 0"></origin>
     </collision>
     <collision>
       <geometry>
-        <sphere radius="0.011132"></sphere>
+        <sphere radius="0.001132"></sphere>
       </geometry>
       <origin xyz="-0.006860709321787674 0.015077026120077655 0.02936656352067707" rpy="0 0 0"></origin>
     </collision>
@@ -636,7 +636,7 @@
   <joint name="finger_joint2" type="prismatic">
     <parent link="hand"/>
     <child link="right_finger"/>
-    <origin xyz="0 0.01 0.055" rpy="0 0 3.14159265359"/>
+    <origin xyz="0 0.01 0.06" rpy="0 0 3.14159265359"/>
     <axis xyz="0 1 0"/>
     <limit lower="0.0" upper="0.04" effort="50" velocity="0.2"/>
   </joint>
@@ -662,7 +662,7 @@
     </collision>
     <collision>
       <geometry>
-        <sphere radius="0.013966"></sphere>
+        <sphere radius="0.008966"></sphere>
       </geometry>
       <origin xyz="-4.9709321787674084e-05 0.0069720261200776545 0.04458656352067707" rpy="0 0 0"></origin>
     </collision>

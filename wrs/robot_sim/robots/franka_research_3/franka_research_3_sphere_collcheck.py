@@ -85,6 +85,7 @@ if __name__ == '__main__':
 
     robot = FrankaResearch3(enable_cc=True)
     q = robot.rand_conf()
+    # q = np.zeros(7, dtype=np.float64)
     robot.goto_given_conf(jnt_values=q)
     robot.gen_meshmodel(alpha=0.6, toggle_tcp_frame=False, toggle_jnt_frames=False).attach_to(base)
     robot.gen_stickmodel(toggle_tcp_frame=True, toggle_jnt_frames=True).attach_to(base)
@@ -107,9 +108,9 @@ if __name__ == '__main__':
 
     for idx in range(positions.shape[0]):
         if collision_flags[idx]:
-            sphere = mcm.gen_sphere(radius=float(model.sphere_radii[idx]), pos=positions[idx], rgb=[1, 0, 0], alpha=0.2)
+            sphere = mcm.gen_sphere(radius=float(model.sphere_radii[idx]), pos=positions[idx], rgb=[1, 0, 0], alpha=0.3)
         else:
-            sphere = mcm.gen_sphere(radius=float(model.sphere_radii[idx]), pos=positions[idx], rgb=[0, 0, 1], alpha=0.2)
+            sphere = mcm.gen_sphere(radius=float(model.sphere_radii[idx]), pos=positions[idx], rgb=[0, 0, 1], alpha=0.3)
         sphere.attach_to(base)
 
     print(f'[INFO] self collision cost = {model.self_collision_cost(q_gpu, scale=1)}')
