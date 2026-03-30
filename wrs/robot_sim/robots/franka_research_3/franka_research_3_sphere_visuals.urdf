@@ -508,7 +508,7 @@
 <joint name="franka_fixed_joint" type="fixed">
     <parent link="link7"/>
     <child link="hand"/>
-    <origin xyz="0 0 0" rpy="0 0 0"/>
+    <origin xyz="0 0 0.058" rpy="0 0 0.5"/>
   </joint>
 
   <link name="hand">
@@ -560,53 +560,5 @@
         </geometry>
         <origin xyz="-0.000426320 0.031279409 0.040310217" rpy="0 0 0"></origin>
       </collision>
-    <collision>
-        <geometry>
-          <sphere radius="0.014422"></sphere>
-        </geometry>
-        <origin xyz="0.000042291 0.018147026 0.006844564" rpy="0 0 0"></origin>
-      </collision>
-      <collision>
-        <geometry>
-          <sphere radius="0.009655"></sphere>
-        </geometry>
-        <origin xyz="0.002708291 0.013636026 0.031990564" rpy="0 0 0"></origin>
-      </collision>
-      <collision>
-        <geometry>
-          <sphere radius="0.013966"></sphere>
-        </geometry>
-        <origin xyz="-0.000049709 0.006972026 0.044586564" rpy="0 0 0"></origin>
-      </collision>
-      <collision>
-        <geometry>
-          <sphere radius="0.010044"></sphere>
-        </geometry>
-        <origin xyz="-0.002935709 0.010127026 0.003364564" rpy="0 0 0"></origin>
-      </collision>
-      <collision>
-        <geometry>
-          <sphere radius="0.00984"></sphere>
-        </geometry>
-        <origin xyz="0.005577291 0.018331026 0.021031564" rpy="0 0 0"></origin>
-      </collision>
-      <collision>
-        <geometry>
-          <sphere radius="0.014069"></sphere>
-        </geometry>
-        <origin xyz="0.000035291 0.018347026 0.016116564" rpy="0 0 0"></origin>
-      </collision>
-      <collision>
-        <geometry>
-          <sphere radius="0.009618"></sphere>
-        </geometry>
-        <origin xyz="0.005378291 0.010453026 0.003479564" rpy="0 0 0"></origin>
-      </collision>
-      <collision>
-        <geometry>
-          <sphere radius="0.011132"></sphere>
-        </geometry>
-        <origin xyz="-0.006860709 0.015077026 0.029366564" rpy="0 0 0"></origin>
-      </collision>
-
+  </link>
 </robot>

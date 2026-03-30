@@ -18,13 +18,14 @@ LINK_COLORS = [
     np.array([0.20, 0.45, 0.95]),
     np.array([0.55, 0.30, 0.95]),
     np.array([0.95, 0.20, 0.75]),
+    np.array([0.60, 0.60, 0.60]),
 ]
 
 
 def parse_args() -> argparse.Namespace:
     parser = argparse.ArgumentParser(description='Visualize spheres from a single link in the Franka sphere URDF.')
     parser.add_argument('--urdf', type=Path, default=DEFAULT_URDF)
-    parser.add_argument('--link', type=int, default=7, help='0..7, or -1 for all links')
+    parser.add_argument('--link', type=int, default=8, help='0..8, where 8 is hand; or -1 for all links')
     parser.add_argument('--q', type=float, nargs=7, default=None, help='Joint configuration. Default is zeros.')
     parser.add_argument('--no-mesh', action='store_true', help='Hide link mesh.')
     parser.add_argument('--show-full-stick', action='store_true', help='Show full robot stick model for reference.')
@@ -72,8 +73,10 @@ def main() -> None:
         for link_idx in sorted(show_links):
             if link_idx == 0:
                 robot.manipulator.jlc.anchor.lnk_list[0].gen_meshmodel(alpha=0.9).attach_to(world)
-            else:
+            elif 1 <= link_idx <= 7:
                 robot.manipulator.jlc.jnts[link_idx - 1].lnk.gen_meshmodel(alpha=0.9).attach_to(world)
+            elif link_idx == 8:
+                robot.end_effector.gen_meshmodel(alpha=0.9, toggle_tcp_frame=False, toggle_cdprim=False).attach_to(world)
 
     for link_idx in sorted(show_links):
         color = LINK_COLORS[link_idx % len(LINK_COLORS)]
