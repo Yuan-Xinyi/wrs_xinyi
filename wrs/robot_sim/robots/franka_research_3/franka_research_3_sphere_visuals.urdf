@@ -65,7 +65,7 @@
   <joint name="joint1" type="revolute">
     <parent link="base_link"/>
     <child link="link1"/>
-    <origin xyz="0 0 0.133" rpy="0 0 0"/>
+    <origin xyz="0 0 0.135" rpy="0 0 0"/>
     <axis xyz="0 0 1"/>
     <limit lower="-2.8973" upper="2.8973" effort="50" velocity="3.14"/>
   </joint>
@@ -183,7 +183,7 @@
   <joint name="joint3" type="revolute">
     <parent link="link2"/>
     <child link="link3"/>
-    <origin xyz="0 -0.316 0" rpy="1.57079632679 0 0"/>
+    <origin xyz="0 -0.2 0" rpy="1.57079632679 0 0"/>
     <axis xyz="0 0 1"/>
     <limit lower="-2.8972" upper="2.8972" effort="50" velocity="3.14"/>
   </joint>
@@ -195,7 +195,7 @@
       </geometry>
       <material name="Grey"/>
     </visual>
-    <!-- <collision>
+    <collision>
       <geometry>
         <sphere radius="0.075002"></sphere>
       </geometry>
@@ -242,13 +242,13 @@
         <sphere radius="0.06914"></sphere>
       </geometry>
       <origin xyz="0.0918643002828 0.0413864328117 0.128210780895" rpy="0 0 0"></origin>
-    </collision> -->
+    </collision>
   </link>
 
   <joint name="joint4" type="revolute">
     <parent link="link3"/>
     <child link="link4"/>
-    <origin xyz="0.0825 0 0" rpy="1.57079632679 0 0"/>
+    <origin xyz="0.0825 0 0.12" rpy="1.57079632679 0 0"/>
     <axis xyz="0 0 1"/>
     <limit lower="-3.0718" upper="-0.1222" effort="50" velocity="3.14"/>
   </joint>
@@ -260,7 +260,7 @@
       </geometry>
       <material name="Grey"/>
     </visual>
-    <!-- <collision>
+    <collision>
       <geometry>
         <sphere radius="0.076643"></sphere>
       </geometry>
@@ -307,13 +307,13 @@
         <sphere radius="0.061485"></sphere>
       </geometry>
       <origin xyz="-0.0116424726393 -0.0170118651473 0.0349401163957" rpy="0 0 0"></origin>
-    </collision> -->
+    </collision>
   </link>
 
   <joint name="joint5" type="revolute">
     <parent link="link4"/>
     <child link="link5"/>
-    <origin xyz="-0.0825 0.384 0" rpy="-1.57079632679 0 0"/>
+    <origin xyz="-0.0825 0.12 0" rpy="-1.57079632679 0 0"/>
     <axis xyz="0 0 1"/>
     <limit lower="-2.8798" upper="2.8798" effort="50" velocity="3.14"/>
   </joint>
@@ -325,7 +325,7 @@
       </geometry>
       <material name="Grey"/>
     </visual>
-    <!-- <collision>
+    <collision>
       <geometry>
         <sphere radius="0.073912"></sphere>
       </geometry>
@@ -372,13 +372,13 @@
         <sphere radius="0.065604"></sphere>
       </geometry>
       <origin xyz="-0.0131113989693 -0.00399102789568 0.037898522414" rpy="0 0 0"></origin>
-    </collision> -->
+    </collision>
   </link>
 
   <joint name="joint6" type="revolute">
     <parent link="link5"/>
     <child link="link6"/>
-    <origin xyz="0 0 0" rpy="1.57079632679 0 0"/>
+    <origin xyz="0 0.012 0.253" rpy="1.57079632679 0 0"/>
     <axis xyz="0 0 1"/>
     <limit lower="0.4364" upper="4.6251" effort="50" velocity="3.14"/>
   </joint>
@@ -390,7 +390,7 @@
       </geometry>
       <material name="Grey"/>
     </visual>
-    <!-- <collision>
+    <collision>
       <geometry>
         <sphere radius="0.057272"></sphere>
       </geometry>
@@ -437,13 +437,13 @@
         <sphere radius="0.053238"></sphere>
       </geometry>
       <origin xyz="0.0673397091465 0.0443464298917 0.0176570867083" rpy="0 0 0"></origin>
-    </collision> -->
+    </collision>
   </link>
 
   <joint name="joint7" type="revolute">
     <parent link="link6"/>
     <child link="link7"/>
-    <origin xyz="0.088 0 0" rpy="1.57079632679 0 0"/>
+    <origin xyz="0.088 -0.055 0" rpy="1.57079632679 0 0"/>
     <axis xyz="0 0 1"/>
     <limit lower="-3.0543" upper="3.0543" effort="50" velocity="3.14"/>
   </joint>
@@ -455,7 +455,7 @@
       </geometry>
       <material name="Grey"/>
     </visual>
-    <!-- <collision>
+    <collision>
       <geometry>
         <sphere radius="0.04281"></sphere>
       </geometry>
@@ -502,7 +502,7 @@
         <sphere radius="0.030309"></sphere>
       </geometry>
       <origin xyz="0.00578343422453 0.0670142968083 0.0314197224079" rpy="0 0 0"></origin>
-    </collision> -->
+    </collision>
   </link>
 
 </robot>

@@ -81,7 +81,7 @@ if __name__ == '__main__':
 
     robot = FrankaResearch3(enable_cc=True)
     q = np.zeros(robot.n_dof)
-    # q = robot.rand_conf()
+    q = robot.rand_conf()
     robot.goto_given_conf(jnt_values=q)
     robot.gen_meshmodel(alpha=0.8).attach_to(base)
     robot.gen_stickmodel(toggle_tcp_frame=True, toggle_jnt_frames=True).attach_to(base)
