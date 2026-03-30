@@ -1,6 +1,7 @@
 import argparse
 import importlib.util
 from pathlib import Path
+import time
 
 import h5py
 import jax
@@ -115,6 +116,7 @@ def main() -> None:
 
 
     mode = "w" if args.overwrite else "x"
+    start_time = time.perf_counter()
     with h5py.File(output_path, mode) as h5f:
         h5f.attrs["num_trajectories_target"] = args.num_trajectories
         h5f.attrs["batch_size"] = args.batch_size
@@ -131,8 +133,11 @@ def main() -> None:
         root = h5f.create_group("trajectories")
         collected = 0
         traj_id = 0
+        batch_idx = 0
 
         while collected < args.num_trajectories:
+            batch_idx += 1
+            batch_start = time.perf_counter()
             current_batch = min(args.batch_size, args.num_trajectories - collected)
             q0_batch, direction_batch, target_normal_batch = tracker.sample_valid_batch(
                 batch_size=current_batch,
@@ -153,9 +158,16 @@ def main() -> None:
 
             h5f.attrs["num_trajectories_collected"] = collected
             h5f.flush()
-            print(f"[runner] collected={collected}/{args.num_trajectories} trajectories -> {output_path}")
+            batch_elapsed = time.perf_counter() - batch_start
+            total_elapsed = time.perf_counter() - start_time
+            progress = 100.0 * collected / max(args.num_trajectories, 1)
+            print(
+                f"[runner] batch={batch_idx} collected={collected}/{args.num_trajectories} "
+                f"({progress:.1f}%) batch_time={batch_elapsed:.2f}s total_time={total_elapsed:.2f}s"
+            )
 
-    print(f"[runner] finished: {output_path}")
+    total_elapsed = time.perf_counter() - start_time
+    print(f"[runner] finished: {output_path} total_time={total_elapsed:.2f}s")
 
 
 if __name__ == "__main__":

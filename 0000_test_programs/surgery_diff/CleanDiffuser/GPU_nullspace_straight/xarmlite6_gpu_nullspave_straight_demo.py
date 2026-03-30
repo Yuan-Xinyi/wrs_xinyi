@@ -192,7 +192,7 @@ class GPUNullspaceStraightTracker:
                 n_list.append(take_n)
                 remaining -= take_q.shape[0]
                 collected = batch_size - remaining
-                print(f"[sample] collected={collected}/{batch_size} valid starts")
+                # print(f"[sample] collected={collected}/{batch_size} valid starts")
         return torch.cat(q_list, dim=0), torch.cat(d_list, dim=0), torch.cat(n_list, dim=0)
 
     def run_batch(
