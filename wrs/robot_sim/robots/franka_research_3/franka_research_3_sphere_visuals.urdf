@@ -65,7 +65,7 @@
   <joint name="joint1" type="revolute">
     <parent link="base_link"/>
     <child link="link1"/>
-    <origin xyz="0 0 0.333" rpy="0 0 0"/>
+    <origin xyz="0 0 0.133" rpy="0 0 0"/>
     <axis xyz="0 0 1"/>
     <limit lower="-2.8973" upper="2.8973" effort="50" velocity="3.14"/>
   </joint>
@@ -118,7 +118,7 @@
   <joint name="joint2" type="revolute">
     <parent link="link1"/>
     <child link="link2"/>
-    <origin xyz="0 0 0" rpy="-1.57079632679 0 0"/>
+    <origin xyz="0 0 0.2" rpy="-1.57079632679 0 0"/>
     <axis xyz="0 0 1"/>
     <limit lower="-1.8326" upper="1.8326" effort="50" velocity="3.14"/>
   </joint>
@@ -195,7 +195,7 @@
       </geometry>
       <material name="Grey"/>
     </visual>
-    <collision>
+    <!-- <collision>
       <geometry>
         <sphere radius="0.075002"></sphere>
       </geometry>
@@ -242,7 +242,7 @@
         <sphere radius="0.06914"></sphere>
       </geometry>
       <origin xyz="0.0918643002828 0.0413864328117 0.128210780895" rpy="0 0 0"></origin>
-    </collision>
+    </collision> -->
   </link>
 
   <joint name="joint4" type="revolute">
@@ -260,7 +260,7 @@
       </geometry>
       <material name="Grey"/>
     </visual>
-    <collision>
+    <!-- <collision>
       <geometry>
         <sphere radius="0.076643"></sphere>
       </geometry>
@@ -307,7 +307,7 @@
         <sphere radius="0.061485"></sphere>
       </geometry>
       <origin xyz="-0.0116424726393 -0.0170118651473 0.0349401163957" rpy="0 0 0"></origin>
-    </collision>
+    </collision> -->
   </link>
 
   <joint name="joint5" type="revolute">
@@ -325,7 +325,7 @@
       </geometry>
       <material name="Grey"/>
     </visual>
-    <collision>
+    <!-- <collision>
       <geometry>
         <sphere radius="0.073912"></sphere>
       </geometry>
@@ -372,7 +372,7 @@
         <sphere radius="0.065604"></sphere>
       </geometry>
       <origin xyz="-0.0131113989693 -0.00399102789568 0.037898522414" rpy="0 0 0"></origin>
-    </collision>
+    </collision> -->
   </link>
 
   <joint name="joint6" type="revolute">
@@ -390,7 +390,7 @@
       </geometry>
       <material name="Grey"/>
     </visual>
-    <collision>
+    <!-- <collision>
       <geometry>
         <sphere radius="0.057272"></sphere>
       </geometry>
@@ -437,7 +437,7 @@
         <sphere radius="0.053238"></sphere>
       </geometry>
       <origin xyz="0.0673397091465 0.0443464298917 0.0176570867083" rpy="0 0 0"></origin>
-    </collision>
+    </collision> -->
   </link>
 
   <joint name="joint7" type="revolute">
@@ -455,7 +455,7 @@
       </geometry>
       <material name="Grey"/>
     </visual>
-    <collision>
+    <!-- <collision>
       <geometry>
         <sphere radius="0.04281"></sphere>
       </geometry>
@@ -502,7 +502,7 @@
         <sphere radius="0.030309"></sphere>
       </geometry>
       <origin xyz="0.00578343422453 0.0670142968083 0.0314197224079" rpy="0 0 0"></origin>
-    </collision>
+    </collision> -->
   </link>
 
 </robot>

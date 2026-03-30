@@ -72,13 +72,14 @@ class FrankaResearch3SphereCollCheck(sari.SglArmRobotInterface):
 if __name__ == '__main__':
     from wrs import wd, mgm, mcm
     from sphere_collision_checker import SphereCollisionChecker
+    from wrs.robot_sim.robots.franka_research_3.franka_research_3 import FrankaResearch3
     import time
     import jax.numpy as jnp
 
     base = wd.World(cam_pos=[2, 2, 0.8], lookat_pos=[0, 0, 0.5])
     mgm.gen_frame().attach_to(base)
 
-    robot = FrankaResearch3SphereCollCheck(enable_cc=True)
+    robot = FrankaResearch3(enable_cc=True)
     q = np.zeros(robot.n_dof)
     # q = robot.rand_conf()
     robot.goto_given_conf(jnt_values=q)
