@@ -76,14 +76,17 @@ if __name__ == '__main__':
     import time
     import jax.numpy as jnp
 
+    # Calibration demo:
+    # - robot mesh uses the official WRS kinematic chain defined by FrankaResearch3
+    # - collision spheres use the independent sphere-URDF kinematic chain
+    # The overlap quality between the two is the calibration target.
     base = wd.World(cam_pos=[2, 2, 0.8], lookat_pos=[0, 0, 0.5])
     mgm.gen_frame().attach_to(base)
 
     robot = FrankaResearch3(enable_cc=True)
-    q = np.zeros(robot.n_dof)
     q = robot.rand_conf()
     robot.goto_given_conf(jnt_values=q)
-    robot.gen_meshmodel(alpha=0.8).attach_to(base)
+    robot.gen_meshmodel(alpha=0.6, toggle_tcp_frame=False, toggle_jnt_frames=False).attach_to(base)
     robot.gen_stickmodel(toggle_tcp_frame=True, toggle_jnt_frames=True).attach_to(base)
 
     model = SphereCollisionChecker('wrs/robot_sim/robots/franka_research_3/franka_research_3_sphere_visuals.urdf')
@@ -91,19 +94,23 @@ if __name__ == '__main__':
     t1 = time.time()
     q_gpu = jnp.array(q)
     positions = model.update(q_gpu)
+    positions = positions.block_until_ready()
     t2 = time.time()
-    print('[INFO] Time for sphere collision check update:', t2 - t1)
+    print('[INFO] sphere-URDF update time:', t2 - t1)
+    print('[INFO] mesh source: wrs.robot_sim.robots.franka_research_3.FrankaResearch3')
+    print('[INFO] sphere source: wrs.robot_sim.robots.franka_research_3.franka_research_3_sphere_visuals.urdf')
+    print('[INFO] q =', q)
 
     spheres_pos, collision_flags = model._jit_check_collisions(q_gpu)
     spheres_pos = spheres_pos.block_until_ready()
     collision_flags = collision_flags.block_until_ready()
-    radii = model.sphere_radii
 
     for idx in range(positions.shape[0]):
         if collision_flags[idx]:
-            sphere = mcm.gen_sphere(radius=model.sphere_radii[idx], pos=positions[idx], rgb=[1, 0, 0], alpha=0.2)
+            sphere = mcm.gen_sphere(radius=float(model.sphere_radii[idx]), pos=positions[idx], rgb=[1, 0, 0], alpha=0.2)
         else:
-            sphere = mcm.gen_sphere(radius=model.sphere_radii[idx], pos=positions[idx], rgb=[0, 0, 1], alpha=0.2)
+            sphere = mcm.gen_sphere(radius=float(model.sphere_radii[idx]), pos=positions[idx], rgb=[0, 0, 1], alpha=0.2)
         sphere.attach_to(base)
-    print(f'[INFO] The self collision cost is {model.self_collision_cost(q_gpu, scale=1)}')
+
+    print(f'[INFO] self collision cost = {model.self_collision_cost(q_gpu, scale=1)}')
     base.run()
