@@ -10,6 +10,7 @@ class SphereCollisionChecker:
         links_dict, joints_dict, self.link_order, self.base_link = self._parse_urdf_structure(urdf_path)
         self.sphere_offsets, self.sphere_radii, self.sphere_link_indices = self._prepare_sphere_data(links_dict)
         self.joint_statics, self.joint_axes, self.joint_types, self.q_indices, self.parent_indices = self._prepare_joint_kinematics(joints_dict)
+        self.n_q = int(np.max(self.q_indices)) + 1 if np.any(self.q_indices >= 0) else 0
 
         self.collision_mask = self._prepare_collision_masks(ignore_adjacent=True)
         
@@ -85,7 +86,19 @@ class SphereCollisionChecker:
                     mask &= ~((id_i == c_idx) & (id_j == p_idx))
         return mask & jnp.triu(jnp.ones((num_spheres, num_spheres), dtype=bool), k=1)
 
+
+    def _normalize_q(self, q):
+        q = jnp.asarray(q, dtype=jnp.float32).reshape(-1)
+        if self.n_q == 0:
+            return q
+        if q.shape[0] < self.n_q:
+            q = jnp.pad(q, (0, self.n_q - q.shape[0]))
+        elif q.shape[0] > self.n_q:
+            q = q[:self.n_q]
+        return q
+
     def _compute_collision_data(self, q):
+        q = self._normalize_q(q)
         spheres = self.compute_sphere_positions(q)
         diff = spheres[:, None, :] - spheres[None, :, :]
         dist_matrix = jnp.sqrt(jnp.sum(diff**2, axis=-1) + 1e-8)
@@ -106,6 +119,7 @@ class SphereCollisionChecker:
         return spheres, jnp.any(pairs, axis=1) | jnp.any(pairs, axis=0)
 
     def compute_sphere_positions(self, q):
+        q = self._normalize_q(q)
         num_links = len(self.link_order)
         link_transforms = jnp.tile(jnp.identity(4), (num_links, 1, 1))
         for i in range(num_links):

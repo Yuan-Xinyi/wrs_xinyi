@@ -508,57 +508,194 @@
 <joint name="franka_fixed_joint" type="fixed">
     <parent link="link7"/>
     <child link="hand"/>
-    <origin xyz="0 0 0.058" rpy="0 0 0.5"/>
+    <origin xyz="0 0 0" rpy="0 0 0"/>
   </joint>
 
   <link name="hand">
+    <visual>
+      <geometry>
+        <mesh filename="/home/lqin/wrs_xinyi/wrs/robot_sim/end_effectors/grippers/franka_hand/meshes/hand.dae"/>
+      </geometry>
+      <material name="Grey"/>
+    </visual>
     <collision>
-        <geometry>
-          <sphere radius="0.039441"></sphere>
-        </geometry>
-        <origin xyz="-0.000279320 -0.071093591 0.002776217" rpy="0 0 0"></origin>
-      </collision>
-      <collision>
-        <geometry>
-          <sphere radius="0.042916"></sphere>
-        </geometry>
-        <origin xyz="-0.000207320 -0.066994591 0.042767217" rpy="0 0 0"></origin>
-      </collision>
-      <collision>
-        <geometry>
-          <sphere radius="0.042293"></sphere>
-        </geometry>
-        <origin xyz="-0.000017320 -0.012600591 0.019702217" rpy="0 0 0"></origin>
-      </collision>
-      <collision>
-        <geometry>
-          <sphere radius="0.041211"></sphere>
-        </geometry>
-        <origin xyz="-0.000409320 -0.009257591 0.039124217" rpy="0 0 0"></origin>
-      </collision>
-      <collision>
-        <geometry>
-          <sphere radius="0.040005"></sphere>
-        </geometry>
-        <origin xyz="-0.000067320 0.030091409 0.013249217" rpy="0 0 0"></origin>
-      </collision>
-      <collision>
-        <geometry>
-          <sphere radius="0.041331"></sphere>
-        </geometry>
-        <origin xyz="-0.000039320 0.063512409 0.013160217" rpy="0 0 0"></origin>
-      </collision>
-      <collision>
-        <geometry>
-          <sphere radius="0.04088"></sphere>
-        </geometry>
-        <origin xyz="-0.000375320 0.079234409 0.037856217" rpy="0 0 0"></origin>
-      </collision>
-      <collision>
-        <geometry>
-          <sphere radius="0.039817"></sphere>
-        </geometry>
-        <origin xyz="-0.000426320 0.031279409 0.040310217" rpy="0 0 0"></origin>
-      </collision>
+      <geometry>
+        <sphere radius="0.039441"></sphere>
+      </geometry>
+      <origin xyz="-0.000279320 -0.071093591 0.002776217" rpy="0 0 0"></origin>
+    </collision>
+    <collision>
+      <geometry>
+        <sphere radius="0.042916"></sphere>
+      </geometry>
+      <origin xyz="-0.000207320 -0.066994591 0.042767217" rpy="0 0 0"></origin>
+    </collision>
+    <collision>
+      <geometry>
+        <sphere radius="0.042293"></sphere>
+      </geometry>
+      <origin xyz="-0.000017320 -0.012600591 0.019702217" rpy="0 0 0"></origin>
+    </collision>
+    <collision>
+      <geometry>
+        <sphere radius="0.041211"></sphere>
+      </geometry>
+      <origin xyz="-0.000409320 -0.009257591 0.039124217" rpy="0 0 0"></origin>
+    </collision>
+    <collision>
+      <geometry>
+        <sphere radius="0.040005"></sphere>
+      </geometry>
+      <origin xyz="-0.000067320 0.030091409 0.013249217" rpy="0 0 0"></origin>
+    </collision>
+    <collision>
+      <geometry>
+        <sphere radius="0.041331"></sphere>
+      </geometry>
+      <origin xyz="-0.000039320 0.063512409 0.013160217" rpy="0 0 0"></origin>
+    </collision>
+    <collision>
+      <geometry>
+        <sphere radius="0.04088"></sphere>
+      </geometry>
+      <origin xyz="-0.000375320 0.079234409 0.037856217" rpy="0 0 0"></origin>
+    </collision>
+    <collision>
+      <geometry>
+        <sphere radius="0.039817"></sphere>
+      </geometry>
+      <origin xyz="-0.000426320 0.031279409 0.040310217" rpy="0 0 0"></origin>
+    </collision>
   </link>
+
+  <joint name="finger_joint1" type="prismatic">
+    <parent link="hand"/>
+    <child link="left_finger"/>
+    <origin xyz="-0.011 0.005 0.115" rpy="0 0 0"/>
+    <axis xyz="0 1 0"/>
+    <limit lower="0.0" upper="0.04" effort="50" velocity="0.2"/>
+  </joint>
+
+  <link name="left_finger">
+    <visual>
+      <geometry>
+        <mesh filename="/home/lqin/wrs_xinyi/wrs/robot_sim/end_effectors/grippers/franka_hand/meshes/finger.dae"/>
+      </geometry>
+      <material name="Grey"/>
+    </visual>
+    <collision>
+      <geometry>
+        <sphere radius="0.014422"></sphere>
+      </geometry>
+      <origin xyz="4.22906782123259e-05 0.018147026120077653 0.006844563520677069" rpy="0 0 0"></origin>
+    </collision>
+    <collision>
+      <geometry>
+        <sphere radius="0.009655"></sphere>
+      </geometry>
+      <origin xyz="0.002708290678212326 0.013636026120077653 0.03199056352067707" rpy="0 0 0"></origin>
+    </collision>
+    <collision>
+      <geometry>
+        <sphere radius="0.013966"></sphere>
+      </geometry>
+      <origin xyz="-4.9709321787674084e-05 0.0069720261200776545 0.04458656352067707" rpy="0 0 0"></origin>
+    </collision>
+    <collision>
+      <geometry>
+        <sphere radius="0.010044"></sphere>
+      </geometry>
+      <origin xyz="-0.002935709321787674 0.010127026120077653 0.0033645635206770684" rpy="0 0 0"></origin>
+    </collision>
+    <collision>
+      <geometry>
+        <sphere radius="0.00984"></sphere>
+      </geometry>
+      <origin xyz="0.005577290678212326 0.018331026120077653 0.02103156352067707" rpy="0 0 0"></origin>
+    </collision>
+    <collision>
+      <geometry>
+        <sphere radius="0.014069"></sphere>
+      </geometry>
+      <origin xyz="3.529067821232592e-05 0.018347026120077655 0.01611656352067707" rpy="0 0 0"></origin>
+    </collision>
+    <collision>
+      <geometry>
+        <sphere radius="0.009618"></sphere>
+      </geometry>
+      <origin xyz="0.005378290678212326 0.010453026120077653 0.003479563520677069" rpy="0 0 0"></origin>
+    </collision>
+    <collision>
+      <geometry>
+        <sphere radius="0.011132"></sphere>
+      </geometry>
+      <origin xyz="-0.006860709321787674 0.015077026120077655 0.02936656352067707" rpy="0 0 0"></origin>
+    </collision>
+  </link>
+
+  <joint name="finger_joint2" type="prismatic">
+    <parent link="hand"/>
+    <child link="right_finger"/>
+    <origin xyz="0 0.011 0.115" rpy="0 0 3.14159265359"/>
+    <axis xyz="0 1 0"/>
+    <limit lower="0.0" upper="0.04" effort="50" velocity="0.2"/>
+  </joint>
+
+  <link name="right_finger">
+    <visual>
+      <geometry>
+        <mesh filename="/home/lqin/wrs_xinyi/wrs/robot_sim/end_effectors/grippers/franka_hand/meshes/finger.dae"/>
+      </geometry>
+      <material name="Grey"/>
+    </visual>
+    <collision>
+      <geometry>
+        <sphere radius="0.014422"></sphere>
+      </geometry>
+      <origin xyz="4.22906782123259e-05 0.018147026120077653 0.006844563520677069" rpy="0 0 0"></origin>
+    </collision>
+    <collision>
+      <geometry>
+        <sphere radius="0.009655"></sphere>
+      </geometry>
+      <origin xyz="0.002708290678212326 0.013636026120077653 0.03199056352067707" rpy="0 0 0"></origin>
+    </collision>
+    <collision>
+      <geometry>
+        <sphere radius="0.013966"></sphere>
+      </geometry>
+      <origin xyz="-4.9709321787674084e-05 0.0069720261200776545 0.04458656352067707" rpy="0 0 0"></origin>
+    </collision>
+    <collision>
+      <geometry>
+        <sphere radius="0.010044"></sphere>
+      </geometry>
+      <origin xyz="-0.002935709321787674 0.010127026120077653 0.0033645635206770684" rpy="0 0 0"></origin>
+    </collision>
+    <collision>
+      <geometry>
+        <sphere radius="0.00984"></sphere>
+      </geometry>
+      <origin xyz="0.005577290678212326 0.018331026120077653 0.02103156352067707" rpy="0 0 0"></origin>
+    </collision>
+    <collision>
+      <geometry>
+        <sphere radius="0.014069"></sphere>
+      </geometry>
+      <origin xyz="3.529067821232592e-05 0.018347026120077655 0.01611656352067707" rpy="0 0 0"></origin>
+    </collision>
+    <collision>
+      <geometry>
+        <sphere radius="0.009618"></sphere>
+      </geometry>
+      <origin xyz="0.005378290678212326 0.010453026120077653 0.003479563520677069" rpy="0 0 0"></origin>
+    </collision>
+    <collision>
+      <geometry>
+        <sphere radius="0.011132"></sphere>
+      </geometry>
+      <origin xyz="-0.006860709321787674 0.015077026120077655 0.02936656352067707" rpy="0 0 0"></origin>
+    </collision>
+  </link>
+
 </robot>
