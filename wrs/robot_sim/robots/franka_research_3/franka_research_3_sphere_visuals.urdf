@@ -1,0 +1,508 @@
+<?xml version="1.0" encoding="utf-8"?>
+<robot name="franka_research_3">
+
+  <material name="Grey">
+    <color rgba="0.7 0.7 0.7 1.0"/>
+  </material>
+
+  <link name="base_link">
+    <visual>
+      <geometry>
+        <mesh filename="/home/lqin/wrs_xinyi/wrs/robot_sim/manipulators/franka_research_3_arm/meshes/link0.dae"/>
+      </geometry>
+      <material name="Grey"/>
+    </visual>
+    <collision>
+      <geometry>
+        <sphere radius="0.083094"></sphere>
+      </geometry>
+      <origin xyz="0.000929151129609 -0.000879575443027 0.0866727356147" rpy="0 0 0"></origin>
+    </collision>
+    <collision>
+      <geometry>
+        <sphere radius="0.090176"></sphere>
+      </geometry>
+      <origin xyz="0.00805015112961 0.00636042455697 0.0542847356147" rpy="0 0 0"></origin>
+    </collision>
+    <collision>
+      <geometry>
+        <sphere radius="0.056295"></sphere>
+      </geometry>
+      <origin xyz="-0.0208548488704 0.057849424557 0.0195807356147" rpy="0 0 0"></origin>
+    </collision>
+    <collision>
+      <geometry>
+        <sphere radius="0.070508"></sphere>
+      </geometry>
+      <origin xyz="-0.0144238488704 -0.044805575443 0.0328177356147" rpy="0 0 0"></origin>
+    </collision>
+    <collision>
+      <geometry>
+        <sphere radius="0.080456"></sphere>
+      </geometry>
+      <origin xyz="-0.0564038488704 -0.023930575443 0.0446257356147" rpy="0 0 0"></origin>
+    </collision>
+    <collision>
+      <geometry>
+        <sphere radius="0.076059"></sphere>
+      </geometry>
+      <origin xyz="-0.0662538488704 0.022573424557 0.0391827356147" rpy="0 0 0"></origin>
+    </collision>
+    <collision>
+      <geometry>
+        <sphere radius="0.064416"></sphere>
+      </geometry>
+      <origin xyz="-0.10735084887 -0.024465575443 0.0255297356147" rpy="0 0 0"></origin>
+    </collision>
+    <collision>
+      <geometry>
+        <sphere radius="0.060872"></sphere>
+      </geometry>
+      <origin xyz="-0.10690084887 0.025348424557 0.0246167356147" rpy="0 0 0"></origin>
+    </collision>
+  </link>
+
+  <joint name="joint1" type="revolute">
+    <parent link="base_link"/>
+    <child link="link1"/>
+    <origin xyz="0 0 0.333" rpy="0 0 0"/>
+    <axis xyz="0 0 1"/>
+    <limit lower="-2.8973" upper="2.8973" effort="50" velocity="3.14"/>
+  </joint>
+
+  <link name="link1">
+    <visual>
+      <geometry>
+        <mesh filename="/home/lqin/wrs_xinyi/wrs/robot_sim/manipulators/franka_research_3_arm/meshes/link1.dae"/>
+      </geometry>
+      <material name="Grey"/>
+    </visual>
+    <collision>
+      <geometry>
+        <sphere radius="0.070528"></sphere>
+      </geometry>
+      <origin xyz="-0.0036627409128 -0.00719281495297 0.0485191965036" rpy="0 0 0"></origin>
+    </collision>
+    <collision>
+      <geometry>
+        <sphere radius="0.058641"></sphere>
+      </geometry>
+      <origin xyz="0.0071612590872 -0.040018814953 0.128602196504" rpy="0 0 0"></origin>
+    </collision>
+    <collision>
+      <geometry>
+        <sphere radius="0.051722"></sphere>
+      </geometry>
+      <origin xyz="-0.0206607409128 -0.036682814953 0.128722196504" rpy="0 0 0"></origin>
+    </collision>
+    <collision>
+      <geometry>
+        <sphere radius="0.077782"></sphere>
+      </geometry>
+      <origin xyz="1.62590872049e-05 -0.055474814953 0.191986196504" rpy="0 0 0"></origin>
+    </collision>
+    <collision>
+      <geometry>
+        <sphere radius="0.077732"></sphere>
+      </geometry>
+      <origin xyz="-1.27409127951e-05 -0.055423814953 0.192066196504" rpy="0 0 0"></origin>
+    </collision>
+    <collision>
+      <geometry>
+        <sphere radius="0.075628"></sphere>
+      </geometry>
+      <origin xyz="0.0021402590872 0.00044918504703 0.0528481965036" rpy="0 0 0"></origin>
+    </collision>
+  </link>
+
+  <joint name="joint2" type="revolute">
+    <parent link="link1"/>
+    <child link="link2"/>
+    <origin xyz="0 0 0" rpy="-1.57079632679 0 0"/>
+    <axis xyz="0 0 1"/>
+    <limit lower="-1.8326" upper="1.8326" effort="50" velocity="3.14"/>
+  </joint>
+
+  <link name="link2">
+    <visual>
+      <geometry>
+        <mesh filename="/home/lqin/wrs_xinyi/wrs/robot_sim/manipulators/franka_research_3_arm/meshes/link2.dae"/>
+      </geometry>
+      <material name="Grey"/>
+    </visual>
+    <collision>
+      <geometry>
+        <sphere radius="0.080195"></sphere>
+      </geometry>
+      <origin xyz="-0.00027073217176 -0.144440533392 0.00316711050311" rpy="0 0 0"></origin>
+    </collision>
+    <collision>
+      <geometry>
+        <sphere radius="0.075095"></sphere>
+      </geometry>
+      <origin xyz="0.00326726782824 -0.148790533392 -0.00410488949689" rpy="0 0 0"></origin>
+    </collision>
+    <collision>
+      <geometry>
+        <sphere radius="0.070333"></sphere>
+      </geometry>
+      <origin xyz="0.00013126782824 -0.00438653339168 0.0749811105031" rpy="0 0 0"></origin>
+    </collision>
+    <collision>
+      <geometry>
+        <sphere radius="0.074755"></sphere>
+      </geometry>
+      <origin xyz="-0.00060273217176 0.00627546660832 0.0456161105031" rpy="0 0 0"></origin>
+    </collision>
+    <collision>
+      <geometry>
+        <sphere radius="0.079685"></sphere>
+      </geometry>
+      <origin xyz="0.00070626782824 -0.0129295333917 0.0526881105031" rpy="0 0 0"></origin>
+    </collision>
+    <collision>
+      <geometry>
+        <sphere radius="0.063049"></sphere>
+      </geometry>
+      <origin xyz="0.00955926782824 -0.0862695333917 0.0321861105031" rpy="0 0 0"></origin>
+    </collision>
+    <collision>
+      <geometry>
+        <sphere radius="0.055668"></sphere>
+      </geometry>
+      <origin xyz="-0.0227047321718 -0.0871795333917 0.0280601105031" rpy="0 0 0"></origin>
+    </collision>
+    <collision>
+      <geometry>
+        <sphere radius="0.05716"></sphere>
+      </geometry>
+      <origin xyz="-0.00882373217176 -0.161300533392 -0.0167788894969" rpy="0 0 0"></origin>
+    </collision>
+  </link>
+
+  <joint name="joint3" type="revolute">
+    <parent link="link2"/>
+    <child link="link3"/>
+    <origin xyz="0 -0.316 0" rpy="1.57079632679 0 0"/>
+    <axis xyz="0 0 1"/>
+    <limit lower="-2.8972" upper="2.8972" effort="50" velocity="3.14"/>
+  </joint>
+
+  <link name="link3">
+    <visual>
+      <geometry>
+        <mesh filename="/home/lqin/wrs_xinyi/wrs/robot_sim/manipulators/franka_research_3_arm/meshes/link3.dae"/>
+      </geometry>
+      <material name="Grey"/>
+    </visual>
+    <collision>
+      <geometry>
+        <sphere radius="0.075002"></sphere>
+      </geometry>
+      <origin xyz="0.0836403002828 0.0482794328117 0.117240780895" rpy="0 0 0"></origin>
+    </collision>
+    <collision>
+      <geometry>
+        <sphere radius="0.057881"></sphere>
+      </geometry>
+      <origin xyz="0.00148030028276 -0.000901567188303 0.0648587808949" rpy="0 0 0"></origin>
+    </collision>
+    <collision>
+      <geometry>
+        <sphere radius="0.066365"></sphere>
+      </geometry>
+      <origin xyz="-0.00983469971724 -0.0065635671883 0.0388847808949" rpy="0 0 0"></origin>
+    </collision>
+    <collision>
+      <geometry>
+        <sphere radius="0.067414"></sphere>
+      </geometry>
+      <origin xyz="0.0148893002828 -0.0013775671883 0.0406777808949" rpy="0 0 0"></origin>
+    </collision>
+    <collision>
+      <geometry>
+        <sphere radius="0.066082"></sphere>
+      </geometry>
+      <origin xyz="-0.00523969971724 0.0110484328117 0.0383457808949" rpy="0 0 0"></origin>
+    </collision>
+    <collision>
+      <geometry>
+        <sphere radius="0.060148"></sphere>
+      </geometry>
+      <origin xyz="0.0379213002828 0.0237424328117 0.0825047808949" rpy="0 0 0"></origin>
+    </collision>
+    <collision>
+      <geometry>
+        <sphere radius="0.054807"></sphere>
+      </geometry>
+      <origin xyz="0.0590613002828 0.0276524328117 0.133973780895" rpy="0 0 0"></origin>
+    </collision>
+    <collision>
+      <geometry>
+        <sphere radius="0.06914"></sphere>
+      </geometry>
+      <origin xyz="0.0918643002828 0.0413864328117 0.128210780895" rpy="0 0 0"></origin>
+    </collision>
+  </link>
+
+  <joint name="joint4" type="revolute">
+    <parent link="link3"/>
+    <child link="link4"/>
+    <origin xyz="0.0825 0 0" rpy="1.57079632679 0 0"/>
+    <axis xyz="0 0 1"/>
+    <limit lower="-3.0718" upper="-0.1222" effort="50" velocity="3.14"/>
+  </joint>
+
+  <link name="link4">
+    <visual>
+      <geometry>
+        <mesh filename="/home/lqin/wrs_xinyi/wrs/robot_sim/manipulators/franka_research_3_arm/meshes/link4.dae"/>
+      </geometry>
+      <material name="Grey"/>
+    </visual>
+    <collision>
+      <geometry>
+        <sphere radius="0.076643"></sphere>
+      </geometry>
+      <origin xyz="-0.00634847263926 0.000414134852661 0.0485171163957" rpy="0 0 0"></origin>
+    </collision>
+    <collision>
+      <geometry>
+        <sphere radius="0.066711"></sphere>
+      </geometry>
+      <origin xyz="-0.0720314726393 0.0534071348527 0.00461211639572" rpy="0 0 0"></origin>
+    </collision>
+    <collision>
+      <geometry>
+        <sphere radius="0.073001"></sphere>
+      </geometry>
+      <origin xyz="-0.0714594726393 0.0771481348527 0.00529111639572" rpy="0 0 0"></origin>
+    </collision>
+    <collision>
+      <geometry>
+        <sphere radius="0.069601"></sphere>
+      </geometry>
+      <origin xyz="-0.0909404726393 0.0791771348527 0.00388511639572" rpy="0 0 0"></origin>
+    </collision>
+    <collision>
+      <geometry>
+        <sphere radius="0.06875"></sphere>
+      </geometry>
+      <origin xyz="-0.0835844726393 0.0807651348527 -0.00966988360428" rpy="0 0 0"></origin>
+    </collision>
+    <collision>
+      <geometry>
+        <sphere radius="0.054192"></sphere>
+      </geometry>
+      <origin xyz="0.00750452736074 0.0220611348527 0.0280831163957" rpy="0 0 0"></origin>
+    </collision>
+    <collision>
+      <geometry>
+        <sphere radius="0.065681"></sphere>
+      </geometry>
+      <origin xyz="0.0125965273607 -0.00931786514734 0.0385271163957" rpy="0 0 0"></origin>
+    </collision>
+    <collision>
+      <geometry>
+        <sphere radius="0.061485"></sphere>
+      </geometry>
+      <origin xyz="-0.0116424726393 -0.0170118651473 0.0349401163957" rpy="0 0 0"></origin>
+    </collision>
+  </link>
+
+  <joint name="joint5" type="revolute">
+    <parent link="link4"/>
+    <child link="link5"/>
+    <origin xyz="-0.0825 0.384 0" rpy="-1.57079632679 0 0"/>
+    <axis xyz="0 0 1"/>
+    <limit lower="-2.8798" upper="2.8798" effort="50" velocity="3.14"/>
+  </joint>
+
+  <link name="link5">
+    <visual>
+      <geometry>
+        <mesh filename="/home/lqin/wrs_xinyi/wrs/robot_sim/manipulators/franka_research_3_arm/meshes/link5.dae"/>
+      </geometry>
+      <material name="Grey"/>
+    </visual>
+    <collision>
+      <geometry>
+        <sphere radius="0.073912"></sphere>
+      </geometry>
+      <origin xyz="-0.000395398969283 0.0642849721043 0.258975522414" rpy="0 0 0"></origin>
+    </collision>
+    <collision>
+      <geometry>
+        <sphere radius="0.054651"></sphere>
+      </geometry>
+      <origin xyz="0.00535560103072 0.0886219721043 0.216420522414" rpy="0 0 0"></origin>
+    </collision>
+    <collision>
+      <geometry>
+        <sphere radius="0.045514"></sphere>
+      </geometry>
+      <origin xyz="-0.00440339896928 0.0869699721043 0.157748522414" rpy="0 0 0"></origin>
+    </collision>
+    <collision>
+      <geometry>
+        <sphere radius="0.047317"></sphere>
+      </geometry>
+      <origin xyz="0.00111760103072 0.0770009721043 0.113691522414" rpy="0 0 0"></origin>
+    </collision>
+    <collision>
+      <geometry>
+        <sphere radius="0.064766"></sphere>
+      </geometry>
+      <origin xyz="-0.00278539896928 0.0350139721043 0.062614522414" rpy="0 0 0"></origin>
+    </collision>
+    <collision>
+      <geometry>
+        <sphere radius="0.073814"></sphere>
+      </geometry>
+      <origin xyz="0.00268060103072 0.0174369721043 0.046341522414" rpy="0 0 0"></origin>
+    </collision>
+    <collision>
+      <geometry>
+        <sphere radius="0.066285"></sphere>
+      </geometry>
+      <origin xyz="0.00524360103072 -0.00959502789568 0.038746522414" rpy="0 0 0"></origin>
+    </collision>
+    <collision>
+      <geometry>
+        <sphere radius="0.065604"></sphere>
+      </geometry>
+      <origin xyz="-0.0131113989693 -0.00399102789568 0.037898522414" rpy="0 0 0"></origin>
+    </collision>
+  </link>
+
+  <joint name="joint6" type="revolute">
+    <parent link="link5"/>
+    <child link="link6"/>
+    <origin xyz="0 0 0" rpy="1.57079632679 0 0"/>
+    <axis xyz="0 0 1"/>
+    <limit lower="0.4364" upper="4.6251" effort="50" velocity="3.14"/>
+  </joint>
+
+  <link name="link6">
+    <visual>
+      <geometry>
+        <mesh filename="/home/lqin/wrs_xinyi/wrs/robot_sim/manipulators/franka_research_3_arm/meshes/link6.dae"/>
+      </geometry>
+      <material name="Grey"/>
+    </visual>
+    <collision>
+      <geometry>
+        <sphere radius="0.057272"></sphere>
+      </geometry>
+      <origin xyz="0.0883077091465 0.0357444298917 0.0149930867083" rpy="0 0 0"></origin>
+    </collision>
+    <collision>
+      <geometry>
+        <sphere radius="0.065428"></sphere>
+      </geometry>
+      <origin xyz="-0.00480729085348 0.000622429891676 0.0263490867083" rpy="0 0 0"></origin>
+    </collision>
+    <collision>
+      <geometry>
+        <sphere radius="0.06283"></sphere>
+      </geometry>
+      <origin xyz="0.0695447091465 -0.0141195701083 0.0117890867083" rpy="0 0 0"></origin>
+    </collision>
+    <collision>
+      <geometry>
+        <sphere radius="0.044327"></sphere>
+      </geometry>
+      <origin xyz="0.0935287091465 -0.0309675701083 -0.00782191329166" rpy="0 0 0"></origin>
+    </collision>
+    <collision>
+      <geometry>
+        <sphere radius="0.059216"></sphere>
+      </geometry>
+      <origin xyz="0.0256507091465 0.0120404298917 0.0263550867083" rpy="0 0 0"></origin>
+    </collision>
+    <collision>
+      <geometry>
+        <sphere radius="0.058847"></sphere>
+      </geometry>
+      <origin xyz="0.0931757091465 -0.0141025701083 0.0177670867083" rpy="0 0 0"></origin>
+    </collision>
+    <collision>
+      <geometry>
+        <sphere radius="0.064786"></sphere>
+      </geometry>
+      <origin xyz="0.00270070914652 -0.00353657010832 0.0269310867083" rpy="0 0 0"></origin>
+    </collision>
+    <collision>
+      <geometry>
+        <sphere radius="0.053238"></sphere>
+      </geometry>
+      <origin xyz="0.0673397091465 0.0443464298917 0.0176570867083" rpy="0 0 0"></origin>
+    </collision>
+  </link>
+
+  <joint name="joint7" type="revolute">
+    <parent link="link6"/>
+    <child link="link7"/>
+    <origin xyz="0.088 0 0" rpy="1.57079632679 0 0"/>
+    <axis xyz="0 0 1"/>
+    <limit lower="-3.0543" upper="3.0543" effort="50" velocity="3.14"/>
+  </joint>
+
+  <link name="link7">
+    <visual>
+      <geometry>
+        <mesh filename="/home/lqin/wrs_xinyi/wrs/robot_sim/manipulators/franka_research_3_arm/meshes/link7.dae"/>
+      </geometry>
+      <material name="Grey"/>
+    </visual>
+    <collision>
+      <geometry>
+        <sphere radius="0.04281"></sphere>
+      </geometry>
+      <origin xyz="-0.0144175657755 0.0214502968083 0.0263037224079" rpy="0 0 0"></origin>
+    </collision>
+    <collision>
+      <geometry>
+        <sphere radius="0.040514"></sphere>
+      </geometry>
+      <origin xyz="0.0159574342245 -0.00995670319173 0.0241177224079" rpy="0 0 0"></origin>
+    </collision>
+    <collision>
+      <geometry>
+        <sphere radius="0.040219"></sphere>
+      </geometry>
+      <origin xyz="-0.0167365657755 -0.0104867031917 0.0236577224079" rpy="0 0 0"></origin>
+    </collision>
+    <collision>
+      <geometry>
+        <sphere radius="0.031077"></sphere>
+      </geometry>
+      <origin xyz="0.0175534342245 0.0586662968083 0.0301687224079" rpy="0 0 0"></origin>
+    </collision>
+    <collision>
+      <geometry>
+        <sphere radius="0.041524"></sphere>
+      </geometry>
+      <origin xyz="0.0158424342245 0.0185222968083 0.0249477224079" rpy="0 0 0"></origin>
+    </collision>
+    <collision>
+      <geometry>
+        <sphere radius="0.029962"></sphere>
+      </geometry>
+      <origin xyz="-0.0169235657755 0.0651942968083 0.0315557224079" rpy="0 0 0"></origin>
+    </collision>
+    <collision>
+      <geometry>
+        <sphere radius="0.039112"></sphere>
+      </geometry>
+      <origin xyz="0.00405743422453 -0.0203047031917 0.0241157224079" rpy="0 0 0"></origin>
+    </collision>
+    <collision>
+      <geometry>
+        <sphere radius="0.030309"></sphere>
+      </geometry>
+      <origin xyz="0.00578343422453 0.0670142968083 0.0314197224079" rpy="0 0 0"></origin>
+    </collision>
+  </link>
+
+</robot>
