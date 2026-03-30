@@ -25,7 +25,7 @@ LINK_COLORS = [
 def parse_args() -> argparse.Namespace:
     parser = argparse.ArgumentParser(description='Visualize spheres from a single link in the Franka sphere URDF.')
     parser.add_argument('--urdf', type=Path, default=DEFAULT_URDF)
-    parser.add_argument('--link', type=int, default=9, help='0..10, where 8 is hand, 9 is left_finger, 10 is right_finger; or -1 for all links')
+    parser.add_argument('--link', type=int, default=8, help='0..10, where 8 is hand, 9 is left_finger, 10 is right_finger; or -1 for all links')
     parser.add_argument('--q', type=float, nargs=7, default=None, help='Joint configuration. Default is zeros.')
     parser.add_argument('--no-mesh', action='store_true', help='Hide link mesh.')
     parser.add_argument('--show-full-stick', action='store_true', help='Show full robot stick model for reference.')
@@ -35,10 +35,11 @@ def parse_args() -> argparse.Namespace:
 
 def main() -> None:
     args = parse_args()
-    q = np.zeros(7, dtype=np.float64) if args.q is None else np.asarray(args.q, dtype=np.float64)
 
     # robot = FrankaResearch3SphereCollCheck(enable_cc=False)
     robot = FrankaResearch3(enable_cc=True)
+    q = np.zeros(7, dtype=np.float64) if args.q is None else np.asarray(args.q, dtype=np.float64)
+    # q = robot.rand_conf() if args.q is None else np.asarray(args.q, dtype=np.float64)
     robot.goto_given_conf(jnt_values=q)
     checker = SphereCollisionChecker(str(args.urdf))
     sphere_positions = np.asarray(checker.update(q))
