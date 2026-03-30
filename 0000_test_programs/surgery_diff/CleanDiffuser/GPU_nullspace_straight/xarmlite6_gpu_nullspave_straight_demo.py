@@ -19,15 +19,19 @@ if str(DRAWING_HELPER_DIR) not in sys.path:
     sys.path.append(str(DRAWING_HELPER_DIR))
 import helper_functions as helpers
 
-
+# construct normalized batch
 def normalize_batch(vec: torch.Tensor) -> torch.Tensor:
     return vec / vec.norm(dim=-1, keepdim=True).clamp_min(1e-12)
 
 
+# generate random unit vectors in batch (normalized random vectors)
 def random_unit_vectors_batch(batch_size: int, device: torch.device) -> torch.Tensor:
     return normalize_batch(torch.randn(batch_size, 3, device=device))
 
 
+# project direction to plane defined by target_normal, in batch
+# if direction is parallel to target_normal, return an arbitrary perpendicular direction
+# method: direction - dot(direction, target_normal) * target_normal
 def project_direction_to_plane_batch(direction: torch.Tensor, target_normal: torch.Tensor) -> torch.Tensor:
     target_normal = normalize_batch(target_normal)
     proj_on_normal = torch.sum(direction * target_normal, dim=-1, keepdim=True)
@@ -42,6 +46,8 @@ def project_direction_to_plane_batch(direction: torch.Tensor, target_normal: tor
     return normalize_batch(direction_in_plane)
 
 
+# use the auto grad to calculate the partial derivative of tcp position w.r.t. joint angles, in batch
+# result dimension: (batch_size, 3, dof)
 def position_jacobian_batch(robot, q_batch: torch.Tensor, create_graph: bool = False) -> tuple[torch.Tensor, torch.Tensor]:
     q_eval = q_batch.detach().clone().requires_grad_(True)
     tcp_pos, _ = robot.fk_batch(q_eval)
@@ -56,9 +62,10 @@ def position_jacobian_batch(robot, q_batch: torch.Tensor, create_graph: bool = F
         grads.append(grad_dim)
     return torch.stack(grads, dim=1), q_eval
 
-
+# compute the damped pseudoinverse of a batch of Jacobian matrices
+# j_mat: (batch_size, task_dim, dof) task_dim is 4, last row is for the boundary constraint
 def damped_pseudoinverse_batch(j_mat: torch.Tensor, damping: float) -> torch.Tensor:
-    batch, task_dim, _ = j_mat.shape
+    batch, task_dim, _ = j_mat.shape # (batch_size, task_dim, dof)
     eye = torch.eye(task_dim, device=j_mat.device, dtype=j_mat.dtype).unsqueeze(0).expand(batch, -1, -1)
     jj_t = j_mat @ j_mat.transpose(1, 2)
     return j_mat.transpose(1, 2) @ torch.linalg.inv(jj_t + (damping ** 2) * eye)
@@ -76,6 +83,8 @@ def directional_manipulability_batch(j_pos: torch.Tensor, direction: torch.Tenso
     eye = torch.eye(3, device=j_pos.device, dtype=j_pos.dtype).unsqueeze(0).expand(batch, -1, -1)
     metric = j_pos @ j_pos.transpose(1, 2) + (damping ** 2) * eye
     dir_col = direction.unsqueeze(-1)
+    # compute the directional manipulability
+    # formula: sqrt(dir_col^T * inv(J*J^T + damping^2*I) * dir_col)
     values = dir_col.transpose(1, 2) @ torch.linalg.inv(metric) @ dir_col
     return values.squeeze(-1).squeeze(-1).clamp_min(1e-12).pow(-0.5)
 
@@ -98,6 +107,7 @@ def joints_in_range_mask(robot, q_batch: torch.Tensor) -> torch.Tensor:
     return ((q_batch >= lower) & (q_batch <= upper)).all(dim=1)
 
 
+# for visualizing the target plane: compute rotation matrix from normal vector
 def rotation_matrix_from_normal(normal: np.ndarray) -> np.ndarray:
     z_axis = normal / max(np.linalg.norm(normal), 1e-12)
     helper = np.array([1.0, 0.0, 0.0]) if abs(z_axis[0]) < 0.9 else np.array([0.0, 1.0, 0.0])
@@ -145,6 +155,7 @@ class GPUNullspaceStraightTracker:
         self.config = config
         self.print_every = max(0, int(print_every))
 
+    # sample a batch of valid starting configurations, directions, and target normals
     def sample_valid_batch(
         self,
         batch_size: int,
@@ -216,18 +227,10 @@ class GPUNullspaceStraightTracker:
             tcp_pos_now, _ = self.robot.fk_batch(q)
             delta_now = tcp_pos_now - start_pos
             proj_now = torch.sum(delta_now * direction, dim=1)
-            term_np = termination_code.detach().cpu().numpy()
-            unique, counts = np.unique(term_np, return_counts=True)
-            term_hist = {termination_label(int(k)): int(v) for k, v in zip(unique, counts)}
             print(
                 f"[step {step_idx + 1:04d}] "
                 f"active={int(active_mask.sum().item())}/{batch_size} "
-                # f"boundary={int(boundary_mask.sum().item())} "
-                # f"mean_proj={proj_now.mean().item():.4f}m "
                 f"max_proj={proj_now.max().item():.4f}m "
-                # f"mean_mu={mu_values.mean().item():.6f} "
-                # f"mean_cos={cos_theta.mean().item():.6f} "
-                # f"term_hist={term_hist}"
             )
 
         for step_idx in range(self.config.max_steps):
@@ -249,15 +252,15 @@ class GPUNullspaceStraightTracker:
                     create_graph=True,
                 )[0]
                 j_cols.append(grad_dim)
-            j_pos = torch.stack(j_cols, dim=1)
+            j_pos = torch.stack(j_cols, dim=1) # (batch_size, 3, dof)
             j_g = torch.autograd.grad(
                 cos_theta.sum(),
                 q_eval,
                 retain_graph=True,
                 create_graph=False,
-            )[0].unsqueeze(1)
+            )[0].unsqueeze(1) # (batch_size, 1, dof)
 
-            mu_val = directional_manipulability_batch(j_pos, direction, self.config.damping)
+            mu_val = directional_manipulability_batch(j_pos, direction, self.config.damping) # (batch_size,)
             mu_sum[active] += mu_val[active]
             mu_count[active] += 1.0
 
@@ -585,7 +588,7 @@ def main() -> None:
             task_speed=args.speed,
             damping=args.damping,
             null_gain=args.null_gain,
-            theta_max=np.deg2rad(args.theta_max_deg),
+            theta_max=np.deg2rad(args.theta_max_deg),  # convert to radians
             boundary_gain=args.boundary_gain,
             grad_fd_eps=args.fd_eps,
             max_steps=args.max_steps,
