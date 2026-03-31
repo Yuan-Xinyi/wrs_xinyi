@@ -25,7 +25,7 @@ def parse_args() -> argparse.Namespace:
     parser.add_argument('--h5-path', type=Path, default=DEFAULT_H5_PATH)
     parser.add_argument('--device', type=str, default='cuda' if torch.cuda.is_available() else 'cpu')
     parser.add_argument('--traj-id', type=str, default=None)
-    parser.add_argument('--point-idx', type=int, default=None)
+    parser.add_argument('--point-idx', type=int, default=0)
     parser.add_argument('--seed', type=int, default=None)
     parser.add_argument('--n-samples', type=int, default=32)
     parser.add_argument('--sample-steps', type=int, default=None)
@@ -121,7 +121,6 @@ def main() -> None:
     gt_real_length = float(all_real_lengths[0])
     candidate_real_lengths = all_real_lengths[1:]
     print("label idx  pred_len   real_len")
-    print(f"GT    --   {anchor['length']:.6f}   {gt_real_length:.6f}")
 
     best_idx = int(np.argmax(candidate_real_lengths)) if len(candidate_real_lengths) > 0 else -1
     if len(candidate_real_lengths) > 0:
@@ -133,7 +132,9 @@ def main() -> None:
         print(f"MIN   {min_idx:02d}   {float(pred_lengths[min_idx]):.6f}   {float(candidate_real_lengths[min_idx]):.6f}")
     if best_idx >= 0:
         print(f"BEST  {best_idx:02d}   {float(pred_lengths[best_idx]):.6f}   {float(candidate_real_lengths[best_idx]):.6f}")
-
+    print("-------------------------------")
+    print(f"GT    --   {anchor['length']:.6f}   {gt_real_length:.6f}")
+    print("-------------------------------")
     if args.no_vis:
         return
 
@@ -149,7 +150,7 @@ def main() -> None:
         pos=plane_center,
         rotmat=plane_rotmat,
         rgb=[180/255, 211/255, 217/255],
-        alpha=0.75,
+        alpha=0.5,
     ).attach_to(world)
     mgm.gen_sphere(start, radius=0.010, rgb=np.array([0.0, 0.7, 1.0]), alpha=1.0).attach_to(world)
     gt_end = start + direction * anchor['length']
@@ -170,7 +171,7 @@ def main() -> None:
         robot.gen_meshmodel(rgb=color, alpha=alpha, toggle_tcp_frame=False).attach_to(world)
         pred_end = start + direction * float(pred_length)
         line_radius = 0.004 if idx == best_idx else 0.0025
-        line_alpha = 0.90 if idx == best_idx else 0.22
+        line_alpha = 1.0 if idx == best_idx else 0.22
         mgm.gen_stick(spos=start, epos=pred_end, radius=line_radius, rgb=color, alpha=line_alpha).attach_to(world)
         if idx == best_idx:
             mgm.gen_sphere(pred_end, radius=0.009, rgb=color, alpha=0.95).attach_to(world)
