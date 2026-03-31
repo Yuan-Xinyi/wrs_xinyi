@@ -1,5 +1,4 @@
 import json
-import math
 import random
 import sys
 from dataclasses import dataclass
@@ -9,22 +8,21 @@ from typing import Optional
 import h5py
 import numpy as np
 import torch
-import torch.nn as nn
 from scipy.spatial.transform import Rotation
-from torch.utils.data import Dataset
+from torch.utils.data import Dataset, DataLoader, WeightedRandomSampler
 
 BASE_DIR = Path(__file__).resolve().parent
 CLEANDIFFUSER_ROOT = BASE_DIR.parent
 if str(CLEANDIFFUSER_ROOT) not in sys.path:
     sys.path.insert(0, str(CLEANDIFFUSER_ROOT))
 
+from cleandiffuser.diffusion.ddpm import DDPM
 from cleandiffuser.nn_diffusion.dit import DiT1d
 
-
 DEFAULT_H5_PATH = BASE_DIR / "xarmlite6_gpu_trajectories_100000_sub10.hdf5"
-DEFAULT_CACHE_DIR = BASE_DIR / "kinematic_token_cache_sub10"
+DEFAULT_CACHE_DIR = BASE_DIR / "kinematic_token_cache_qL_sub10"
 DEFAULT_WORKDIR = BASE_DIR / "dit_kinematic_inpainting_runs"
-DEFAULT_RUN_NAME = "dit_inpaint_qrot_from_posdirL_sub10"
+DEFAULT_RUN_NAME = "ddpm32_dit_inpaint_qL_from_posdir_sub10"
 
 
 @dataclass
@@ -40,256 +38,19 @@ class FeatureLayout:
         return slice(self.q_dim, self.q_dim + 3)
 
     @property
-    def rot_slice(self) -> slice:
-        return slice(self.q_dim + 3, self.q_dim + 7)
-
-    @property
     def dir_slice(self) -> slice:
-        return slice(self.q_dim + 7, self.q_dim + 10)
+        return slice(self.q_dim + 3, self.q_dim + 6)
 
     @property
     def length_slice(self) -> slice:
-        return slice(self.q_dim + 10, self.q_dim + 11)
+        return slice(self.q_dim + 6, self.q_dim + 7)
 
     @property
     def token_dim(self) -> int:
-        return self.q_dim + 11
-
-    @property
-    def primary_unknown_mask(self) -> np.ndarray:
-        mask = np.ones(self.token_dim, dtype=np.float32)
-        mask[self.q_slice] = 0.0
-        mask[self.rot_slice] = 0.0
-        return mask
+        return self.q_dim + 7
 
 
-@dataclass
-class StandardScaler:
-    mean: np.ndarray
-    std: np.ndarray
-    data_min: np.ndarray
-    data_max: np.ndarray
-
-    def transform_np(self, x: np.ndarray) -> np.ndarray:
-        return ((x - self.mean) / self.std).astype(np.float32)
-
-    def inverse_transform_np(self, x: np.ndarray) -> np.ndarray:
-        return (x * self.std + self.mean).astype(np.float32)
-
-    def transform_torch(self, x: torch.Tensor) -> torch.Tensor:
-        mean = torch.as_tensor(self.mean, dtype=x.dtype, device=x.device)
-        std = torch.as_tensor(self.std, dtype=x.dtype, device=x.device)
-        return (x - mean) / std
-
-    def inverse_transform_torch(self, x: torch.Tensor) -> torch.Tensor:
-        mean = torch.as_tensor(self.mean, dtype=x.dtype, device=x.device)
-        std = torch.as_tensor(self.std, dtype=x.dtype, device=x.device)
-        return x * std + mean
-
-
-class TokenMemmapDataset(Dataset):
-    def __init__(self, tokens_path: Path, indices: np.ndarray):
-        self.tokens_path = Path(tokens_path)
-        self.indices = np.asarray(indices, dtype=np.int64)
-        self._tokens = None
-
-    @property
-    def tokens(self):
-        if self._tokens is None:
-            self._tokens = np.load(self.tokens_path, mmap_mode="r")
-        return self._tokens
-
-    def __len__(self) -> int:
-        return int(self.indices.shape[0])
-
-    def __getitem__(self, idx: int) -> dict:
-        token = np.asarray(self.tokens[self.indices[idx]], dtype=np.float32)
-        return {"token": torch.from_numpy(token.copy())}
-
-
-class JointDistributionMasker:
-    def __init__(self, layout: FeatureLayout, primary_prob: float = 0.5):
-        self.layout = layout
-        self.primary_prob = float(primary_prob)
-
-    def sample(self, batch_size: int, device: torch.device) -> torch.Tensor:
-        mask = torch.ones(batch_size, self.layout.token_dim, device=device, dtype=torch.float32)
-        primary_flags = torch.rand(batch_size, device=device) < self.primary_prob
-        if primary_flags.any():
-            primary_mask = torch.as_tensor(self.layout.primary_unknown_mask, device=device, dtype=torch.float32)
-            mask[primary_flags] = primary_mask.unsqueeze(0)
-        random_flags = ~primary_flags
-        if random_flags.any():
-            rand_mask = (torch.rand(int(random_flags.sum().item()), self.layout.token_dim, device=device) > 0.5).float()
-            all_known = rand_mask.sum(dim=1) >= self.layout.token_dim
-            all_unknown = rand_mask.sum(dim=1) <= 0
-            if all_known.any():
-                rand_mask[all_known, self.layout.length_slice] = 0.0
-            if all_unknown.any():
-                rand_mask[all_unknown, self.layout.pos_slice] = 1.0
-                rand_mask[all_unknown, self.layout.dir_slice] = 1.0
-                rand_mask[all_unknown, self.layout.length_slice] = 1.0
-            mask[random_flags] = rand_mask
-        return mask
-
-
-class MaskConditionedDiT(nn.Module):
-    def __init__(
-        self,
-        token_dim: int,
-        emb_dim: int = 256,
-        d_model: int = 384,
-        n_heads: int = 6,
-        depth: int = 8,
-        dropout: float = 0.0,
-    ):
-        super().__init__()
-        self.mask_encoder = nn.Sequential(
-            nn.Linear(token_dim, emb_dim),
-            nn.SiLU(),
-            nn.Linear(emb_dim, emb_dim),
-        )
-        self.diffusion = DiT1d(
-            in_dim=token_dim,
-            emb_dim=emb_dim,
-            d_model=d_model,
-            n_heads=n_heads,
-            depth=depth,
-            dropout=dropout,
-        )
-
-    def forward(self, x_t: torch.Tensor, t: torch.Tensor, known_mask: torch.Tensor) -> torch.Tensor:
-        cond = self.mask_encoder(known_mask)
-        return self.diffusion(x_t.unsqueeze(1), t, cond).squeeze(1)
-
-
-class ResidualMLPDenoiser(nn.Module):
-    def __init__(self, token_dim: int, hidden_dim: int = 512, depth: int = 4, time_dim: int = 128):
-        super().__init__()
-        self.token_dim = token_dim
-        self.time_dim = time_dim
-        in_dim = token_dim * 2 + time_dim
-        layers = [nn.Linear(in_dim, hidden_dim), nn.SiLU()]
-        for _ in range(depth - 1):
-            layers += [nn.Linear(hidden_dim, hidden_dim), nn.SiLU()]
-        layers += [nn.Linear(hidden_dim, token_dim)]
-        self.net = nn.Sequential(*layers)
-
-    def timestep_embedding(self, t: torch.Tensor) -> torch.Tensor:
-        half = self.time_dim // 2
-        freqs = torch.exp(
-            -math.log(10000.0) * torch.arange(half, device=t.device, dtype=torch.float32) / max(half - 1, 1)
-        )
-        args = t.float().unsqueeze(1) * freqs.unsqueeze(0)
-        emb = torch.cat([torch.sin(args), torch.cos(args)], dim=1)
-        if emb.shape[1] < self.time_dim:
-            emb = torch.cat([emb, torch.zeros(t.shape[0], 1, device=t.device)], dim=1)
-        return emb
-
-    def forward(self, x_t: torch.Tensor, t: torch.Tensor, known_mask: torch.Tensor) -> torch.Tensor:
-        t_emb = self.timestep_embedding(t)
-        inp = torch.cat([x_t, known_mask, t_emb], dim=1)
-        return self.net(inp)
-
-
-class MaskedDiffusionModel(nn.Module):
-    def __init__(
-        self,
-        denoiser: nn.Module,
-        token_dim: int,
-        diffusion_steps: int = 64,
-        predict_x0: bool = True,
-        device: torch.device | str = "cpu",
-    ):
-        super().__init__()
-        self.denoiser = denoiser
-        self.token_dim = int(token_dim)
-        self.diffusion_steps = int(diffusion_steps)
-        self.predict_x0 = bool(predict_x0)
-        self.device = torch.device(device)
-
-        betas = cosine_beta_schedule(self.diffusion_steps)
-        alphas = 1.0 - betas
-        alpha_bar = torch.cumprod(alphas, dim=0)
-        alpha_bar_prev = torch.cat([torch.ones(1), alpha_bar[:-1]], dim=0)
-        posterior_var = betas * (1.0 - alpha_bar_prev) / (1.0 - alpha_bar)
-        posterior_var[0] = 1e-8
-
-        self.register_buffer("betas", betas)
-        self.register_buffer("alphas", alphas)
-        self.register_buffer("alpha_bar", alpha_bar)
-        self.register_buffer("alpha_bar_prev", alpha_bar_prev)
-        self.register_buffer("posterior_var", posterior_var)
-
-    def q_sample(self, x0: torch.Tensor, t: torch.Tensor, noise: Optional[torch.Tensor] = None) -> tuple[torch.Tensor, torch.Tensor]:
-        if noise is None:
-            noise = torch.randn_like(x0)
-        a = self.alpha_bar[t].unsqueeze(1)
-        xt = a.sqrt() * x0 + (1.0 - a).sqrt() * noise
-        return xt, noise
-
-    def training_loss(
-        self,
-        x0: torch.Tensor,
-        known_mask: torch.Tensor,
-        unknown_weight: torch.Tensor,
-        known_weight: float = 0.05,
-    ) -> tuple[torch.Tensor, dict]:
-        batch_size = x0.shape[0]
-        t = torch.randint(0, self.diffusion_steps, (batch_size,), device=x0.device)
-        x_noisy, noise = self.q_sample(x0, t)
-        x_inpaint = known_mask * x0 + (1.0 - known_mask) * x_noisy
-        pred = self.denoiser(x_inpaint, t, known_mask)
-        target = x0 if self.predict_x0 else noise
-        weights = known_mask * known_weight + (1.0 - known_mask) * unknown_weight.unsqueeze(0)
-        mse = (pred - target).pow(2)
-        loss = (mse * weights).mean()
-        masked_mse = ((mse * (1.0 - known_mask)).sum(dim=1) / (1.0 - known_mask).sum(dim=1).clamp_min(1.0)).mean()
-        return loss, {"masked_mse": float(masked_mse.item())}
-
-    @torch.no_grad()
-    def sample_inpaint(
-        self,
-        known_values: torch.Tensor,
-        known_mask: torch.Tensor,
-        n_samples: int,
-        temperature: float = 1.0,
-        clip_min: Optional[torch.Tensor] = None,
-        clip_max: Optional[torch.Tensor] = None,
-    ) -> torch.Tensor:
-        x = torch.randn(n_samples, self.token_dim, device=known_values.device) * temperature
-        x = known_mask * known_values + (1.0 - known_mask) * x
-        for step in range(self.diffusion_steps - 1, -1, -1):
-            t = torch.full((n_samples,), step, device=known_values.device, dtype=torch.long)
-            x0_pred = self.denoiser(x, t, known_mask)
-            x0_pred = known_mask * known_values + (1.0 - known_mask) * x0_pred
-            if clip_min is not None or clip_max is not None:
-                lo = clip_min if clip_min is not None else -torch.inf
-                hi = clip_max if clip_max is not None else torch.inf
-                x0_pred = torch.maximum(torch.minimum(x0_pred, hi), lo)
-                x0_pred = known_mask * known_values + (1.0 - known_mask) * x0_pred
-            if step == 0:
-                x = x0_pred
-                break
-            a_t = self.alphas[step]
-            ab_t = self.alpha_bar[step]
-            var_t = self.posterior_var[step]
-            eps_pred = (x - ab_t.sqrt() * x0_pred) / max(float((1.0 - ab_t).sqrt().item()), 1e-8)
-            x = (1.0 / a_t.sqrt()) * (x - (self.betas[step] / (1.0 - ab_t).sqrt()) * eps_pred)
-            x = x + var_t.sqrt() * torch.randn_like(x)
-            x = known_mask * known_values + (1.0 - known_mask) * x
-        return x
-
-
-def cosine_beta_schedule(diffusion_steps: int, s: float = 0.008) -> torch.Tensor:
-    x = torch.linspace(0, diffusion_steps, diffusion_steps + 1, dtype=torch.float64)
-    alpha_bar = torch.cos(((x / diffusion_steps) + s) / (1 + s) * math.pi * 0.5) ** 2
-    alpha_bar = alpha_bar / alpha_bar[0]
-    betas = 1 - (alpha_bar[1:] / alpha_bar[:-1])
-    return betas.clamp(1e-5, 0.999).float()
-
-
-def set_seed(seed: int) -> None:
+def set_seed(seed: int):
     random.seed(seed)
     np.random.seed(seed)
     torch.manual_seed(seed)
@@ -304,97 +65,211 @@ def canonicalize_quaternion_xyzw(quat_xyzw: np.ndarray) -> np.ndarray:
     return quat_xyzw.astype(np.float32)
 
 
-def rotmats_to_quats_xyzw(rotmats: np.ndarray) -> np.ndarray:
-    quats = Rotation.from_matrix(rotmats).as_quat().astype(np.float32)
-    flip = quats[:, 3] < 0.0
-    quats[flip] *= -1.0
-    return quats
+def to_jsonable(obj):
+    if isinstance(obj, Path):
+        return str(obj)
+    if isinstance(obj, dict):
+        return {k: to_jsonable(v) for k, v in obj.items()}
+    if isinstance(obj, (list, tuple)):
+        return [to_jsonable(v) for v in obj]
+    if isinstance(obj, np.ndarray):
+        return obj.tolist()
+    if isinstance(obj, np.generic):
+        return obj.item()
+    return obj
 
 
 def infer_layout_from_h5(h5_path: Path) -> FeatureLayout:
-    with h5py.File(h5_path, "r") as f:
-        keys = sorted(f["trajectories"].keys())
+    with h5py.File(h5_path, 'r') as f:
+        keys = sorted(f['trajectories'].keys())
         if not keys:
-            raise RuntimeError(f"No trajectories found in {h5_path}")
-        q_shape = f["trajectories"][keys[0]]["q"].shape
-    q_dim = int(q_shape[1])
-    return FeatureLayout(q_dim=q_dim)
+            raise RuntimeError(f'No trajectories found in {h5_path}')
+        q_shape = f['trajectories'][keys[0]]['q'].shape
+    return FeatureLayout(q_dim=int(q_shape[1]))
 
 
-def prepare_token_cache(
+def prepare_raw_token_cache(
     h5_path: Path,
     cache_dir: Path,
     max_trajectories: Optional[int] = None,
     progress_every: int = 500,
-) -> tuple[Path, StandardScaler, FeatureLayout, dict]:
+) -> tuple[Path, FeatureLayout, dict]:
     h5_path = Path(h5_path).resolve()
     cache_dir = Path(cache_dir).resolve()
     cache_dir.mkdir(parents=True, exist_ok=True)
 
     layout = infer_layout_from_h5(h5_path)
-    suffix = f"_maxtraj{max_trajectories}" if max_trajectories is not None else ""
-    tokens_path = cache_dir / f"{h5_path.stem}_tokens_q{layout.q_dim}{suffix}.npy"
-    stats_path = cache_dir / f"{h5_path.stem}_tokens_q{layout.q_dim}{suffix}_stats.npz"
-    meta_path = cache_dir / f"{h5_path.stem}_tokens_q{layout.q_dim}{suffix}_meta.json"
+    suffix = f'_maxtraj{max_trajectories}' if max_trajectories is not None else ''
+    tokens_path = cache_dir / f'{h5_path.stem}_qL_tokens_q{layout.q_dim}{suffix}.npy'
+    meta_path = cache_dir / f'{h5_path.stem}_qL_tokens_q{layout.q_dim}{suffix}_meta.json'
 
-    if tokens_path.exists() and stats_path.exists() and meta_path.exists():
-        stats_npz = np.load(stats_path)
-        scaler = StandardScaler(
-            mean=stats_npz["mean"].astype(np.float32),
-            std=stats_npz["std"].astype(np.float32),
-            data_min=stats_npz["data_min"].astype(np.float32),
-            data_max=stats_npz["data_max"].astype(np.float32),
-        )
+    if tokens_path.exists() and meta_path.exists():
         metadata = json.loads(meta_path.read_text())
-        return tokens_path, scaler, layout, metadata
+        return tokens_path, layout, metadata
 
-    with h5py.File(h5_path, "r") as f:
-        group_names = sorted(f["trajectories"].keys())
+    with h5py.File(h5_path, 'r') as f:
+        group_names = sorted(f['trajectories'].keys())
         if max_trajectories is not None:
             group_names = group_names[: max_trajectories]
-        total_samples = int(sum(int(f["trajectories"][name].attrs["num_points"]) for name in group_names))
+        total_samples = int(sum(int(f['trajectories'][name].attrs['num_points']) for name in group_names))
 
-        mmap = np.lib.format.open_memmap(tokens_path, mode="w+", dtype=np.float32, shape=(total_samples, layout.token_dim))
-        sum_x = np.zeros(layout.token_dim, dtype=np.float64)
-        sum_sq = np.zeros(layout.token_dim, dtype=np.float64)
-        data_min = np.full(layout.token_dim, np.inf, dtype=np.float64)
-        data_max = np.full(layout.token_dim, -np.inf, dtype=np.float64)
-
+        mmap = np.lib.format.open_memmap(tokens_path, mode='w+', dtype=np.float32, shape=(total_samples, layout.token_dim))
         cursor = 0
         for traj_idx, name in enumerate(group_names):
-            grp = f["trajectories"][name]
-            q = np.asarray(grp["q"][:], dtype=np.float32)
-            pos = np.asarray(grp["tcp_pos"][:], dtype=np.float32)
-            rot_q = rotmats_to_quats_xyzw(np.asarray(grp["tcp_rotmat"][:], dtype=np.float32))
-            direction = np.asarray(grp.attrs["direction"], dtype=np.float32)
-            remaining_length = np.asarray(grp["remaining_length"][:], dtype=np.float32).reshape(-1, 1)
+            grp = f['trajectories'][name]
+            q = np.asarray(grp['q'][:], dtype=np.float32)
+            pos = np.asarray(grp['tcp_pos'][:], dtype=np.float32)
+            direction = np.asarray(grp.attrs['direction'], dtype=np.float32)
             d = np.repeat(direction.reshape(1, 3), q.shape[0], axis=0)
-            tokens = np.concatenate([q, pos, rot_q, d, remaining_length], axis=1).astype(np.float32)
+            remaining_length = np.asarray(grp['remaining_length'][:], dtype=np.float32).reshape(-1, 1)
+            tokens = np.concatenate([q, pos, d, remaining_length], axis=1).astype(np.float32)
             mmap[cursor: cursor + q.shape[0]] = tokens
-            sum_x += tokens.sum(axis=0, dtype=np.float64)
-            sum_sq += np.square(tokens, dtype=np.float64).sum(axis=0)
-            data_min = np.minimum(data_min, tokens.min(axis=0))
-            data_max = np.maximum(data_max, tokens.max(axis=0))
             cursor += q.shape[0]
             if progress_every > 0 and ((traj_idx + 1) % progress_every == 0 or traj_idx + 1 == len(group_names)):
-                print(f"[cache] trajectories={traj_idx + 1}/{len(group_names)} samples={cursor}/{total_samples}")
+                print(f'[cache] trajectories={traj_idx + 1}/{len(group_names)} samples={cursor}/{total_samples}')
 
-    mean = (sum_x / max(total_samples, 1)).astype(np.float32)
-    var = np.maximum(sum_sq / max(total_samples, 1) - np.square(mean, dtype=np.float64), 1e-8)
-    std = np.sqrt(var).astype(np.float32)
-    scaler = StandardScaler(
-        mean=mean,
-        std=std,
-        data_min=data_min.astype(np.float32),
-        data_max=data_max.astype(np.float32),
-    )
     metadata = {
-        "h5_path": str(h5_path),
-        "tokens_path": str(tokens_path),
-        "num_samples": total_samples,
-        "q_dim": layout.q_dim,
-        "token_dim": layout.token_dim,
+        'h5_path': str(h5_path),
+        'tokens_path': str(tokens_path),
+        'num_samples': total_samples,
+        'q_dim': layout.q_dim,
+        'token_dim': layout.token_dim,
     }
-    np.savez(stats_path, mean=scaler.mean, std=scaler.std, data_min=scaler.data_min, data_max=scaler.data_max)
     meta_path.write_text(json.dumps(metadata, indent=2))
-    return tokens_path, scaler, layout, metadata
+    return tokens_path, layout, metadata
+
+
+def compute_stats(train_tokens: np.ndarray, layout: FeatureLayout):
+    q = train_tokens[:, layout.q_slice]
+    pos = train_tokens[:, layout.pos_slice]
+    return {
+        'q_mean': q.mean(axis=0).astype(np.float32),
+        'q_std': np.maximum(q.std(axis=0).astype(np.float32), 1e-6),
+        'pos_mean': pos.mean(axis=0).astype(np.float32),
+        'pos_std': np.maximum(pos.std(axis=0).astype(np.float32), 1e-6),
+        'q_dim': int(layout.q_dim),
+        'token_dim': int(layout.token_dim),
+    }
+
+
+def normalize_q(q: np.ndarray, stats: dict):
+    return ((q - stats['q_mean']) / stats['q_std']).astype(np.float32)
+
+
+def denormalize_q(q: np.ndarray, stats: dict):
+    return (q * stats['q_std'] + stats['q_mean']).astype(np.float32)
+
+
+def normalize_condition(condition: np.ndarray, stats: dict):
+    pos = (condition[:, :3] - stats['pos_mean']) / stats['pos_std']
+    direction = condition[:, 3:6]
+    return np.concatenate([pos.astype(np.float32), direction.astype(np.float32)], axis=1)
+
+
+def build_inpainting_x(raw_tokens: np.ndarray, stats: dict, layout: FeatureLayout):
+    q_norm = normalize_q(raw_tokens[:, layout.q_slice], stats)
+    cond = np.concatenate([raw_tokens[:, layout.pos_slice], raw_tokens[:, layout.dir_slice]], axis=1).astype(np.float32)
+    cond_norm = normalize_condition(cond, stats)
+    remaining_length = raw_tokens[:, layout.length_slice].astype(np.float32)
+    return np.concatenate([q_norm, cond_norm, remaining_length], axis=1).astype(np.float32)
+
+
+class InpaintingDataset(Dataset):
+    def __init__(self, x0: np.ndarray, line_length: np.ndarray):
+        self.x0 = torch.from_numpy(x0).float().unsqueeze(1)
+        self.line_length = torch.from_numpy(line_length).float()
+
+    def __len__(self):
+        return self.x0.shape[0]
+
+    def __getitem__(self, idx):
+        return {'x0': self.x0[idx], 'line_length': self.line_length[idx]}
+
+
+def create_loader(dataset: InpaintingDataset, batch_size: int, weighted: bool, shuffle: bool = False):
+    if weighted:
+        weights = dataset.line_length.numpy().copy()
+        weights = weights / np.maximum(weights.mean(), 1e-6)
+        sampler = WeightedRandomSampler(
+            weights=torch.from_numpy(weights).double(),
+            num_samples=len(weights),
+            replacement=True,
+        )
+        return DataLoader(dataset, batch_size=batch_size, sampler=sampler, num_workers=0, drop_last=False)
+    return DataLoader(dataset, batch_size=batch_size, shuffle=shuffle, num_workers=0, drop_last=False)
+
+
+def create_model(device: torch.device, x_min: np.ndarray, x_max: np.ndarray, diffusion_steps: int, q_dim: int):
+    x_dim = q_dim + 7
+    nn_diffusion = DiT1d(
+        in_dim=x_dim,
+        emb_dim=256,
+        d_model=384,
+        n_heads=6,
+        depth=8,
+        dropout=0.0,
+    )
+    fix_mask = np.ones((1, x_dim), dtype=np.float32)
+    fix_mask[:, :q_dim] = 0.0
+    fix_mask[:, -1] = 0.0
+    model = DDPM(
+        nn_diffusion=nn_diffusion,
+        nn_condition=None,
+        fix_mask=fix_mask,
+        loss_weight=np.ones((1, x_dim), dtype=np.float32),
+        grad_clip_norm=1.0,
+        diffusion_steps=diffusion_steps,
+        ema_rate=0.999,
+        optim_params={'lr': 2e-4, 'weight_decay': 1e-4},
+        x_min=torch.tensor(x_min, dtype=torch.float32, device=device).view(1, 1, x_dim),
+        x_max=torch.tensor(x_max, dtype=torch.float32, device=device).view(1, 1, x_dim),
+        predict_noise=True,
+        device=device,
+    )
+    return model
+
+
+@torch.no_grad()
+def sample_q_length_from_condition(model, stats: dict, condition: np.ndarray, device: torch.device, q_dim: int, n_samples: int, sample_steps: int, temperature: float = 1.0):
+    cond_norm = normalize_condition(condition[None, :].astype(np.float32), stats)[0]
+    x_dim = q_dim + 7
+    prior = np.zeros((n_samples, 1, x_dim), dtype=np.float32)
+    prior[:, 0, q_dim:q_dim + 6] = cond_norm[None, :]
+    prior_t = torch.from_numpy(prior).float().to(device)
+    samples, _ = model.sample(
+        prior=prior_t,
+        n_samples=n_samples,
+        sample_steps=sample_steps,
+        use_ema=True,
+        temperature=temperature,
+    )
+    samples_np = samples[:, 0, :].detach().cpu().numpy()
+    q_norm = samples_np[:, :q_dim]
+    q = denormalize_q(q_norm, stats)
+    pred_length = samples_np[:, -1].astype(np.float32)
+    return q, pred_length, samples_np
+
+
+def save_bundle(run_dir: Path, model, stats: dict, x_min: np.ndarray, x_max: np.ndarray, args, metadata: dict):
+    run_dir.mkdir(parents=True, exist_ok=True)
+    model.save(str(run_dir / 'model_latest.pt'))
+    payload = {
+        'stats': {k: np.asarray(v, dtype=np.float32) if isinstance(v, np.ndarray) else v for k, v in stats.items()},
+        'x_min': np.asarray(x_min, dtype=np.float32),
+        'x_max': np.asarray(x_max, dtype=np.float32),
+        'args': dict(vars(args)),
+        'metadata': metadata,
+    }
+    torch.save(payload, run_dir / 'bundle_latest.pt')
+    with open(run_dir / 'metadata_latest.json', 'w', encoding='utf-8') as f:
+        json.dump(
+            {
+                'args': to_jsonable(dict(vars(args))),
+                'metadata': to_jsonable(metadata),
+                'stats': to_jsonable({k: (np.asarray(v).tolist() if isinstance(v, np.ndarray) else v) for k, v in stats.items()}),
+                'x_min': to_jsonable(np.asarray(x_min).tolist()),
+                'x_max': to_jsonable(np.asarray(x_max).tolist()),
+            },
+            f,
+            indent=2,
+        )
