@@ -10,7 +10,7 @@ import wrs.modeling.geometric_model as mgm
 import wrs.visualization.panda.world as wd
 
 from kinematic_diffusion_common import DEFAULT_H5_PATH, DEFAULT_RUN_NAME, DEFAULT_WORKDIR, sample_q_length_from_condition
-from sample_kinematic_dit_inpainting import load_model, normalize_direction
+from sample_kinematic_dit_inpainting import JacobianCorrection, load_model, normalize_direction
 import jax2torch
 from wrs.robot_sim.robots.xarmlite6_wg.xarm6_drill import XArmLite6Miller
 from wrs.robot_sim.robots.xarmlite6_wg.sphere_collision_checker import SphereCollisionChecker
@@ -31,6 +31,9 @@ def parse_args() -> argparse.Namespace:
     parser.add_argument('--sample-steps', type=int, default=None)
     parser.add_argument('--temperature', type=float, default=1.0)
     parser.add_argument('--alpha', type=float, default=0.22)
+    parser.add_argument('--correction-iters', type=int, default=50)
+    parser.add_argument('--correction-tol', type=float, default=1e-4)
+    parser.add_argument('--correction-damping', type=float, default=1e-3)
     parser.add_argument('--no-vis', action='store_true')
     return parser.parse_args()
 
@@ -129,7 +132,18 @@ def main() -> None:
     print(f"Sampling {len(q_preds)} candidates took {end_time - start_time:.2f} seconds")
     
     tracker, tracker_device = build_tracker(device)
-    all_q = np.concatenate([anchor['q'][None, :], q_preds.astype(np.float32)], axis=0)
+    correction_robot = XArmLite6Miller(enable_cc=True)
+    correction = JacobianCorrection(robot=correction_robot, damping=args.correction_damping)
+    q_corrs = []
+    pos_errs = []
+    for q_pred in q_preds.astype(np.float32):
+        q_corr, pos_err = correction.run(q_pred, anchor['pos'], max_iters=args.correction_iters, tol=args.correction_tol)
+        q_corrs.append(q_corr)
+        pos_errs.append(float(pos_err))
+    q_corrs = np.asarray(q_corrs, dtype=np.float32)
+    pos_errs = np.asarray(pos_errs, dtype=np.float32)
+
+    all_q = np.concatenate([anchor['q'][None, :], q_corrs], axis=0)
     all_real_lengths = rollout_lengths_batch(tracker, tracker_device, all_q, anchor['direction'], anchor['target_normal'])
     all_mu = directional_mu_batch(tracker, tracker_device, all_q, anchor['direction'])
     gt_real_length = float(all_real_lengths[0])
@@ -145,15 +159,16 @@ def main() -> None:
         avg_pred_length = float(np.mean(pred_lengths))
         avg_real_length = float(np.mean(candidate_real_lengths))
         avg_mu = float(np.mean(candidate_mu))
+        avg_pos_err = float(np.mean(pos_errs))
         min_idx = int(np.argmin(candidate_real_lengths))
         max_mu_idx = int(np.argmax(candidate_mu))
         max_pred_idx = int(np.argmax(pred_lengths))
-        print(f"AVG     --   {avg_pred_length:.6f}   {avg_real_length:.6f}   {avg_mu:.6f}")
-        print(f"MIN     {min_idx:02d}   {float(pred_lengths[min_idx]):.6f}   {float(candidate_real_lengths[min_idx]):.6f}   {float(candidate_mu[min_idx]):.6f}")
-        print(f"MAXMU   {max_mu_idx:02d}   {float(pred_lengths[max_mu_idx]):.6f}   {float(candidate_real_lengths[max_mu_idx]):.6f}   {float(candidate_mu[max_mu_idx]):.6f}")
-        print(f"MAXPRED {max_pred_idx:02d}   {float(pred_lengths[max_pred_idx]):.6f}   {float(candidate_real_lengths[max_pred_idx]):.6f}   {float(candidate_mu[max_pred_idx]):.6f}")
+        print(f"AVG     --   {avg_pred_length:.6f}   {avg_real_length:.6f}   {avg_mu:.6f}   pos_err={avg_pos_err:.6e}")
+        print(f"MIN     {min_idx:02d}   {float(pred_lengths[min_idx]):.6f}   {float(candidate_real_lengths[min_idx]):.6f}   {float(candidate_mu[min_idx]):.6f}   pos_err={float(pos_errs[min_idx]):.6e}")
+        print(f"MAXMU   {max_mu_idx:02d}   {float(pred_lengths[max_mu_idx]):.6f}   {float(candidate_real_lengths[max_mu_idx]):.6f}   {float(candidate_mu[max_mu_idx]):.6f}   pos_err={float(pos_errs[max_mu_idx]):.6e}")
+        print(f"MAXPRED {max_pred_idx:02d}   {float(pred_lengths[max_pred_idx]):.6f}   {float(candidate_real_lengths[max_pred_idx]):.6f}   {float(candidate_mu[max_pred_idx]):.6f}   pos_err={float(pos_errs[max_pred_idx]):.6e}")
     if best_idx >= 0:
-        print(f"BEST    {best_idx:02d}   {float(pred_lengths[best_idx]):.6f}   {float(candidate_real_lengths[best_idx]):.6f}   {float(candidate_mu[best_idx]):.6f}")
+        print(f"BEST    {best_idx:02d}   {float(pred_lengths[best_idx]):.6f}   {float(candidate_real_lengths[best_idx]):.6f}   {float(candidate_mu[best_idx]):.6f}   pos_err={float(pos_errs[best_idx]):.6e}")
     print("------------------------------------------")
     if args.no_vis:
         return
@@ -184,10 +199,10 @@ def main() -> None:
 
     default_color = np.array([0.75, 0.75, 0.75], dtype=np.float32)
     best_color = np.array([0.15, 0.45, 0.95], dtype=np.float32)
-    for idx, (q_pred, pred_length) in enumerate(zip(q_preds, pred_lengths)):
+    for idx, (q_corr, pred_length) in enumerate(zip(q_corrs, pred_lengths)):
         color = best_color if idx == best_idx else default_color
         alpha = 0.55 if idx == best_idx else 0.20
-        robot.goto_given_conf(q_pred.astype(np.float32))
+        robot.goto_given_conf(q_corr.astype(np.float32))
         robot.gen_meshmodel(rgb=color, alpha=alpha, toggle_tcp_frame=False).attach_to(world)
         pred_end = start + direction * float(pred_length)
         line_radius = 0.004 if idx == best_idx else 0.0025
