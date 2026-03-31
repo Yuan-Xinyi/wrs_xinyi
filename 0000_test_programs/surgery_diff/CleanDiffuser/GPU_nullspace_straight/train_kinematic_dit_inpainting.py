@@ -29,7 +29,7 @@ from kinematic_diffusion_common import (
 
 
 def parse_args():
-    parser = argparse.ArgumentParser(description='Train DDPM inpainting baseline for q and remaining-length generation from (pos, direction).')
+    parser = argparse.ArgumentParser(description='Train DDPM inpainting baseline for q and remaining-length generation from (pos, direction, normal).')
     parser.add_argument('--h5-path', type=Path, default=DEFAULT_H5_PATH)
     parser.add_argument('--cache-dir', type=Path, default=DEFAULT_CACHE_DIR)
     parser.add_argument('--workdir', type=Path, default=DEFAULT_WORKDIR)
@@ -159,7 +159,7 @@ def main():
     started_at = time.time()
 
     demo_idx = int(np.clip(args.sample_entry_idx, 0, total_samples - 1))
-    demo_condition = raw_tokens[demo_idx, layout.pos_slice.start:layout.dir_slice.stop]
+    demo_condition = raw_tokens[demo_idx, layout.pos_slice.start:layout.normal_slice.stop]
 
     for epoch in range(1, args.epochs + 1):
         epoch_losses = []

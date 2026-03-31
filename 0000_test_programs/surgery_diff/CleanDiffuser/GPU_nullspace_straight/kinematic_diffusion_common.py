@@ -20,9 +20,9 @@ from cleandiffuser.diffusion.ddpm import DDPM
 from cleandiffuser.nn_diffusion.dit import DiT1d
 
 DEFAULT_H5_PATH = BASE_DIR / "xarmlite6_gpu_trajectories_100000_sub10.hdf5"
-DEFAULT_CACHE_DIR = BASE_DIR / "kinematic_token_cache_qL_sub10"
+DEFAULT_CACHE_DIR = BASE_DIR / "kinematic_token_cache_qL_normal_sub10"
 DEFAULT_WORKDIR = BASE_DIR / "dit_kinematic_inpainting_runs"
-DEFAULT_RUN_NAME = "ddpm32_dit_inpaint_qL_from_posdir_sub10"
+DEFAULT_RUN_NAME = "ddpm32_dit_inpaint_qL_from_posdirnormal_sub10"
 
 
 @dataclass
@@ -42,12 +42,16 @@ class FeatureLayout:
         return slice(self.q_dim + 3, self.q_dim + 6)
 
     @property
+    def normal_slice(self) -> slice:
+        return slice(self.q_dim + 6, self.q_dim + 9)
+
+    @property
     def length_slice(self) -> slice:
-        return slice(self.q_dim + 6, self.q_dim + 7)
+        return slice(self.q_dim + 9, self.q_dim + 10)
 
     @property
     def token_dim(self) -> int:
-        return self.q_dim + 7
+        return self.q_dim + 10
 
 
 def set_seed(seed: int):
@@ -100,8 +104,8 @@ def prepare_raw_token_cache(
 
     layout = infer_layout_from_h5(h5_path)
     suffix = f'_maxtraj{max_trajectories}' if max_trajectories is not None else ''
-    tokens_path = cache_dir / f'{h5_path.stem}_qL_tokens_q{layout.q_dim}{suffix}.npy'
-    meta_path = cache_dir / f'{h5_path.stem}_qL_tokens_q{layout.q_dim}{suffix}_meta.json'
+    tokens_path = cache_dir / f'{h5_path.stem}_qLnormal_tokens_q{layout.q_dim}{suffix}.npy'
+    meta_path = cache_dir / f'{h5_path.stem}_qLnormal_tokens_q{layout.q_dim}{suffix}_meta.json'
 
     if tokens_path.exists() and meta_path.exists():
         metadata = json.loads(meta_path.read_text())
@@ -120,9 +124,11 @@ def prepare_raw_token_cache(
             q = np.asarray(grp['q'][:], dtype=np.float32)
             pos = np.asarray(grp['tcp_pos'][:], dtype=np.float32)
             direction = np.asarray(grp.attrs['direction'], dtype=np.float32)
+            target_normal = np.asarray(grp.attrs['target_normal'], dtype=np.float32)
             d = np.repeat(direction.reshape(1, 3), q.shape[0], axis=0)
+            n = np.repeat(target_normal.reshape(1, 3), q.shape[0], axis=0)
             remaining_length = np.asarray(grp['remaining_length'][:], dtype=np.float32).reshape(-1, 1)
-            tokens = np.concatenate([q, pos, d, remaining_length], axis=1).astype(np.float32)
+            tokens = np.concatenate([q, pos, d, n, remaining_length], axis=1).astype(np.float32)
             mmap[cursor: cursor + q.shape[0]] = tokens
             cursor += q.shape[0]
             if progress_every > 0 and ((traj_idx + 1) % progress_every == 0 or traj_idx + 1 == len(group_names)):
@@ -163,12 +169,13 @@ def denormalize_q(q: np.ndarray, stats: dict):
 def normalize_condition(condition: np.ndarray, stats: dict):
     pos = (condition[:, :3] - stats['pos_mean']) / stats['pos_std']
     direction = condition[:, 3:6]
-    return np.concatenate([pos.astype(np.float32), direction.astype(np.float32)], axis=1)
+    normal = condition[:, 6:9]
+    return np.concatenate([pos.astype(np.float32), direction.astype(np.float32), normal.astype(np.float32)], axis=1)
 
 
 def build_inpainting_x(raw_tokens: np.ndarray, stats: dict, layout: FeatureLayout):
     q_norm = normalize_q(raw_tokens[:, layout.q_slice], stats)
-    cond = np.concatenate([raw_tokens[:, layout.pos_slice], raw_tokens[:, layout.dir_slice]], axis=1).astype(np.float32)
+    cond = np.concatenate([raw_tokens[:, layout.pos_slice], raw_tokens[:, layout.dir_slice], raw_tokens[:, layout.normal_slice]], axis=1).astype(np.float32)
     cond_norm = normalize_condition(cond, stats)
     remaining_length = raw_tokens[:, layout.length_slice].astype(np.float32)
     return np.concatenate([q_norm, cond_norm, remaining_length], axis=1).astype(np.float32)
@@ -200,7 +207,7 @@ def create_loader(dataset: InpaintingDataset, batch_size: int, weighted: bool, s
 
 
 def create_model(device: torch.device, x_min: np.ndarray, x_max: np.ndarray, diffusion_steps: int, q_dim: int):
-    x_dim = q_dim + 7
+    x_dim = q_dim + 10
     nn_diffusion = DiT1d(
         in_dim=x_dim,
         emb_dim=256,
@@ -232,9 +239,9 @@ def create_model(device: torch.device, x_min: np.ndarray, x_max: np.ndarray, dif
 @torch.no_grad()
 def sample_q_length_from_condition(model, stats: dict, condition: np.ndarray, device: torch.device, q_dim: int, n_samples: int, sample_steps: int, temperature: float = 1.0):
     cond_norm = normalize_condition(condition[None, :].astype(np.float32), stats)[0]
-    x_dim = q_dim + 7
+    x_dim = q_dim + 10
     prior = np.zeros((n_samples, 1, x_dim), dtype=np.float32)
-    prior[:, 0, q_dim:q_dim + 6] = cond_norm[None, :]
+    prior[:, 0, q_dim:q_dim + 9] = cond_norm[None, :]
     prior_t = torch.from_numpy(prior).float().to(device)
     samples, _ = model.sample(
         prior=prior_t,

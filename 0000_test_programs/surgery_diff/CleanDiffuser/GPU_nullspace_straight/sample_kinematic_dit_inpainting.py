@@ -18,11 +18,12 @@ from wrs.robot_sim.robots.xarmlite6_wg.xarm6_drill import XArmLite6Miller
 
 
 def parse_args() -> argparse.Namespace:
-    parser = argparse.ArgumentParser(description='Inpaint q and remaining length from (pos, direction) using a trained DDPM model.')
+    parser = argparse.ArgumentParser(description='Inpaint q and remaining length from (pos, direction, normal) using a trained DDPM model.')
     parser.add_argument('--bundle', type=Path, default=DEFAULT_WORKDIR / DEFAULT_RUN_NAME / 'bundle_latest.pt')
     parser.add_argument('--device', type=str, default='cuda' if torch.cuda.is_available() else 'cpu')
     parser.add_argument('--pos', type=float, nargs=3, required=True)
     parser.add_argument('--direction', type=float, nargs=3, required=True)
+    parser.add_argument('--normal', type=float, nargs=3, required=True)
     parser.add_argument('--n-samples', type=int, default=10)
     parser.add_argument('--sample-steps', type=int, default=None)
     parser.add_argument('--temperature', type=float, default=1.0)
@@ -90,7 +91,8 @@ def main() -> None:
 
     pos = np.asarray(args.pos, dtype=np.float32)
     direction = normalize_direction(np.asarray(args.direction, dtype=np.float32))
-    condition = np.concatenate([pos, direction], axis=0).astype(np.float32)
+    normal = normalize_direction(np.asarray(args.normal, dtype=np.float32))
+    condition = np.concatenate([pos, direction, normal], axis=0).astype(np.float32)
     steps = args.sample_steps if args.sample_steps is not None else diffusion_steps
     q_samples, pred_lengths, raw_samples = sample_q_length_from_condition(
         model=model,
@@ -144,6 +146,7 @@ def main() -> None:
     payload = {
         'input_pos': pos.tolist(),
         'input_direction': direction.tolist(),
+        'input_normal': normal.tolist(),
         'predicted_q': raw_q_arr.tolist(),
         'corrected_q': corrected_q_arr.tolist(),
         'predicted_length': [float(v) for v in pred_length_list],

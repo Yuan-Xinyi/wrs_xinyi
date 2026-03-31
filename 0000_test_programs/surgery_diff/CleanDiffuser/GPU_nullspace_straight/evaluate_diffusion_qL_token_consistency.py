@@ -38,6 +38,7 @@ def load_gt(h5_path: Path, traj_id: str | None, point_idx: int | None, rng: np.r
             'pos': np.asarray(grp['tcp_pos'][idx], dtype=np.float32),
             'direction': normalize_direction(np.asarray(grp.attrs['direction'], dtype=np.float32)),
             'length': float(np.asarray(grp['remaining_length'][idx], dtype=np.float32)),
+            'target_normal': normalize_direction(np.asarray(grp.attrs['target_normal'], dtype=np.float32)),
         }
 
 
