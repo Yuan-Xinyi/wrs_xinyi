@@ -1,7 +1,6 @@
 import argparse
 from pathlib import Path
 
-import h5py
 import numpy as np
 import torch
 
@@ -9,7 +8,7 @@ import wrs.modeling.collision_model as mcm
 import wrs.modeling.geometric_model as mgm
 import wrs.visualization.panda.world as wd
 
-from kinematic_diffusion_common import DEFAULT_H5_PATH, DEFAULT_RUN_NAME, DEFAULT_WORKDIR, sample_q_length_from_condition
+from kinematic_diffusion_common import DEFAULT_RUN_NAME, DEFAULT_WORKDIR, sample_q_length_from_condition
 from sample_kinematic_dit_inpainting import JacobianCorrection, load_model, normalize_direction
 import jax2torch
 from wrs.robot_sim.robots.xarmlite6_wg.xarm6_drill import XArmLite6Miller
@@ -19,18 +18,18 @@ from xarmlite6_gpu_nullspave_straight_demo import GPUNullspaceStraightTracker, T
 import jax
 
 
+DIRECTION_AXIS = 0
+NORMAL_AXIS = 2
+
+
 def parse_args() -> argparse.Namespace:
-    parser = argparse.ArgumentParser(description='Visualize multiple diffusion candidate q solutions for the same (pos, direction) condition.')
+    parser = argparse.ArgumentParser(description='Visualize diffusion candidates for a random GT joint configuration.')
     parser.add_argument('--bundle', type=Path, default=DEFAULT_WORKDIR / DEFAULT_RUN_NAME / 'bundle_latest.pt')
-    parser.add_argument('--h5-path', type=Path, default=DEFAULT_H5_PATH)
     parser.add_argument('--device', type=str, default='cuda' if torch.cuda.is_available() else 'cpu')
-    parser.add_argument('--traj-id', type=str, default=None)
-    parser.add_argument('--point-idx', type=int, default=0)
     parser.add_argument('--seed', type=int, default=None)
     parser.add_argument('--n-samples', type=int, default=128)
     parser.add_argument('--sample-steps', type=int, default=None)
     parser.add_argument('--temperature', type=float, default=1.0)
-    parser.add_argument('--alpha', type=float, default=0.22)
     parser.add_argument('--correction-iters', type=int, default=50)
     parser.add_argument('--correction-tol', type=float, default=1e-4)
     parser.add_argument('--correction-damping', type=float, default=1e-3)
@@ -38,22 +37,26 @@ def parse_args() -> argparse.Namespace:
     return parser.parse_args()
 
 
-def load_anchor(h5_path: Path, traj_id: str | None, point_idx: int | None, rng: np.random.Generator) -> dict:
-    with h5py.File(h5_path, 'r') as f:
-        traj_keys = sorted(f['trajectories'].keys())
-        traj_key = traj_id if traj_id is not None else traj_keys[int(rng.integers(len(traj_keys)))]
-        grp = f['trajectories'][traj_key]
-        num_points = int(grp.attrs['num_points'])
-        idx = int(point_idx) if point_idx is not None else int(rng.integers(num_points))
+def sample_anchor(rng: np.random.Generator) -> dict:
+    robot = XArmLite6Miller(enable_cc=True)
+    for _ in range(2000):
+        q = robot.rand_conf().astype(np.float32)
+        robot.goto_given_conf(q)
+        if robot.is_collided():
+            continue
+        pos, rotmat = robot.fk(q, update=False)
+        rotmat = np.asarray(rotmat, dtype=np.float32)
+        direction = normalize_direction(rotmat[:, DIRECTION_AXIS])
+        target_normal = normalize_direction(rotmat[:, NORMAL_AXIS])
         return {
-            'traj_key': traj_key,
-            'point_idx': idx,
-            'q': np.asarray(grp['q'][idx], dtype=np.float32),
-            'pos': np.asarray(grp['tcp_pos'][idx], dtype=np.float32),
-            'direction': normalize_direction(np.asarray(grp.attrs['direction'], dtype=np.float32)),
-            'length': float(np.asarray(grp['remaining_length'][idx], dtype=np.float32)),
-            'target_normal': normalize_direction(np.asarray(grp.attrs['target_normal'], dtype=np.float32)),
+            'q': q,
+            'pos': np.asarray(pos, dtype=np.float32),
+            'rotmat': rotmat,
+            'direction': direction,
+            'target_normal': target_normal,
         }
+    raise RuntimeError('Failed to sample a valid random GT configuration.')
+
 
 def rotation_matrix_from_normal(normal: np.ndarray) -> np.ndarray:
     z_axis = normal / max(np.linalg.norm(normal), 1e-12)
@@ -105,12 +108,13 @@ def rollout_lengths_batch(
     result = tracker.run_batch(q0_batch=q_batch, direction_batch=direction_batch, target_normal_batch=target_normal_batch)
     return result.projected_length.detach().cpu().numpy()
 
+
 def main() -> None:
     args = parse_args()
     rng = np.random.default_rng(args.seed if args.seed is not None else int(np.random.SeedSequence().entropy))
     device = torch.device(args.device)
     _, stats, model, q_dim, diffusion_steps = load_model(args.bundle, device)
-    anchor = load_anchor(args.h5_path, args.traj_id, args.point_idx, rng)
+    anchor = sample_anchor(rng)
 
     condition = np.concatenate([anchor['pos'], anchor['direction'], anchor['target_normal']], axis=0).astype(np.float32)
     import time
@@ -126,8 +130,8 @@ def main() -> None:
         temperature=float(args.temperature),
     )
     end_time = time.time()
-    print(f"Sampling {len(q_preds)} candidates took {end_time - start_time:.2f} seconds")
-    
+    print(f'Sampling {len(q_preds)} candidates took {end_time - start_time:.2f} seconds')
+
     tracker, tracker_device = build_tracker(device)
     correction_robot = XArmLite6Miller(enable_cc=True)
     correction = JacobianCorrection(robot=correction_robot, damping=args.correction_damping)
@@ -152,16 +156,17 @@ def main() -> None:
     candidate_real_lengths = all_real_lengths[1:]
     candidate_mu = all_mu[1:]
     min_pos_idx = int(np.argmin(pos_errs)) if len(pos_errs) > 0 else -1
-    row_fmt = "{label:<8} {idx:>4} {pred:>10.6f} {real:>10.6f} {mu:>10.6f} {pos:>12}"
-    print("--------------------------------------------------------------------------")
+
+    row_fmt = '{label:<8} {idx:>4} {pred:>10} {real:>10.6f} {mu:>10.6f} {pos:>12}'
+    print('--------------------------------------------------------------------------')
     print(f"{'label':<8} {'idx':>4} {'pred_len':>10} {'real_len':>10} {'mu':>10} {'pos_err_mm':>12}")
-    print("--------------------------------------------------------------------------")
-    print(row_fmt.format(label='GT', idx='--', pred=float(anchor['length']), real=gt_real_length, mu=gt_mu, pos='--'))
+    print('--------------------------------------------------------------------------')
+    print(row_fmt.format(label='GT', idx='--', pred='--', real=gt_real_length, mu=gt_mu, pos='--'))
     if min_pos_idx >= 0:
         print(row_fmt.format(
             label='MINPOS',
             idx=f'{min_pos_idx:02d}',
-            pred=float(pred_lengths[min_pos_idx]),
+            pred=f'{float(pred_lengths[min_pos_idx]):.6f}',
             real=float(candidate_real_lengths[min_pos_idx]),
             mu=float(candidate_mu[min_pos_idx]),
             pos=f'{float(pos_errs[min_pos_idx]) * 1e3:.3f}',
@@ -169,23 +174,24 @@ def main() -> None:
     close_mask = (pos_errs * 1e3) <= 3.0
     close_indices = np.flatnonzero(close_mask)
     if close_indices.size > 0:
-        print("--------------------------------------------------------------------------")
-        print("candidates with raw pos_err_mm <= 3.000")
+        print('--------------------------------------------------------------------------')
+        print('candidates with raw pos_err_mm <= 10.000')
         for idx in close_indices.tolist():
             print(row_fmt.format(
                 label='CLOSE',
                 idx=f'{idx:02d}',
-                pred=float(pred_lengths[idx]),
+                pred=f'{float(pred_lengths[idx]):.6f}',
                 real=float(candidate_real_lengths[idx]),
                 mu=float(candidate_mu[idx]),
                 pos=f'{float(pos_errs[idx]) * 1e3:.3f}',
             ))
-    print("--------------------------------------------------------------------------")
+    print('--------------------------------------------------------------------------')
     if args.no_vis:
         return
 
     world = wd.World(cam_pos=[1.7, -1.5, 1.05], lookat_pos=[0.25, 0.0, 0.25])
     mgm.gen_frame().attach_to(world)
+    mgm.gen_frame(pos=anchor['pos'], rotmat=anchor['rotmat'], ax_length=0.12).attach_to(world)
     start = anchor['pos']
     direction = anchor['direction']
     plane_size = 1.2
@@ -199,14 +205,14 @@ def main() -> None:
         alpha=0.5,
     ).attach_to(world)
     mgm.gen_sphere(start, radius=0.010, rgb=np.array([0.0, 0.7, 1.0]), alpha=1.0).attach_to(world)
-    gt_end = start + direction * anchor['length']
+    gt_end = start + direction * gt_real_length
     gt_color = np.array([0.1, 0.75, 0.2], dtype=np.float32)
     mgm.gen_stick(spos=start, epos=gt_end, radius=0.0045, rgb=gt_color, alpha=0.90).attach_to(world)
     mgm.gen_sphere(gt_end, radius=0.009, rgb=gt_color, alpha=0.95).attach_to(world)
 
     robot = XArmLite6Miller(enable_cc=True)
     robot.goto_given_conf(anchor['q'])
-    robot.gen_meshmodel(rgb=np.array([0.1, 0.75, 0.2]), alpha=0.55, toggle_tcp_frame=True).attach_to(world)
+    robot.gen_meshmodel(rgb=gt_color, alpha=0.55, toggle_tcp_frame=True).attach_to(world)
 
     if min_pos_idx >= 0:
         pred_color = np.array([0.15, 0.45, 0.95], dtype=np.float32)
