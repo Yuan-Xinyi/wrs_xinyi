@@ -134,9 +134,13 @@ def main() -> None:
     q_corrs = []
     pos_errs = []
     for q_pred in q_preds.astype(np.float32):
-        q_corr, pos_err = correction.run(q_pred, anchor['pos'], max_iters=args.correction_iters, tol=args.correction_tol)
+        q_pred64 = q_pred.astype(np.float64)
+        correction_robot.goto_given_conf(q_pred64)
+        cur_pos, _ = correction_robot.fk(q_pred64, update=False)
+        raw_pos_err = float(np.linalg.norm(anchor['pos'] - cur_pos))
+        q_corr, _ = correction.run(q_pred, anchor['pos'], max_iters=args.correction_iters, tol=args.correction_tol)
         q_corrs.append(q_corr)
-        pos_errs.append(float(pos_err))
+        pos_errs.append(raw_pos_err)
     q_corrs = np.asarray(q_corrs, dtype=np.float32)
     pos_errs = np.asarray(pos_errs, dtype=np.float32)
 
@@ -147,30 +151,36 @@ def main() -> None:
     gt_mu = float(all_mu[0])
     candidate_real_lengths = all_real_lengths[1:]
     candidate_mu = all_mu[1:]
-    print("------------------------------------------------------------------------------------")
-    print("label   idx  pred_len   real_len   mu")
-    print("------------------------------------------------------------------------------------")
-
-    best_idx = int(np.argmax(candidate_real_lengths)) if len(candidate_real_lengths) > 0 else -1
-    if len(candidate_real_lengths) > 0:
-        avg_pred_length = float(np.mean(pred_lengths))
-        avg_real_length = float(np.mean(candidate_real_lengths))
-        avg_mu = float(np.mean(candidate_mu))
-        avg_pos_err = float(np.mean(pos_errs))
-        min_idx = int(np.argmin(candidate_real_lengths))
-        min_pos_idx = int(np.argmin(pos_errs))
-        max_mu_idx = int(np.argmax(candidate_mu))
-        max_pred_idx = int(np.argmax(pred_lengths))
-        print(f"AVG     --   {avg_pred_length:.6f}   {avg_real_length:.6f}   {avg_mu:.6f}   pos_err={avg_pos_err:.6e}")
-        print(f"MIN     {min_idx:02d}   {float(pred_lengths[min_idx]):.6f}   {float(candidate_real_lengths[min_idx]):.6f}   {float(candidate_mu[min_idx]):.6f}   pos_err={float(pos_errs[min_idx]):.6e}")
-        print(f"MINERR {min_pos_idx:02d}   {float(pred_lengths[min_pos_idx]):.6f}   {float(candidate_real_lengths[min_pos_idx]):.6f}   {float(candidate_mu[min_pos_idx]):.6f}   pos_err={float(pos_errs[min_pos_idx]):.6e}")
-        print(f"MAXMU   {max_mu_idx:02d}   {float(pred_lengths[max_mu_idx]):.6f}   {float(candidate_real_lengths[max_mu_idx]):.6f}   {float(candidate_mu[max_mu_idx]):.6f}   pos_err={float(pos_errs[max_mu_idx]):.6e}")
-        print(f"MAXPRED {max_pred_idx:02d}   {float(pred_lengths[max_pred_idx]):.6f}   {float(candidate_real_lengths[max_pred_idx]):.6f}   {float(candidate_mu[max_pred_idx]):.6f}   pos_err={float(pos_errs[max_pred_idx]):.6e}")
-    if best_idx >= 0:
-        print(f"BEST    {best_idx:02d}   {float(pred_lengths[best_idx]):.6f}   {float(candidate_real_lengths[best_idx]):.6f}   {float(candidate_mu[best_idx]):.6f}   pos_err={float(pos_errs[best_idx]):.6e}")
-    print("------------------------------------------------------------------------------------")
-    print(f"GT      --   {anchor['length']:.6f}   {gt_real_length:.6f}   {gt_mu:.6f}")
-    print("------------------------------------------------------------------------------------")
+    min_pos_idx = int(np.argmin(pos_errs)) if len(pos_errs) > 0 else -1
+    row_fmt = "{label:<8} {idx:>4} {pred:>10.6f} {real:>10.6f} {mu:>10.6f} {pos:>12}"
+    print("--------------------------------------------------------------------------")
+    print(f"{'label':<8} {'idx':>4} {'pred_len':>10} {'real_len':>10} {'mu':>10} {'pos_err_mm':>12}")
+    print("--------------------------------------------------------------------------")
+    print(row_fmt.format(label='GT', idx='--', pred=float(anchor['length']), real=gt_real_length, mu=gt_mu, pos='--'))
+    if min_pos_idx >= 0:
+        print(row_fmt.format(
+            label='MINPOS',
+            idx=f'{min_pos_idx:02d}',
+            pred=float(pred_lengths[min_pos_idx]),
+            real=float(candidate_real_lengths[min_pos_idx]),
+            mu=float(candidate_mu[min_pos_idx]),
+            pos=f'{float(pos_errs[min_pos_idx]) * 1e3:.3f}',
+        ))
+    close_mask = (pos_errs * 1e3) <= 3.0
+    close_indices = np.flatnonzero(close_mask)
+    if close_indices.size > 0:
+        print("--------------------------------------------------------------------------")
+        print("candidates with raw pos_err_mm <= 3.000")
+        for idx in close_indices.tolist():
+            print(row_fmt.format(
+                label='CLOSE',
+                idx=f'{idx:02d}',
+                pred=float(pred_lengths[idx]),
+                real=float(candidate_real_lengths[idx]),
+                mu=float(candidate_mu[idx]),
+                pos=f'{float(pos_errs[idx]) * 1e3:.3f}',
+            ))
+    print("--------------------------------------------------------------------------")
     if args.no_vis:
         return
 
@@ -198,19 +208,13 @@ def main() -> None:
     robot.goto_given_conf(anchor['q'])
     robot.gen_meshmodel(rgb=np.array([0.1, 0.75, 0.2]), alpha=0.55, toggle_tcp_frame=True).attach_to(world)
 
-    default_color = np.array([0.75, 0.75, 0.75], dtype=np.float32)
-    best_color = np.array([0.15, 0.45, 0.95], dtype=np.float32)
-    for idx, (q_pred, pred_length) in enumerate(zip(q_preds, pred_lengths)):
-        color = best_color if idx == best_idx else default_color
-        alpha = 0.55 if idx == best_idx else 0.20
-        robot.goto_given_conf(q_pred.astype(np.float32))
-        robot.gen_meshmodel(rgb=color, alpha=alpha, toggle_tcp_frame=False).attach_to(world)
-        pred_end = start + direction * float(pred_length)
-        line_radius = 0.004 if idx == best_idx else 0.0025
-        line_alpha = 1.0 if idx == best_idx else 0.22
-        mgm.gen_stick(spos=start, epos=pred_end, radius=line_radius, rgb=color, alpha=line_alpha).attach_to(world)
-        if idx == best_idx:
-            mgm.gen_sphere(pred_end, radius=0.009, rgb=color, alpha=0.95).attach_to(world)
+    if min_pos_idx >= 0:
+        pred_color = np.array([0.15, 0.45, 0.95], dtype=np.float32)
+        robot.goto_given_conf(q_preds[min_pos_idx].astype(np.float32))
+        robot.gen_meshmodel(rgb=pred_color, alpha=0.55, toggle_tcp_frame=False).attach_to(world)
+        pred_end = start + direction * float(pred_lengths[min_pos_idx])
+        mgm.gen_stick(spos=start, epos=pred_end, radius=0.004, rgb=pred_color, alpha=0.95).attach_to(world)
+        mgm.gen_sphere(pred_end, radius=0.009, rgb=pred_color, alpha=0.95).attach_to(world)
 
     world.run()
 
