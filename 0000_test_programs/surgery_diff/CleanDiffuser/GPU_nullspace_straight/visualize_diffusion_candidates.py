@@ -15,7 +15,7 @@ import jax2torch
 from wrs.robot_sim.robots.xarmlite6_wg.xarm6_drill import XArmLite6Miller
 from wrs.robot_sim.robots.xarmlite6_wg.sphere_collision_checker import SphereCollisionChecker
 import wrs.neuro.xarm_lite6_neuro as xarm6_gpu
-from xarmlite6_gpu_nullspave_straight_demo import GPUNullspaceStraightTracker, TrackerConfig
+from xarmlite6_gpu_nullspave_straight_demo import GPUNullspaceStraightTracker, TrackerConfig, position_jacobian_batch, directional_manipulability_batch
 import jax
 
 
@@ -27,7 +27,7 @@ def parse_args() -> argparse.Namespace:
     parser.add_argument('--traj-id', type=str, default=None)
     parser.add_argument('--point-idx', type=int, default=0)
     parser.add_argument('--seed', type=int, default=None)
-    parser.add_argument('--n-samples', type=int, default=32)
+    parser.add_argument('--n-samples', type=int, default=128)
     parser.add_argument('--sample-steps', type=int, default=None)
     parser.add_argument('--temperature', type=float, default=1.0)
     parser.add_argument('--alpha', type=float, default=0.22)
@@ -79,6 +79,19 @@ def build_tracker(device: torch.device) -> tuple[GPUNullspaceStraightTracker, to
     return tracker, device
 
 
+def directional_mu_batch(
+    tracker: GPUNullspaceStraightTracker,
+    tracker_device: torch.device,
+    q_batch_np: np.ndarray,
+    direction_np: np.ndarray,
+) -> np.ndarray:
+    q_batch = torch.from_numpy(q_batch_np.astype(np.float32)).to(tracker_device)
+    direction_batch = torch.from_numpy(np.repeat(direction_np[None, :].astype(np.float32), q_batch_np.shape[0], axis=0)).to(tracker_device)
+    j_pos, _ = position_jacobian_batch(tracker.robot, q_batch, create_graph=False)
+    mu = directional_manipulability_batch(j_pos, direction_batch, tracker.config.damping)
+    return mu.detach().cpu().numpy()
+
+
 def rollout_lengths_batch(
     tracker: GPUNullspaceStraightTracker,
     tracker_device: torch.device,
@@ -118,23 +131,30 @@ def main() -> None:
     tracker, tracker_device = build_tracker(device)
     all_q = np.concatenate([anchor['q'][None, :], q_preds.astype(np.float32)], axis=0)
     all_real_lengths = rollout_lengths_batch(tracker, tracker_device, all_q, anchor['direction'], anchor['target_normal'])
+    all_mu = directional_mu_batch(tracker, tracker_device, all_q, anchor['direction'])
     gt_real_length = float(all_real_lengths[0])
+    gt_mu = float(all_mu[0])
     candidate_real_lengths = all_real_lengths[1:]
-    print("label idx  pred_len   real_len")
+    candidate_mu = all_mu[1:]
+    print("label   idx  pred_len   real_len   mu")
+    print(f"GT      --   {anchor['length']:.6f}   {gt_real_length:.6f}   {gt_mu:.6f}")
+    print("------------------------------------------")
 
     best_idx = int(np.argmax(candidate_real_lengths)) if len(candidate_real_lengths) > 0 else -1
     if len(candidate_real_lengths) > 0:
         avg_pred_length = float(np.mean(pred_lengths))
         avg_real_length = float(np.mean(candidate_real_lengths))
+        avg_mu = float(np.mean(candidate_mu))
         min_idx = int(np.argmin(candidate_real_lengths))
-        print("-------------------------------")
-        print(f"AVG   --   {avg_pred_length:.6f}   {avg_real_length:.6f}")
-        print(f"MIN   {min_idx:02d}   {float(pred_lengths[min_idx]):.6f}   {float(candidate_real_lengths[min_idx]):.6f}")
+        max_mu_idx = int(np.argmax(candidate_mu))
+        max_pred_idx = int(np.argmax(pred_lengths))
+        print(f"AVG     --   {avg_pred_length:.6f}   {avg_real_length:.6f}   {avg_mu:.6f}")
+        print(f"MIN     {min_idx:02d}   {float(pred_lengths[min_idx]):.6f}   {float(candidate_real_lengths[min_idx]):.6f}   {float(candidate_mu[min_idx]):.6f}")
+        print(f"MAXMU   {max_mu_idx:02d}   {float(pred_lengths[max_mu_idx]):.6f}   {float(candidate_real_lengths[max_mu_idx]):.6f}   {float(candidate_mu[max_mu_idx]):.6f}")
+        print(f"MAXPRED {max_pred_idx:02d}   {float(pred_lengths[max_pred_idx]):.6f}   {float(candidate_real_lengths[max_pred_idx]):.6f}   {float(candidate_mu[max_pred_idx]):.6f}")
     if best_idx >= 0:
-        print(f"BEST  {best_idx:02d}   {float(pred_lengths[best_idx]):.6f}   {float(candidate_real_lengths[best_idx]):.6f}")
-    print("-------------------------------")
-    print(f"GT    --   {anchor['length']:.6f}   {gt_real_length:.6f}")
-    print("-------------------------------")
+        print(f"BEST    {best_idx:02d}   {float(pred_lengths[best_idx]):.6f}   {float(candidate_real_lengths[best_idx]):.6f}   {float(candidate_mu[best_idx]):.6f}")
+    print("------------------------------------------")
     if args.no_vis:
         return
 
