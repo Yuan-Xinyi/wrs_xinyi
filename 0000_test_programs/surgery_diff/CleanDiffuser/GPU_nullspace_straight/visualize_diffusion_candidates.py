@@ -5,6 +5,7 @@ import h5py
 import numpy as np
 import torch
 
+import wrs.modeling.collision_model as mcm
 import wrs.modeling.geometric_model as mgm
 import wrs.visualization.panda.world as wd
 
@@ -48,9 +49,20 @@ def load_anchor(h5_path: Path, traj_id: str | None, point_idx: int | None, rng: 
             'pos': np.asarray(grp['tcp_pos'][idx], dtype=np.float32),
             'direction': normalize_direction(np.asarray(grp.attrs['direction'], dtype=np.float32)),
             'length': float(np.asarray(grp['remaining_length'][idx], dtype=np.float32)),
+            'target_normal': normalize_direction(np.asarray(grp.attrs['target_normal'], dtype=np.float32)),
         }
 
 
+
+
+def rotation_matrix_from_normal(normal: np.ndarray) -> np.ndarray:
+    z_axis = normal / max(np.linalg.norm(normal), 1e-12)
+    helper = np.array([1.0, 0.0, 0.0]) if abs(z_axis[0]) < 0.9 else np.array([0.0, 1.0, 0.0])
+    x_axis = np.cross(helper, z_axis)
+    x_axis = x_axis / max(np.linalg.norm(x_axis), 1e-12)
+    y_axis = np.cross(z_axis, x_axis)
+    y_axis = y_axis / max(np.linalg.norm(y_axis), 1e-12)
+    return np.column_stack((x_axis, y_axis, z_axis))
 
 
 def build_tracker(device: torch.device) -> tuple[GPUNullspaceStraightTracker, torch.device]:
@@ -67,21 +79,18 @@ def build_tracker(device: torch.device) -> tuple[GPUNullspaceStraightTracker, to
     return tracker, device
 
 
-def rollout_length(tracker: GPUNullspaceStraightTracker, tracker_device: torch.device, q: np.ndarray, direction: np.ndarray) -> float:
-    q_batch = torch.from_numpy(q.astype(np.float32)).unsqueeze(0).to(tracker_device)
-    d_batch = torch.from_numpy(direction.astype(np.float32)).unsqueeze(0).to(tracker_device)
-    n_batch = torch.zeros((1, 3), dtype=torch.float32, device=tracker_device)
-    result = tracker.run_batch(q0_batch=q_batch, direction_batch=d_batch, target_normal_batch=n_batch)
-    return float(result.projected_length[0].detach().cpu().item())
-
-def color_cycle(n: int) -> list[np.ndarray]:
-    hues = np.linspace(0.0, 1.0, max(n, 2), endpoint=False)
-    colors = []
-    for h in hues[:n]:
-        rgb = np.array([np.sin(2*np.pi*(h + 0.0))*0.5 + 0.5, np.sin(2*np.pi*(h + 1/3))*0.5 + 0.5, np.sin(2*np.pi*(h + 2/3))*0.5 + 0.5], dtype=np.float32)
-        colors.append(np.clip(rgb, 0.1, 0.95))
-    return colors
-
+def rollout_lengths_batch(
+    tracker: GPUNullspaceStraightTracker,
+    tracker_device: torch.device,
+    q_batch_np: np.ndarray,
+    direction_np: np.ndarray,
+    target_normal_np: np.ndarray,
+) -> np.ndarray:
+    q_batch = torch.from_numpy(q_batch_np.astype(np.float32)).to(tracker_device)
+    direction_batch = torch.from_numpy(np.repeat(direction_np[None, :].astype(np.float32), q_batch_np.shape[0], axis=0)).to(tracker_device)
+    target_normal_batch = torch.from_numpy(np.repeat(target_normal_np[None, :].astype(np.float32), q_batch_np.shape[0], axis=0)).to(tracker_device)
+    result = tracker.run_batch(q0_batch=q_batch, direction_batch=direction_batch, target_normal_batch=target_normal_batch)
+    return result.projected_length.detach().cpu().numpy()
 
 def main() -> None:
     args = parse_args()
@@ -107,17 +116,23 @@ def main() -> None:
     print(f"Sampling {len(q_preds)} candidates took {end_time - start_time:.2f} seconds")
     
     tracker, tracker_device = build_tracker(device)
-    gt_real_length = rollout_length(tracker, tracker_device, anchor['q'], anchor['direction'])
-    candidate_real_lengths = []
-    print(f"GT {anchor['length']:.6f} {gt_real_length:.6f}")
-    for idx, (q_pred, pred_length) in enumerate(zip(q_preds, pred_lengths)):
-        real_length = rollout_length(tracker, tracker_device, q_pred.astype(np.float32), anchor['direction'])
-        candidate_real_lengths.append(real_length)
-        print(f"{idx:02d} {float(pred_length):.6f} {real_length:.6f}")
+    all_q = np.concatenate([anchor['q'][None, :], q_preds.astype(np.float32)], axis=0)
+    all_real_lengths = rollout_lengths_batch(tracker, tracker_device, all_q, anchor['direction'], anchor['target_normal'])
+    gt_real_length = float(all_real_lengths[0])
+    candidate_real_lengths = all_real_lengths[1:]
+    print("label idx  pred_len   real_len")
+    print(f"GT    --   {anchor['length']:.6f}   {gt_real_length:.6f}")
 
-    best_idx = int(np.argmax(candidate_real_lengths)) if candidate_real_lengths else -1
+    best_idx = int(np.argmax(candidate_real_lengths)) if len(candidate_real_lengths) > 0 else -1
+    if len(candidate_real_lengths) > 0:
+        avg_pred_length = float(np.mean(pred_lengths))
+        avg_real_length = float(np.mean(candidate_real_lengths))
+        min_idx = int(np.argmin(candidate_real_lengths))
+        print("-------------------------------")
+        print(f"AVG   --   {avg_pred_length:.6f}   {avg_real_length:.6f}")
+        print(f"MIN   {min_idx:02d}   {float(pred_lengths[min_idx]):.6f}   {float(candidate_real_lengths[min_idx]):.6f}")
     if best_idx >= 0:
-        print(f"BEST {best_idx:02d} {float(pred_lengths[best_idx]):.6f} {float(candidate_real_lengths[best_idx]):.6f} | GT {anchor['length']:.6f} {gt_real_length:.6f}")
+        print(f"BEST  {best_idx:02d}   {float(pred_lengths[best_idx]):.6f}   {float(candidate_real_lengths[best_idx]):.6f}")
 
     if args.no_vis:
         return
@@ -126,18 +141,39 @@ def main() -> None:
     mgm.gen_frame().attach_to(world)
     start = anchor['pos']
     direction = anchor['direction']
-    mgm.gen_arrow(spos=start, epos=start + 0.25 * direction, stick_radius=0.006, rgb=np.array([0.95, 0.15, 0.15])).attach_to(world)
+    plane_size = 1.2
+    plane_rotmat = rotation_matrix_from_normal(anchor['target_normal'])
+    plane_center = start + 0.5 * plane_size * direction
+    mcm.gen_box(
+        xyz_lengths=[plane_size, plane_size, 0.001],
+        pos=plane_center,
+        rotmat=plane_rotmat,
+        rgb=[180/255, 211/255, 217/255],
+        alpha=0.75,
+    ).attach_to(world)
     mgm.gen_sphere(start, radius=0.010, rgb=np.array([0.0, 0.7, 1.0]), alpha=1.0).attach_to(world)
-    mgm.gen_stick(spos=start, epos=start + direction * anchor['length'], radius=0.0025, rgb=np.array([0.0, 0.4, 1.0]), alpha=0.4).attach_to(world)
+    gt_end = start + direction * anchor['length']
+    gt_color = np.array([0.1, 0.75, 0.2], dtype=np.float32)
+    mgm.gen_stick(spos=start, epos=gt_end, radius=0.0045, rgb=gt_color, alpha=0.90).attach_to(world)
+    mgm.gen_sphere(gt_end, radius=0.009, rgb=gt_color, alpha=0.95).attach_to(world)
 
     robot = XArmLite6Miller(enable_cc=True)
     robot.goto_given_conf(anchor['q'])
-    robot.gen_meshmodel(rgb=np.array([0.1, 0.75, 0.2]), alpha=0.5, toggle_tcp_frame=True).attach_to(world)
+    robot.gen_meshmodel(rgb=np.array([0.1, 0.75, 0.2]), alpha=0.55, toggle_tcp_frame=True).attach_to(world)
 
-    for color, q_pred, pred_length in zip(color_cycle(len(q_preds)), q_preds, pred_lengths):
+    default_color = np.array([0.75, 0.75, 0.75], dtype=np.float32)
+    best_color = np.array([0.15, 0.45, 0.95], dtype=np.float32)
+    for idx, (q_pred, pred_length) in enumerate(zip(q_preds, pred_lengths)):
+        color = best_color if idx == best_idx else default_color
+        alpha = 0.55 if idx == best_idx else 0.20
         robot.goto_given_conf(q_pred.astype(np.float32))
-        robot.gen_meshmodel(rgb=color, alpha=float(args.alpha), toggle_tcp_frame=False).attach_to(world)
-        mgm.gen_stick(spos=start, epos=start + direction * float(pred_length), radius=0.002, rgb=color, alpha=0.25).attach_to(world)
+        robot.gen_meshmodel(rgb=color, alpha=alpha, toggle_tcp_frame=False).attach_to(world)
+        pred_end = start + direction * float(pred_length)
+        line_radius = 0.004 if idx == best_idx else 0.0025
+        line_alpha = 0.90 if idx == best_idx else 0.22
+        mgm.gen_stick(spos=start, epos=pred_end, radius=line_radius, rgb=color, alpha=line_alpha).attach_to(world)
+        if idx == best_idx:
+            mgm.gen_sphere(pred_end, radius=0.009, rgb=color, alpha=0.95).attach_to(world)
 
     world.run()
 
