@@ -17,7 +17,7 @@ import wrs.visualization.panda.world as wd
 
 from diffusion import DEFAULT_H5_PATH, DEFAULT_RUN_NAME, DEFAULT_WORKDIR, sample_q_length_from_condition
 from diffusion_sample import JacobianCorrection, load_model, normalize_direction
-from trajectory_generation.xarmlite6_nullspace_straight_demo import NullspaceStraightTracker, TrackerConfig
+from trajectory_generation.xarm_nullspace_straight import NullspaceStraightTracker, TrackerConfig
 from wrs.robot_sim.robots.xarmlite6_wg.xarm6_drill import XArmLite6Miller
 
 

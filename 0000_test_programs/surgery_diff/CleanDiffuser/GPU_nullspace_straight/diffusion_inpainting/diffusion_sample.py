@@ -19,7 +19,7 @@ from diffusion import (
     sample_q_length_from_condition,
 )
 from diffusion import create_model
-from trajectory_generation.xarmlite6_nullspace_straight_demo import TrackerConfig, NullspaceStraightTracker, damped_pseudoinverse
+from trajectory_generation.xarm_nullspace_straight import TrackerConfig, NullspaceStraightTracker, damped_pseudoinverse
 from wrs.robot_sim.robots.xarmlite6_wg.xarm6_drill import XArmLite6Miller
 
 
