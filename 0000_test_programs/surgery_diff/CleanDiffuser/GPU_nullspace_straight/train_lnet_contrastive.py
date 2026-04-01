@@ -15,31 +15,33 @@ except ImportError:
     wandb = None
 from torch.utils.data import DataLoader, Dataset, random_split
 
-from lnet import LNet, lnet_loss
+from lnet_contrastive import LNetContrastive
 from wrs.robot_sim.robots.xarmlite6_wg.xarm6_drill import XArmLite6Miller
 
 BASE_DIR = Path(__file__).resolve().parent
 DEFAULT_H5 = BASE_DIR / 'xarmlite6_gpu_trajectories_100000_sub10.hdf5'
-DEFAULT_WORKDIR = BASE_DIR / 'lnet_runs'
-DEFAULT_RUN_NAME = 'lnet_q_cond_to_length_sub10'
+DEFAULT_WORKDIR = BASE_DIR / 'lnet_contrastive_runs'
+DEFAULT_RUN_NAME = 'lnet_contrastive_q_cond_to_length_sub10'
 
 
 def parse_args() -> argparse.Namespace:
-    parser = argparse.ArgumentParser(description='Train LNet to predict remaining length from q and (pos, direction, normal).')
+    parser = argparse.ArgumentParser(description='Train contrastive LNet on the sub10 trajectory dataset.')
     parser.add_argument('--h5-path', type=Path, default=DEFAULT_H5)
     parser.add_argument('--device', type=str, default='cuda' if torch.cuda.is_available() else 'cpu')
     parser.add_argument('--run-name', type=str, default=DEFAULT_RUN_NAME)
     parser.add_argument('--batch-size', type=int, default=1024)
-    parser.add_argument('--epochs', type=int, default=40)
+    parser.add_argument('--epochs', type=int, default=1000)
     parser.add_argument('--lr', type=float, default=2e-4)
     parser.add_argument('--weight-decay', type=float, default=1e-4)
     parser.add_argument('--val-ratio', type=float, default=0.02)
     parser.add_argument('--seed', type=int, default=0)
-    parser.add_argument('--mse-weight', type=float, default=1.0)
-    parser.add_argument('--rank-weight', type=float, default=0.2)
-    parser.add_argument('--rank-margin', type=float, default=0.01)
+    parser.add_argument('--pair-threshold', type=float, default=0.05)
+    parser.add_argument('--pair-margin', type=float, default=0.05)
+    parser.add_argument('--mse-weight', type=float, default=0.2)
+    parser.add_argument('--rank-weight', type=float, default=1.0)
+    parser.add_argument('--max-pairs', type=int, default=4096)
     parser.add_argument('--print-every', type=int, default=200)
-    parser.add_argument('--wandb-project', type=str, default='xarm-lnet')
+    parser.add_argument('--wandb-project', type=str, default='xarm-lnet-contrastive')
     parser.add_argument('--wandb-name', type=str, default=None)
     parser.add_argument('--wandb-mode', choices=['online', 'offline', 'disabled'], default='online')
     return parser.parse_args()
@@ -111,31 +113,34 @@ def compute_min_max(dataset: Dataset) -> tuple[torch.Tensor, torch.Tensor]:
     return x.min(dim=0).values, x.max(dim=0).values
 
 
-def evaluate(model: LNet, loader: DataLoader, device: torch.device, args: argparse.Namespace) -> tuple[float, dict]:
+def evaluate(model: LNetContrastive, loader: DataLoader, device: torch.device) -> tuple[float, dict]:
     model.eval()
     total_loss = 0.0
-    total_mse = 0.0
     total_rank = 0.0
+    total_mse = 0.0
     total_abs = 0.0
     total_count = 0
+    total_pairs = 0
     with torch.no_grad():
         for q, cond, target in loader:
             q = q.to(device)
             cond = cond.to(device)
             target = target.to(device)
-            pred = model(q, cond)
-            loss, aux = lnet_loss(pred, target, args.mse_weight, args.rank_weight, args.rank_margin)
+            loss, aux = model.compute_loss(q, cond, target)
+            _, pred_length = model(q, cond)
             bs = q.shape[0]
             total_loss += float(loss) * bs
-            total_mse += aux['mse'] * bs
-            total_rank += aux['rank'] * bs
-            total_abs += float((pred - target).abs().mean()) * bs
+            total_rank += aux['rank_loss'] * bs
+            total_mse += aux['mse_loss'] * bs
+            total_abs += float((pred_length - target).abs().mean()) * bs
             total_count += bs
+            total_pairs += aux['pair_count']
     denom = max(total_count, 1)
     return total_loss / denom, {
-        'mse': total_mse / denom,
-        'rank': total_rank / denom,
+        'rank_loss': total_rank / denom,
+        'mse_loss': total_mse / denom,
         'mae': total_abs / denom,
+        'pair_count': total_pairs,
     }
 
 
@@ -153,7 +158,17 @@ def main() -> None:
 
     q_limits = torch.from_numpy(XArmLite6Miller(enable_cc=False).jnt_ranges.astype(np.float32))
     in_min, in_max = compute_min_max(train_set)
-    model = LNet(q_min=q_limits[:, 0], q_max=q_limits[:, 1], in_min=in_min, in_max=in_max).to(device)
+    model = LNetContrastive(
+        q_min=q_limits[:, 0],
+        q_max=q_limits[:, 1],
+        in_min=in_min,
+        in_max=in_max,
+        pair_threshold=args.pair_threshold,
+        pair_margin=args.pair_margin,
+        mse_weight=args.mse_weight,
+        rank_weight=args.rank_weight,
+        max_pairs=args.max_pairs,
+    ).to(device)
     optimizer = torch.optim.AdamW(model.parameters(), lr=args.lr, weight_decay=args.weight_decay)
 
     use_wandb = args.wandb_mode != 'disabled' and wandb is not None
@@ -177,34 +192,43 @@ def main() -> None:
             q = q.to(device)
             cond = cond.to(device)
             target = target.to(device)
-            pred = model(q, cond)
-            loss, aux = lnet_loss(pred, target, args.mse_weight, args.rank_weight, args.rank_margin)
+            loss, aux = model.compute_loss(q, cond, target)
             optimizer.zero_grad(set_to_none=True)
             loss.backward()
             optimizer.step()
             global_step += 1
+
             if use_wandb:
                 wandb.log({
                     'train/loss': float(loss),
-                    'train/mse': aux['mse'],
-                    'train/rank': aux['rank'],
+                    'train/rank_loss': aux['rank_loss'],
+                    'train/mse_loss': aux['mse_loss'],
+                    'train/pair_count': aux['pair_count'],
                     'epoch': epoch,
                     'step': global_step,
                 }, step=global_step)
             if args.print_every > 0 and global_step % args.print_every == 0:
-                print(f'[train] epoch={epoch:03d} step={global_step:06d} loss={float(loss):.6f} mse={aux["mse"]:.6f} rank={aux["rank"]:.6f}')
+                print(
+                    f'[train] epoch={epoch:03d} step={global_step:06d} loss={float(loss):.6f} '
+                    f'rank={aux["rank_loss"]:.6f} mse={aux["mse_loss"]:.6f} pairs={aux["pair_count"]}'
+                )
 
-        val_loss, val_aux = evaluate(model, val_loader, device, args)
-        print(f'[eval] epoch={epoch:03d} val_loss={val_loss:.6f} val_mse={val_aux["mse"]:.6f} val_rank={val_aux["rank"]:.6f} val_mae={val_aux["mae"]:.6f}')
+        val_loss, val_aux = evaluate(model, val_loader, device)
+        print(
+            f'[eval] epoch={epoch:03d} val_loss={val_loss:.6f} val_rank={val_aux["rank_loss"]:.6f} '
+            f'val_mse={val_aux["mse_loss"]:.6f} val_mae={val_aux["mae"]:.6f} pairs={val_aux["pair_count"]}'
+        )
         if use_wandb:
             wandb.log({
                 'eval/loss': val_loss,
-                'eval/mse': val_aux['mse'],
-                'eval/rank': val_aux['rank'],
+                'eval/rank_loss': val_aux['rank_loss'],
+                'eval/mse_loss': val_aux['mse_loss'],
                 'eval/mae': val_aux['mae'],
+                'eval/pair_count': val_aux['pair_count'],
                 'epoch': epoch,
                 'step': global_step,
             }, step=global_step)
+
         state = {
             'model': model.state_dict(),
             'q_min': q_limits[:, 0],
@@ -215,11 +239,11 @@ def main() -> None:
             'best_val': best_val,
             'epoch': epoch,
         }
-        torch.save(state, run_dir / 'lnet_latest.pt')
+        torch.save(state, run_dir / 'lnet_contrastive_latest.pt')
         if val_loss < best_val:
             best_val = val_loss
             state['best_val'] = best_val
-            torch.save(state, run_dir / 'lnet_best.pt')
+            torch.save(state, run_dir / 'lnet_contrastive_best.pt')
             print(f'[eval] new_best={best_val:.6f}')
 
     meta_payload = {

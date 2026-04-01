@@ -12,16 +12,19 @@ import wrs.modeling.geometric_model as mgm
 import wrs.visualization.panda.world as wd
 
 from lnet import LNet
+from lnet_contrastive import LNetContrastive
 from wrs.robot_sim.robots.xarmlite6_wg.xarm6_drill import XArmLite6Miller
 
 BASE_DIR = Path(__file__).resolve().parent
 DEFAULT_H5 = BASE_DIR / 'xarmlite6_gpu_trajectories_100000_sub10.hdf5'
-DEFAULT_CKPT = BASE_DIR / 'lnet_runs' / 'lnet_q_cond_to_length_sub10' / 'lnet_best.pt'
+DEFAULT_LNET_CKPT = BASE_DIR / 'lnet_runs' / 'lnet_q_cond_to_length_sub10' / 'lnet_best.pt'
+DEFAULT_CONTRASTIVE_CKPT = BASE_DIR / 'lnet_contrastive_runs' / 'lnet_contrastive_q_cond_to_length_sub10' / 'lnet_contrastive_best.pt'
 
 
 def parse_args() -> argparse.Namespace:
-    parser = argparse.ArgumentParser(description='Evaluate a trained LNet on one dataset sample or a random one.')
-    parser.add_argument('--ckpt', type=Path, default=DEFAULT_CKPT)
+    parser = argparse.ArgumentParser(description='Compare LNet and contrastive LNet on one sample.')
+    parser.add_argument('--lnet-ckpt', type=Path, default=DEFAULT_LNET_CKPT)
+    parser.add_argument('--contrastive-ckpt', type=Path, default=DEFAULT_CONTRASTIVE_CKPT)
     parser.add_argument('--h5-path', type=Path, default=DEFAULT_H5)
     parser.add_argument('--device', type=str, default='cuda' if torch.cuda.is_available() else 'cpu')
     parser.add_argument('--traj-id', type=str, default=None)
@@ -31,7 +34,7 @@ def parse_args() -> argparse.Namespace:
     return parser.parse_args()
 
 
-def load_model(ckpt_path: Path, device: torch.device) -> LNet:
+def load_lnet(ckpt_path: Path, device: torch.device) -> LNet:
     ckpt = torch.load(ckpt_path, map_location=device, weights_only=False)
     model = LNet(
         q_min=ckpt['q_min'],
@@ -44,6 +47,23 @@ def load_model(ckpt_path: Path, device: torch.device) -> LNet:
     return model
 
 
+def load_contrastive(ckpt_path: Path, device: torch.device) -> LNetContrastive:
+    ckpt = torch.load(ckpt_path, map_location=device, weights_only=False)
+    meta_args = ckpt.get('args', {})
+    model = LNetContrastive(
+        q_min=ckpt['q_min'],
+        q_max=ckpt['q_max'],
+        in_min=ckpt['in_min'],
+        in_max=ckpt['in_max'],
+        pair_threshold=float(meta_args.get('pair_threshold', 0.05)),
+        pair_margin=float(meta_args.get('pair_margin', 0.05)),
+        mse_weight=float(meta_args.get('mse_weight', 0.2)),
+        rank_weight=float(meta_args.get('rank_weight', 1.0)),
+        max_pairs=int(meta_args.get('max_pairs', 4096)),
+    ).to(device)
+    model.load_state_dict(ckpt['model'])
+    model.eval()
+    return model
 
 
 def rotation_matrix_from_normal(normal: np.ndarray) -> np.ndarray:
@@ -54,6 +74,7 @@ def rotation_matrix_from_normal(normal: np.ndarray) -> np.ndarray:
     y_axis = np.cross(z_axis, x_axis)
     y_axis = y_axis / max(np.linalg.norm(y_axis), 1e-12)
     return np.column_stack((x_axis, y_axis, z_axis))
+
 
 def load_sample(h5_path: Path, traj_id: str | None, point_idx: int | None, seed: int | None) -> dict:
     rng = np.random.default_rng(seed if seed is not None else int(np.random.SeedSequence().entropy))
@@ -77,18 +98,28 @@ def load_sample(h5_path: Path, traj_id: str | None, point_idx: int | None, seed:
 def main() -> None:
     args = parse_args()
     device = torch.device(args.device)
-    model = load_model(args.ckpt, device)
+    lnet = load_lnet(args.lnet_ckpt, device)
+    contrastive = load_contrastive(args.contrastive_ckpt, device)
     sample = load_sample(args.h5_path, args.traj_id, args.point_idx, args.seed)
 
     q = torch.from_numpy(sample['q']).float().unsqueeze(0).to(device)
     cond = torch.from_numpy(np.concatenate([sample['pos'], sample['direction'], sample['normal']], axis=0)).float().unsqueeze(0).to(device)
-    with torch.no_grad():
-        pred = float(model(q, cond).item())
-    grad = model.get_gradient(q, cond).detach().cpu().numpy()[0]
 
-    abs_error = abs(pred - sample['target_length'])
-    print(f"pred_length={pred:.2f} target_length={sample['target_length']:.2f} abs_error={abs_error:.2f}")
-    print("dq_grad=" + np.array2string(grad, precision=2, suppress_small=False))
+    with torch.no_grad():
+        lnet_pred = float(lnet(q, cond).item())
+        contrastive_score, contrastive_pred = contrastive(q, cond)
+        contrastive_score = float(contrastive_score.item())
+        contrastive_pred = float(contrastive_pred.item())
+
+    lnet_grad = lnet.get_gradient(q, cond).detach().cpu().numpy()[0]
+    contrastive_grad = contrastive.get_guidance_gradient(q, cond).detach().cpu().numpy()[0]
+    target = float(sample['target_length'])
+
+    print(f'target_length={target:.2f}')
+    print(f'lnet_pred={lnet_pred:.2f} lnet_err={abs(lnet_pred - target):.2f}')
+    print('lnet_dq_grad=' + np.array2string(lnet_grad, precision=2, suppress_small=False))
+    print(f'contrastive_pred={contrastive_pred:.2f} contrastive_err={abs(contrastive_pred - target):.2f} score={contrastive_score:.2f}')
+    print('contrastive_dq_grad=' + np.array2string(contrastive_grad, precision=2, suppress_small=False))
 
     if args.no_vis:
         return
@@ -120,16 +151,21 @@ def main() -> None:
     mgm.gen_arrow(spos=pos, epos=pos + normal * 0.18, rgb=np.array([0.1, 0.5, 1.0]), alpha=0.9).attach_to(world)
 
     gt_color = np.array([0.1, 0.75, 0.2], dtype=np.float32)
-    pred_color = np.array([0.15, 0.45, 0.95], dtype=np.float32)
-    gt_end = pos + direction * float(sample['target_length'])
-    pred_end = pos + direction * float(pred)
+    lnet_color = np.array([0.15, 0.45, 0.95], dtype=np.float32)
+    contrastive_color = np.array([0.95, 0.55, 0.10], dtype=np.float32)
+    gt_end = pos + direction * target
+    lnet_end = pos + direction * lnet_pred
+    contrastive_end = pos + direction * contrastive_pred
 
     robot.gen_meshmodel(rgb=gt_color, alpha=0.55, toggle_tcp_frame=True).attach_to(world)
     mgm.gen_stick(spos=pos, epos=gt_end, radius=0.0045, rgb=gt_color, alpha=0.90).attach_to(world)
     mgm.gen_sphere(gt_end, radius=0.009, rgb=gt_color, alpha=0.95).attach_to(world)
 
-    mgm.gen_stick(spos=pos, epos=pred_end, radius=0.0045, rgb=pred_color, alpha=0.95).attach_to(world)
-    mgm.gen_sphere(pred_end, radius=0.009, rgb=pred_color, alpha=0.95).attach_to(world)
+    mgm.gen_stick(spos=pos, epos=lnet_end, radius=0.0045, rgb=lnet_color, alpha=0.95).attach_to(world)
+    mgm.gen_sphere(lnet_end, radius=0.009, rgb=lnet_color, alpha=0.95).attach_to(world)
+
+    mgm.gen_stick(spos=pos, epos=contrastive_end, radius=0.0045, rgb=contrastive_color, alpha=0.95).attach_to(world)
+    mgm.gen_sphere(contrastive_end, radius=0.009, rgb=contrastive_color, alpha=0.95).attach_to(world)
 
     world.run()
 
