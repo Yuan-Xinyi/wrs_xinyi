@@ -1,19 +1,25 @@
 import argparse
 import json
+import sys
 from pathlib import Path
+
+BASE_DIR = Path(__file__).resolve().parent
+PARENT_DIR = BASE_DIR.parent
+if str(PARENT_DIR) not in sys.path:
+    sys.path.insert(0, str(PARENT_DIR))
 
 import numpy as np
 import torch
 
-from kinematic_diffusion_common import (
+from diffusion import (
     DEFAULT_RUN_NAME,
     DEFAULT_WORKDIR,
     denormalize_q,
     normalize_condition,
     sample_q_length_from_condition,
 )
-from kinematic_diffusion_common import create_model
-from xarmlite6_nullspace_straight_demo import TrackerConfig, NullspaceStraightTracker, damped_pseudoinverse
+from diffusion import create_model
+from trajectory_generation.xarmlite6_nullspace_straight_demo import TrackerConfig, NullspaceStraightTracker, damped_pseudoinverse
 from wrs.robot_sim.robots.xarmlite6_wg.xarm6_drill import XArmLite6Miller
 
 

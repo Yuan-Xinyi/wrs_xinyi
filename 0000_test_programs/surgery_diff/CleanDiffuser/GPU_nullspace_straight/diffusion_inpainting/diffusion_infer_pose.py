@@ -7,8 +7,8 @@ import wrs.modeling.collision_model as mcm
 import wrs.modeling.geometric_model as mgm
 import wrs.visualization.panda.world as wd
 
-from kinematic_diffusion_common import DEFAULT_RUN_NAME, DEFAULT_WORKDIR, sample_q_length_from_condition
-from sample_kinematic_dit_inpainting import load_model, normalize_direction
+from diffusion import DEFAULT_RUN_NAME, DEFAULT_WORKDIR, sample_q_length_from_condition
+from diffusion_sample import load_model, normalize_direction
 from wrs.robot_sim.robots.xarmlite6_wg.xarm6_drill import XArmLite6Miller
 
 BUNDLE_PATH = DEFAULT_WORKDIR / DEFAULT_RUN_NAME / "bundle_latest.pt"

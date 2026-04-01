@@ -9,16 +9,22 @@ import jax
 import jax2torch
 import numpy as np
 import torch
+import sys
+
+PARENT_DIR = BASE_DIR.parent
+if str(PARENT_DIR) not in sys.path:
+    sys.path.insert(0, str(PARENT_DIR))
 
 from lnet import LNet
 from lnet_contrastive import LNetContrastive
 import wrs.neuro.xarm_lite6_neuro as xarm6_gpu
 from wrs.robot_sim.robots.xarmlite6_wg.sphere_collision_checker import SphereCollisionChecker
-from xarmlite6_gpu_nullspave_straight_demo import GPUNullspaceStraightTracker, TrackerConfig
+from trajectory_generation.xarmlite6_gpu_nullspave_straight_demo import GPUNullspaceStraightTracker, TrackerConfig
 
-BASE_DIR = Path(__file__).resolve().parent
-DEFAULT_LNET_CKPT = BASE_DIR / 'lnet_runs' / 'lnet_q_cond_to_length_sub10' / 'lnet_best.pt'
-DEFAULT_CONTRASTIVE_CKPT = BASE_DIR / 'lnet_contrastive_runs' / 'lnet_contrastive_q_cond_to_length_sub10' / 'lnet_contrastive_best.pt'
+from paths import LNET_CONTRASTIVE_RUNS_DIR, LNET_RUNS_DIR
+
+DEFAULT_LNET_CKPT = LNET_RUNS_DIR / 'lnet_q_cond_to_length_sub10' / 'lnet_best.pt'
+DEFAULT_CONTRASTIVE_CKPT = LNET_CONTRASTIVE_RUNS_DIR / 'lnet_contrastive_q_cond_to_length_sub10' / 'lnet_contrastive_best.pt'
 
 
 def parse_args() -> argparse.Namespace:

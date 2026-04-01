@@ -14,10 +14,10 @@ import wrs.neuro.xarm_lite6_neuro as xarm6_gpu
 import wrs.robot_sim.robots.xarmlite6_wg.xarm6_drill as xarm6_sim
 from wrs.robot_sim.robots.xarmlite6_wg.sphere_collision_checker import SphereCollisionChecker
 
-DRAWING_HELPER_DIR = Path(__file__).resolve().parents[1] / "Drawing_neuro_straight"
-if str(DRAWING_HELPER_DIR) not in sys.path:
-    sys.path.append(str(DRAWING_HELPER_DIR))
-import helper_functions as helpers
+PARENT_DIR = Path(__file__).resolve().parent.parent
+if str(PARENT_DIR) not in sys.path:
+    sys.path.insert(0, str(PARENT_DIR))
+from utils import helper_functions as helpers
 
 # construct normalized batch
 def normalize_batch(vec: torch.Tensor) -> torch.Tensor:

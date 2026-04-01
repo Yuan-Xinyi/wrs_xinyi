@@ -11,16 +11,16 @@ import wrs.modeling.collision_model as mcm
 import wrs.modeling.geometric_model as mgm
 import wrs.visualization.panda.world as wd
 
-from lnet_contrastive import LNetContrastive
+from lnet import LNet
+from paths import DEFAULT_H5, LNET_RUNS_DIR
 from wrs.robot_sim.robots.xarmlite6_wg.xarm6_drill import XArmLite6Miller
 
 BASE_DIR = Path(__file__).resolve().parent
-DEFAULT_H5 = BASE_DIR / 'xarmlite6_gpu_trajectories_100000_sub10.hdf5'
-DEFAULT_CKPT = BASE_DIR / 'lnet_contrastive_runs' / 'lnet_contrastive_q_cond_to_length_sub10' / 'lnet_contrastive_best.pt'
+DEFAULT_CKPT = LNET_RUNS_DIR / 'lnet_q_cond_to_length_sub10' / 'lnet_best.pt'
 
 
 def parse_args() -> argparse.Namespace:
-    parser = argparse.ArgumentParser(description='Evaluate a trained contrastive LNet on one dataset sample.')
+    parser = argparse.ArgumentParser(description='Evaluate a trained LNet on one dataset sample or a random one.')
     parser.add_argument('--ckpt', type=Path, default=DEFAULT_CKPT)
     parser.add_argument('--h5-path', type=Path, default=DEFAULT_H5)
     parser.add_argument('--device', type=str, default='cuda' if torch.cuda.is_available() else 'cpu')
@@ -31,19 +31,13 @@ def parse_args() -> argparse.Namespace:
     return parser.parse_args()
 
 
-def load_model(ckpt_path: Path, device: torch.device) -> LNetContrastive:
+def load_model(ckpt_path: Path, device: torch.device) -> LNet:
     ckpt = torch.load(ckpt_path, map_location=device, weights_only=False)
-    args = ckpt.get('args', {})
-    model = LNetContrastive(
+    model = LNet(
         q_min=ckpt['q_min'],
         q_max=ckpt['q_max'],
         in_min=ckpt['in_min'],
         in_max=ckpt['in_max'],
-        pair_threshold=float(args.get('pair_threshold', 0.05)),
-        pair_margin=float(args.get('pair_margin', 0.05)),
-        mse_weight=float(args.get('mse_weight', 0.2)),
-        rank_weight=float(args.get('rank_weight', 1.0)),
-        max_pairs=int(args.get('max_pairs', 4096)),
     ).to(device)
     model.load_state_dict(ckpt['model'])
     model.eval()
@@ -89,13 +83,11 @@ def main() -> None:
     q = torch.from_numpy(sample['q']).float().unsqueeze(0).to(device)
     cond = torch.from_numpy(np.concatenate([sample['pos'], sample['direction'], sample['normal']], axis=0)).float().unsqueeze(0).to(device)
     with torch.no_grad():
-        score, pred_length = model(q, cond)
-        score = float(score.item())
-        pred_length = float(pred_length.item())
-    grad = model.get_guidance_gradient(q, cond).detach().cpu().numpy()[0]
+        pred = float(model(q, cond).item())
+    grad = model.get_gradient(q, cond).detach().cpu().numpy()[0]
 
-    abs_error = abs(pred_length - sample['target_length'])
-    print(f"pred_length={pred_length:.2f} target_length={sample['target_length']:.2f} abs_error={abs_error:.2f}")
+    abs_error = abs(pred - sample['target_length'])
+    print(f"pred_length={pred:.2f} target_length={sample['target_length']:.2f} abs_error={abs_error:.2f}")
     print("dq_grad=" + np.array2string(grad, precision=2, suppress_small=False))
 
     if args.no_vis:
@@ -130,7 +122,7 @@ def main() -> None:
     gt_color = np.array([0.1, 0.75, 0.2], dtype=np.float32)
     pred_color = np.array([0.15, 0.45, 0.95], dtype=np.float32)
     gt_end = pos + direction * float(sample['target_length'])
-    pred_end = pos + direction * float(pred_length)
+    pred_end = pos + direction * float(pred)
 
     robot.gen_meshmodel(rgb=gt_color, alpha=0.55, toggle_tcp_frame=True).attach_to(world)
     mgm.gen_stick(spos=pos, epos=gt_end, radius=0.0045, rgb=gt_color, alpha=0.90).attach_to(world)

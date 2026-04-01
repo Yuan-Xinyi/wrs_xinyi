@@ -27,12 +27,12 @@ def parse_args() -> argparse.Namespace:
     parser.add_argument(
         "--input",
         type=Path,
-        default=Path("0000_test_programs/surgery_diff/CleanDiffuser/GPU_nullspace_straight/xarmlite6_gpu_trajectories_100000.hdf5"),
+        default=Path(__file__).resolve().parent.parent / 'datasets' / 'xarmlite6_gpu_trajectories_100000.hdf5',
     )
     parser.add_argument(
         "--output",
         type=Path,
-        default=Path("0000_test_programs/surgery_diff/CleanDiffuser/GPU_nullspace_straight/xarmlite6_gpu_trajectories_100000_sub10.hdf5"),
+        default=Path(__file__).resolve().parent.parent / 'datasets' / 'xarmlite6_gpu_trajectories_100000_sub10.hdf5',
     )
     parser.add_argument("--stride", type=int, default=10)
     parser.add_argument("--overwrite", action="store_true")

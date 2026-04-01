@@ -12,17 +12,14 @@ from scipy.spatial.transform import Rotation
 from torch.utils.data import Dataset, DataLoader, WeightedRandomSampler
 
 BASE_DIR = Path(__file__).resolve().parent
-CLEANDIFFUSER_ROOT = BASE_DIR.parent
+CLEANDIFFUSER_ROOT = BASE_DIR.parent.parent
 if str(CLEANDIFFUSER_ROOT) not in sys.path:
     sys.path.insert(0, str(CLEANDIFFUSER_ROOT))
 
 from cleandiffuser.diffusion.ddpm import DDPM
 from cleandiffuser.nn_diffusion.dit import DiT1d
 
-DEFAULT_H5_PATH = BASE_DIR / "xarmlite6_gpu_trajectories_100000_sub10.hdf5"
-DEFAULT_CACHE_DIR = BASE_DIR / "kinematic_token_cache_qL_normal_sub10"
-DEFAULT_WORKDIR = BASE_DIR / "dit_kinematic_inpainting_runs"
-DEFAULT_RUN_NAME = "ddpm32_dit_inpaint_qL_from_posdirnormal_sub10"
+from paths import DEFAULT_CACHE_DIR, DEFAULT_H5_PATH, DEFAULT_RUN_NAME, DEFAULT_WORKDIR
 
 
 @dataclass

@@ -10,7 +10,7 @@ def parse_args() -> argparse.Namespace:
     parser.add_argument(
         "--input",
         type=str,
-        default=str(Path(__file__).resolve().parent / "xarmlite6_gpu_trajectories.hdf5"),
+        default=str((Path(__file__).resolve().parent.parent / 'datasets' / 'xarmlite6_gpu_trajectories_100000_sub10.hdf5')),
         help="Path to HDF5 dataset.",
     )
     parser.add_argument(

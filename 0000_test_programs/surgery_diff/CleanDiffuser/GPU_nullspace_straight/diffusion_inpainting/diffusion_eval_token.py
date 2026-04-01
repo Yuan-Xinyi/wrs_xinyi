@@ -6,8 +6,8 @@ import h5py
 import numpy as np
 import torch
 
-from kinematic_diffusion_common import DEFAULT_H5_PATH, DEFAULT_RUN_NAME, DEFAULT_WORKDIR, sample_q_length_from_condition
-from sample_kinematic_dit_inpainting import load_model, normalize_direction
+from diffusion import DEFAULT_H5_PATH, DEFAULT_RUN_NAME, DEFAULT_WORKDIR, sample_q_length_from_condition
+from diffusion_sample import load_model, normalize_direction
 
 
 def parse_args() -> argparse.Namespace:

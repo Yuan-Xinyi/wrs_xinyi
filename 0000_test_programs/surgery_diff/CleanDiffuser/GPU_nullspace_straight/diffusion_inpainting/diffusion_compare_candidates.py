@@ -1,5 +1,11 @@
 import argparse
+import sys
 from pathlib import Path
+
+BASE_DIR = Path(__file__).resolve().parent
+PARENT_DIR = BASE_DIR.parent
+if str(PARENT_DIR) not in sys.path:
+    sys.path.insert(0, str(PARENT_DIR))
 
 import numpy as np
 import torch
@@ -8,13 +14,13 @@ import wrs.modeling.collision_model as mcm
 import wrs.modeling.geometric_model as mgm
 import wrs.visualization.panda.world as wd
 
-from kinematic_diffusion_common import DEFAULT_RUN_NAME, DEFAULT_WORKDIR, sample_q_length_from_condition
-from sample_kinematic_dit_inpainting import JacobianCorrection, load_model, normalize_direction
+from diffusion import DEFAULT_RUN_NAME, DEFAULT_WORKDIR, sample_q_length_from_condition
+from diffusion_sample import JacobianCorrection, load_model, normalize_direction
 import jax2torch
 from wrs.robot_sim.robots.xarmlite6_wg.xarm6_drill import XArmLite6Miller
 from wrs.robot_sim.robots.xarmlite6_wg.sphere_collision_checker import SphereCollisionChecker
 import wrs.neuro.xarm_lite6_neuro as xarm6_gpu
-from xarmlite6_gpu_nullspave_straight_demo import GPUNullspaceStraightTracker, TrackerConfig, position_jacobian_batch, directional_manipulability_batch
+from trajectory_generation.xarmlite6_gpu_nullspave_straight_demo import GPUNullspaceStraightTracker, TrackerConfig, position_jacobian_batch, directional_manipulability_batch
 import jax
 
 

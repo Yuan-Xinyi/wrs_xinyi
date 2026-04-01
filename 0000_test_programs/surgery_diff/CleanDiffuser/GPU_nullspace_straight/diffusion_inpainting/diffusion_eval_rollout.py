@@ -1,6 +1,12 @@
 import argparse
 import json
+import sys
 from pathlib import Path
+
+BASE_DIR = Path(__file__).resolve().parent
+PARENT_DIR = BASE_DIR.parent
+if str(PARENT_DIR) not in sys.path:
+    sys.path.insert(0, str(PARENT_DIR))
 
 import h5py
 import numpy as np
@@ -9,9 +15,9 @@ import torch
 import wrs.modeling.geometric_model as mgm
 import wrs.visualization.panda.world as wd
 
-from kinematic_diffusion_common import DEFAULT_H5_PATH, DEFAULT_RUN_NAME, DEFAULT_WORKDIR, sample_q_length_from_condition
-from sample_kinematic_dit_inpainting import JacobianCorrection, load_model, normalize_direction
-from xarmlite6_nullspace_straight_demo import NullspaceStraightTracker, TrackerConfig
+from diffusion import DEFAULT_H5_PATH, DEFAULT_RUN_NAME, DEFAULT_WORKDIR, sample_q_length_from_condition
+from diffusion_sample import JacobianCorrection, load_model, normalize_direction
+from trajectory_generation.xarmlite6_nullspace_straight_demo import NullspaceStraightTracker, TrackerConfig
 from wrs.robot_sim.robots.xarmlite6_wg.xarm6_drill import XArmLite6Miller
 
 

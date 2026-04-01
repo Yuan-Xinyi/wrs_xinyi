@@ -11,7 +11,7 @@ try:
 except ImportError:
     wandb = None
 
-from kinematic_diffusion_common import (
+from diffusion import (
     DEFAULT_CACHE_DIR,
     DEFAULT_H5_PATH,
     DEFAULT_RUN_NAME,

@@ -13,12 +13,12 @@ import wrs.visualization.panda.world as wd
 
 from lnet import LNet
 from lnet_contrastive import LNetContrastive
+from paths import DEFAULT_H5, LNET_CONTRASTIVE_RUNS_DIR, LNET_RUNS_DIR
 from wrs.robot_sim.robots.xarmlite6_wg.xarm6_drill import XArmLite6Miller
 
 BASE_DIR = Path(__file__).resolve().parent
-DEFAULT_H5 = BASE_DIR / 'xarmlite6_gpu_trajectories_100000_sub10.hdf5'
-DEFAULT_LNET_CKPT = BASE_DIR / 'lnet_runs' / 'lnet_q_cond_to_length_sub10' / 'lnet_best.pt'
-DEFAULT_CONTRASTIVE_CKPT = BASE_DIR / 'lnet_contrastive_runs' / 'lnet_contrastive_q_cond_to_length_sub10' / 'lnet_contrastive_best.pt'
+DEFAULT_LNET_CKPT = LNET_RUNS_DIR / 'lnet_q_cond_to_length_sub10' / 'lnet_best.pt'
+DEFAULT_CONTRASTIVE_CKPT = LNET_CONTRASTIVE_RUNS_DIR / 'lnet_contrastive_q_cond_to_length_sub10' / 'lnet_contrastive_best.pt'
 
 
 def parse_args() -> argparse.Namespace:

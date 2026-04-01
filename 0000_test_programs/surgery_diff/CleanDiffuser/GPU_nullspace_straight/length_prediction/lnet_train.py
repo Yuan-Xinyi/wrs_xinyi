@@ -18,9 +18,10 @@ from torch.utils.data import DataLoader, Dataset, random_split
 from lnet import LNet, lnet_loss
 from wrs.robot_sim.robots.xarmlite6_wg.xarm6_drill import XArmLite6Miller
 
+from paths import DEFAULT_H5, LNET_RUNS_DIR
+
 BASE_DIR = Path(__file__).resolve().parent
-DEFAULT_H5 = BASE_DIR / 'xarmlite6_gpu_trajectories_100000_sub10.hdf5'
-DEFAULT_WORKDIR = BASE_DIR / 'lnet_runs'
+DEFAULT_WORKDIR = LNET_RUNS_DIR
 DEFAULT_RUN_NAME = 'lnet_q_cond_to_length_sub10'
 
 
