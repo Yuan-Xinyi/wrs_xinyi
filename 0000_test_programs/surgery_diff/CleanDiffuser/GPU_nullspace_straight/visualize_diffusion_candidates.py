@@ -27,7 +27,7 @@ def parse_args() -> argparse.Namespace:
     parser.add_argument('--bundle', type=Path, default=DEFAULT_WORKDIR / DEFAULT_RUN_NAME / 'bundle_latest.pt')
     parser.add_argument('--device', type=str, default='cuda' if torch.cuda.is_available() else 'cpu')
     parser.add_argument('--seed', type=int, default=None)
-    parser.add_argument('--n-samples', type=int, default=128)
+    parser.add_argument('--n-samples', type=int, default=16)
     parser.add_argument('--sample-steps', type=int, default=None)
     parser.add_argument('--temperature', type=float, default=1.0)
     parser.add_argument('--correction-iters', type=int, default=50)
@@ -171,20 +171,16 @@ def main() -> None:
             mu=float(candidate_mu[min_pos_idx]),
             pos=f'{float(pos_errs[min_pos_idx]) * 1e3:.3f}',
         ))
-    close_mask = (pos_errs * 1e3) <= 3.0
-    close_indices = np.flatnonzero(close_mask)
-    if close_indices.size > 0:
-        print('--------------------------------------------------------------------------')
-        print('candidates with raw pos_err_mm <= 10.000')
-        for idx in close_indices.tolist():
-            print(row_fmt.format(
-                label='CLOSE',
-                idx=f'{idx:02d}',
-                pred=f'{float(pred_lengths[idx]):.6f}',
-                real=float(candidate_real_lengths[idx]),
-                mu=float(candidate_mu[idx]),
-                pos=f'{float(pos_errs[idx]) * 1e3:.3f}',
-            ))
+    print('--------------------------------------------------------------------------')
+    for idx in range(len(q_preds)):
+        print(row_fmt.format(
+            label='CAND',
+            idx=f'{idx:02d}',
+            pred=f'{float(pred_lengths[idx]):.6f}',
+            real=float(candidate_real_lengths[idx]),
+            mu=float(candidate_mu[idx]),
+            pos=f'{float(pos_errs[idx]) * 1e3:.3f}',
+        ))
     print('--------------------------------------------------------------------------')
     if args.no_vis:
         return
