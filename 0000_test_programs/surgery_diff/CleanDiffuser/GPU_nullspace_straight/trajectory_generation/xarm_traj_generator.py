@@ -12,7 +12,7 @@ import torch
 from wrs.robot_sim.robots.xarmlite6_wg.sphere_collision_checker import SphereCollisionChecker
 
 
-SCRIPT_PATH = Path(__file__).resolve().parent / "xarmlite6_gpu_nullspave_straight_demo.py"
+SCRIPT_PATH = Path(__file__).resolve().parent / "xarm_nullspave_straight_gpu.py"
 
 
 def load_gpu_demo_module():

@@ -20,7 +20,7 @@ import jax2torch
 from wrs.robot_sim.robots.xarmlite6_wg.xarm6_drill import XArmLite6Miller
 from wrs.robot_sim.robots.xarmlite6_wg.sphere_collision_checker import SphereCollisionChecker
 import wrs.neuro.xarm_lite6_neuro as xarm6_gpu
-from trajectory_generation.xarmlite6_gpu_nullspave_straight_demo import GPUNullspaceStraightTracker, TrackerConfig, position_jacobian_batch, directional_manipulability_batch
+from trajectory_generation.xarm_nullspave_straight_gpu import GPUNullspaceStraightTracker, TrackerConfig, position_jacobian_batch, directional_manipulability_batch
 import jax
 
 

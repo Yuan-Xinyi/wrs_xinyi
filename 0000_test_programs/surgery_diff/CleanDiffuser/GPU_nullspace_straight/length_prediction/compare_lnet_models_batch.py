@@ -19,7 +19,7 @@ from lnet import LNet
 from lnet_contrastive import LNetContrastive
 import wrs.neuro.xarm_lite6_neuro as xarm6_gpu
 from wrs.robot_sim.robots.xarmlite6_wg.sphere_collision_checker import SphereCollisionChecker
-from trajectory_generation.xarmlite6_gpu_nullspave_straight_demo import GPUNullspaceStraightTracker, TrackerConfig
+from trajectory_generation.xarm_nullspave_straight_gpu import GPUNullspaceStraightTracker, TrackerConfig
 
 from paths import LNET_CONTRASTIVE_RUNS_DIR, LNET_RUNS_DIR
 
