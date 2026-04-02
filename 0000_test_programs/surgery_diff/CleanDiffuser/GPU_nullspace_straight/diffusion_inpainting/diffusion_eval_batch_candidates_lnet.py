@@ -141,8 +141,8 @@ def predict_length_models(
     cond_batch = torch.from_numpy(cond_batch_np).to(device)
     with torch.no_grad():
         lnet_pred = lnet(q_batch, cond_batch).detach().cpu().numpy()
-        _, contrastive_length = lnet_contrastive(q_batch, cond_batch)
-        contrastive_pred = contrastive_length.detach().cpu().numpy()
+        contrastive_score, _ = lnet_contrastive(q_batch, cond_batch)
+        contrastive_pred = contrastive_score.detach().cpu().numpy()
     return lnet_pred.astype(np.float32), contrastive_pred.astype(np.float32)
 
 def directional_mu_batch(
@@ -229,30 +229,30 @@ def main() -> None:
     gt_real_length = float(all_real_lengths[0])
     gt_mu = float(all_mu[0])
     gt_lnet_pred = float(all_lnet_pred[0])
-    gt_lnet_contrastive_pred = float(all_lnet_contrastive_pred[0])
+    gt_lnet_contrastive_score = float(all_lnet_contrastive_pred[0])
     candidate_real_lengths = all_real_lengths[1:]
     candidate_mu = all_mu[1:]
     candidate_lnet_pred = all_lnet_pred[1:]
-    candidate_lnet_contrastive_pred = all_lnet_contrastive_pred[1:]
+    candidate_lnet_contrastive_score = all_lnet_contrastive_pred[1:]
     candidate_real_rank = descending_rank(candidate_real_lengths) if len(candidate_real_lengths) > 0 else np.asarray([], dtype=int)
     candidate_lnet_rank = descending_rank(candidate_lnet_pred) if len(candidate_lnet_pred) > 0 else np.asarray([], dtype=int)
-    candidate_lcts_rank = descending_rank(candidate_lnet_contrastive_pred) if len(candidate_lnet_contrastive_pred) > 0 else np.asarray([], dtype=int)
+    candidate_lcts_rank = descending_rank(candidate_lnet_contrastive_score) if len(candidate_lnet_contrastive_score) > 0 else np.asarray([], dtype=int)
     min_pos_idx = int(np.argmin(pos_errs)) if len(pos_errs) > 0 else -1
     max_lnet_idx = int(np.argmax(candidate_lnet_pred)) if len(candidate_lnet_pred) > 0 else -1
-    max_lcts_idx = int(np.argmax(candidate_lnet_contrastive_pred)) if len(candidate_lnet_contrastive_pred) > 0 else -1
+    max_lcts_idx = int(np.argmax(candidate_lnet_contrastive_score)) if len(candidate_lnet_contrastive_score) > 0 else -1
 
     row_fmt = '{label:<8} {idx:>4} {diff:>10.6f} {lnet:>10.6f} {clen:>10.6f} {real:>10.6f} {rrank:>6} {lrank:>6} {crank:>6} {mu:>10.6f} {pos:>12}'
     print('---------------------------------------------------------------------------------------------------------------------')
-    print(f"{'label':<8} {'idx':>4} {'diff_len':>10} {'lnet_len':>10} {'lcts_len':>10} {'real_len':>10} {'r_real':>6} {'r_lnet':>6} {'r_lcts':>6} {'mu':>10} {'pos_err_mm':>12}")
+    print(f"{'label':<8} {'idx':>4} {'diff_len':>10} {'lnet_len':>10} {'lcts_score':>10} {'real_len':>10} {'r_real':>6} {'r_lnet':>6} {'r_lcts':>6} {'mu':>10} {'pos_err_mm':>12}")
     print('---------------------------------------------------------------------------------------------------------------------')
-    print(row_fmt.format(label='GT', idx='--', diff=float('nan'), lnet=gt_lnet_pred, clen=gt_lnet_contrastive_pred, real=gt_real_length, rrank='--', lrank='--', crank='--', mu=gt_mu, pos='--'))
+    print(row_fmt.format(label='GT', idx='--', diff=float('nan'), lnet=gt_lnet_pred, clen=gt_lnet_contrastive_score, real=gt_real_length, rrank='--', lrank='--', crank='--', mu=gt_mu, pos='--'))
     if min_pos_idx >= 0:
         print(row_fmt.format(
             label='MINPOS',
             idx=f'{min_pos_idx:02d}',
             diff=float(pred_lengths[min_pos_idx]),
             lnet=float(candidate_lnet_pred[min_pos_idx]),
-            clen=float(candidate_lnet_contrastive_pred[min_pos_idx]),
+            clen=float(candidate_lnet_contrastive_score[min_pos_idx]),
             real=float(candidate_real_lengths[min_pos_idx]),
             rrank=int(candidate_real_rank[min_pos_idx]),
             lrank=int(candidate_lnet_rank[min_pos_idx]),
@@ -266,7 +266,7 @@ def main() -> None:
             idx=f'{max_lnet_idx:02d}',
             diff=float(pred_lengths[max_lnet_idx]),
             lnet=float(candidate_lnet_pred[max_lnet_idx]),
-            clen=float(candidate_lnet_contrastive_pred[max_lnet_idx]),
+            clen=float(candidate_lnet_contrastive_score[max_lnet_idx]),
             real=float(candidate_real_lengths[max_lnet_idx]),
             rrank=int(candidate_real_rank[max_lnet_idx]),
             lrank=int(candidate_lnet_rank[max_lnet_idx]),
@@ -280,7 +280,7 @@ def main() -> None:
             idx=f'{max_lcts_idx:02d}',
             diff=float(pred_lengths[max_lcts_idx]),
             lnet=float(candidate_lnet_pred[max_lcts_idx]),
-            clen=float(candidate_lnet_contrastive_pred[max_lcts_idx]),
+            clen=float(candidate_lnet_contrastive_score[max_lcts_idx]),
             real=float(candidate_real_lengths[max_lcts_idx]),
             rrank=int(candidate_real_rank[max_lcts_idx]),
             lrank=int(candidate_lnet_rank[max_lcts_idx]),
@@ -296,7 +296,7 @@ def main() -> None:
             idx=f'{int(idx):02d}',
             diff=float(pred_lengths[idx]),
             lnet=float(candidate_lnet_pred[idx]),
-            clen=float(candidate_lnet_contrastive_pred[idx]),
+            clen=float(candidate_lnet_contrastive_score[idx]),
             real=float(candidate_real_lengths[idx]),
             rrank=int(candidate_real_rank[idx]),
             lrank=int(candidate_lnet_rank[idx]),
