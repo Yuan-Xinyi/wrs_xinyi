@@ -220,11 +220,12 @@ def main() -> None:
     q_corrs = np.asarray(q_corrs, dtype=np.float32)
     pos_errs = np.asarray(pos_errs, dtype=np.float32)
 
-    all_q = np.concatenate([anchor['q'][None, :], q_corrs], axis=0)
-    all_real_lengths = rollout_lengths_batch(tracker, tracker_device, all_q, anchor['direction'], anchor['target_normal'])
-    all_mu = directional_mu_batch(tracker, tracker_device, all_q, anchor['direction'])
+    rollout_q = np.concatenate([anchor['q'][None, :], q_corrs], axis=0)
+    score_q = np.concatenate([anchor['q'][None, :], q_preds.astype(np.float32)], axis=0)
+    all_real_lengths = rollout_lengths_batch(tracker, tracker_device, rollout_q, anchor['direction'], anchor['target_normal'])
+    all_mu = directional_mu_batch(tracker, tracker_device, rollout_q, anchor['direction'])
     all_lnet_pred, all_lnet_contrastive_pred = predict_length_models(
-        lnet, lnet_contrastive, device, all_q, anchor['pos'], anchor['direction'], anchor['target_normal']
+        lnet, lnet_contrastive, device, score_q, anchor['pos'], anchor['direction'], anchor['target_normal']
     )
     gt_real_length = float(all_real_lengths[0])
     gt_mu = float(all_mu[0])
