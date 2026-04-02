@@ -15,16 +15,16 @@ import wrs.modeling.geometric_model as mgm
 import wrs.visualization.panda.world as wd
 
 from diffusion import DEFAULT_RUN_NAME, DEFAULT_WORKDIR, sample_q_length_from_condition
-from diffusion_sample import JacobianCorrection, load_model, normalize_direction
+from diffusion_sample import load_model, normalize_direction
 import jax2torch
-from wrs.robot_sim.robots.xarmlite6_wg.xarm6_drill import XArmLite6Miller
 from wrs.robot_sim.robots.xarmlite6_wg.sphere_collision_checker import SphereCollisionChecker
 import wrs.neuro.xarm_lite6_neuro as xarm6_gpu
-from trajectory_generation.xarm_nullspave_straight_gpu import GPUNullspaceStraightTracker, TrackerConfig, position_jacobian_batch, directional_manipulability_batch
+from trajectory_generation.xarm_nullspave_straight_gpu import GPUNullspaceStraightTracker, TrackerConfig, position_jacobian_batch, directional_manipulability_batch, damped_pseudoinverse_batch
 from length_prediction.lnet import LNet
 from length_prediction.lnet_contrastive import LNetContrastive
 from length_prediction.paths import LNET_RUNS_DIR, LNET_CONTRASTIVE_RUNS_DIR
 import jax
+import time
 
 
 DIRECTION_AXIS = 0
@@ -48,24 +48,32 @@ def parse_args() -> argparse.Namespace:
     return parser.parse_args()
 
 
-def sample_anchor(rng: np.random.Generator) -> dict:
-    robot = XArmLite6Miller(enable_cc=True)
-    for _ in range(2000):
-        q = robot.rand_conf().astype(np.float32)
-        robot.goto_given_conf(q)
-        if robot.is_collided():
-            continue
-        pos, rotmat = robot.fk(q, update=False)
-        rotmat = np.asarray(rotmat, dtype=np.float32)
-        direction = normalize_direction(rotmat[:, DIRECTION_AXIS])
-        target_normal = normalize_direction(rotmat[:, NORMAL_AXIS])
-        return {
-            'q': q,
-            'pos': np.asarray(pos, dtype=np.float32),
-            'rotmat': rotmat,
-            'direction': direction,
-            'target_normal': target_normal,
-        }
+def sample_anchor(robot, collision_fn, device: torch.device, rng: np.random.Generator, batch_size: int = 512, max_tries: int = 4096) -> dict:
+    tried = 0
+    lower = robot.jnt_ranges[:, 0].detach().cpu().numpy()
+    upper = robot.jnt_ranges[:, 1].detach().cpu().numpy()
+    while tried < max_tries:
+        cur_batch = min(batch_size, max_tries - tried)
+        q_batch_np = rng.uniform(lower, upper, size=(cur_batch, lower.shape[0])).astype(np.float32)
+        q_batch = torch.from_numpy(q_batch_np).to(device)
+        coll_cost = collision_fn(q_batch)
+        valid_mask = coll_cost <= 0.0
+        if bool(valid_mask.any()):
+            q_valid = q_batch[valid_mask]
+            pos_valid, rot_valid = robot.fk_batch(q_valid)
+            q = q_valid[0].detach().cpu().numpy().astype(np.float32)
+            pos = pos_valid[0].detach().cpu().numpy().astype(np.float32)
+            rotmat = rot_valid[0].detach().cpu().numpy().astype(np.float32)
+            direction = normalize_direction(rotmat[:, DIRECTION_AXIS])
+            target_normal = normalize_direction(rotmat[:, NORMAL_AXIS])
+            return {
+                'q': q,
+                'pos': pos,
+                'rotmat': rotmat,
+                'direction': direction,
+                'target_normal': target_normal,
+            }
+        tried += cur_batch
     raise RuntimeError('Failed to sample a valid random GT configuration.')
 
 
@@ -91,6 +99,39 @@ def build_tracker(device: torch.device) -> tuple[GPUNullspaceStraightTracker, to
         print_every=0,
     )
     return tracker, device
+
+
+def batch_position_error_and_correction(
+    robot,
+    q_batch_np: np.ndarray,
+    target_pos_np: np.ndarray,
+    damping: float,
+    max_iters: int,
+    tol: float,
+    device: torch.device,
+) -> tuple[np.ndarray, np.ndarray]:
+    q_batch = torch.from_numpy(q_batch_np.astype(np.float32)).to(device)
+    target_pos = torch.from_numpy(np.repeat(target_pos_np[None, :].astype(np.float32), q_batch_np.shape[0], axis=0)).to(device)
+
+    tcp_pos_raw, _ = robot.fk_batch(q_batch)
+    raw_pos_err = torch.linalg.norm(target_pos - tcp_pos_raw, dim=1)
+
+    q_corr = q_batch.clone()
+    lower = robot.jnt_ranges[:, 0].unsqueeze(0)
+    upper = robot.jnt_ranges[:, 1].unsqueeze(0)
+    for _ in range(max_iters):
+        tcp_pos, _ = robot.fk_batch(q_corr)
+        err = target_pos - tcp_pos
+        err_norm = torch.linalg.norm(err, dim=1)
+        if bool(torch.all(err_norm < tol)):
+            break
+        j_pos, _ = position_jacobian_batch(robot, q_corr, create_graph=False)
+        dq = (damped_pseudoinverse_batch(j_pos, damping) @ err.unsqueeze(-1)).squeeze(-1)
+        active = (err_norm >= tol).float().unsqueeze(1)
+        q_corr = q_corr + active * dq
+        q_corr = torch.max(torch.min(q_corr, upper), lower)
+
+    return q_corr.detach().cpu().numpy().astype(np.float32), raw_pos_err.detach().cpu().numpy().astype(np.float32)
 
 
 
@@ -184,11 +225,15 @@ def main() -> None:
     rng = np.random.default_rng(args.seed if args.seed is not None else int(np.random.SeedSequence().entropy))
     device = torch.device(args.device)
     _, stats, model, q_dim, diffusion_steps = load_model(args.bundle, device)
-    anchor = sample_anchor(rng)
+    tracker, tracker_device = build_tracker(device)
+
+    t_anchor0 = time.perf_counter()
+    anchor = sample_anchor(tracker.robot, tracker.collision_fn, tracker_device, rng)
+    t_anchor1 = time.perf_counter()
+    print(f'[time] anchor_sampling={t_anchor1 - t_anchor0:.3f}s')
 
     condition = np.concatenate([anchor['pos'], anchor['direction'], anchor['target_normal']], axis=0).astype(np.float32)
-    import time
-    start_time = time.time()
+    t_sample0 = time.perf_counter()
     q_preds, pred_lengths, _ = sample_q_length_from_condition(
         model=model,
         stats=stats,
@@ -199,34 +244,39 @@ def main() -> None:
         sample_steps=int(args.sample_steps) if args.sample_steps is not None else int(diffusion_steps),
         temperature=float(args.temperature),
     )
-    end_time = time.time()
-    print(f'Sampling {len(q_preds)} candidates took {end_time - start_time:.2f} seconds')
+    t_sample1 = time.perf_counter()
+    print(f'[time] diffusion_sampling={t_sample1 - t_sample0:.3f}s for {len(q_preds)} candidates')
 
-    tracker, tracker_device = build_tracker(device)
     lnet = load_lnet_model(args.lnet_ckpt, device)
     lnet_contrastive = load_lnet_contrastive_model(args.lnet_contrastive_ckpt, device)
-    correction_robot = XArmLite6Miller(enable_cc=True)
-    correction = JacobianCorrection(robot=correction_robot, damping=args.correction_damping)
-    q_corrs = []
-    pos_errs = []
-    for q_pred in q_preds.astype(np.float32):
-        q_pred64 = q_pred.astype(np.float64)
-        correction_robot.goto_given_conf(q_pred64)
-        cur_pos, _ = correction_robot.fk(q_pred64, update=False)
-        raw_pos_err = float(np.linalg.norm(anchor['pos'] - cur_pos))
-        q_corr, _ = correction.run(q_pred, anchor['pos'], max_iters=args.correction_iters, tol=args.correction_tol)
-        q_corrs.append(q_corr)
-        pos_errs.append(raw_pos_err)
-    q_corrs = np.asarray(q_corrs, dtype=np.float32)
-    pos_errs = np.asarray(pos_errs, dtype=np.float32)
+    t_corr0 = time.perf_counter()
+    q_corrs, pos_errs = batch_position_error_and_correction(
+        tracker.robot,
+        q_preds.astype(np.float32),
+        anchor['pos'],
+        args.correction_damping,
+        args.correction_iters,
+        args.correction_tol,
+        tracker_device,
+    )
+    t_corr1 = time.perf_counter()
+    print(f'[time] jacobian_correction={t_corr1 - t_corr0:.3f}s')
 
     rollout_q = np.concatenate([anchor['q'][None, :], q_corrs], axis=0)
     score_q = np.concatenate([anchor['q'][None, :], q_preds.astype(np.float32)], axis=0)
+    t_roll0 = time.perf_counter()
     all_real_lengths = rollout_lengths_batch(tracker, tracker_device, rollout_q, anchor['direction'], anchor['target_normal'])
     all_mu = directional_mu_batch(tracker, tracker_device, rollout_q, anchor['direction'])
+    t_roll1 = time.perf_counter()
+    print(f'[time] rollout_plus_mu={t_roll1 - t_roll0:.3f}s')
+
+    t_score0 = time.perf_counter()
     all_lnet_pred, all_lnet_contrastive_pred = predict_length_models(
         lnet, lnet_contrastive, device, score_q, anchor['pos'], anchor['direction'], anchor['target_normal']
     )
+    t_score1 = time.perf_counter()
+    print(f'[time] model_scoring={t_score1 - t_score0:.3f}s')
+
     gt_real_length = float(all_real_lengths[0])
     gt_mu = float(all_mu[0])
     gt_lnet_pred = float(all_lnet_pred[0])
@@ -306,6 +356,8 @@ def main() -> None:
             pos=f'{float(pos_errs[idx]) * 1e3:.3f}',
         ))
     print('---------------------------------------------------------------------------------------------------------------------')
+    t_print1 = time.perf_counter()
+    print(f'[time] table_print={(t_print1 - t_score1):.3f}s')
     if args.no_vis:
         return
 
@@ -329,8 +381,9 @@ def main() -> None:
     gt_color = np.array([0.1, 0.75, 0.2], dtype=np.float32)
     mgm.gen_stick(spos=start, epos=gt_end, radius=0.0045, rgb=gt_color, alpha=0.90).attach_to(world)
     mgm.gen_sphere(gt_end, radius=0.009, rgb=gt_color, alpha=0.95).attach_to(world)
-
-    robot = XArmLite6Miller(enable_cc=True)
+    
+    import wrs.robot_sim.robots.xarmlite6_wg.xarm6_drill as xarm6_sim
+    robot = xarm6_sim.XArmLite6Miller(enable_cc=True)
     robot.goto_given_conf(anchor['q'])
     robot.gen_meshmodel(rgb=gt_color, alpha=0.55, toggle_tcp_frame=True).attach_to(world)
 
@@ -345,7 +398,10 @@ def main() -> None:
         mgm.gen_stick(spos=start, epos=pred_end, radius=0.004, rgb=corr_color, alpha=0.95).attach_to(world)
         mgm.gen_sphere(pred_end, radius=0.009, rgb=corr_color, alpha=0.95).attach_to(world)
 
+    t_vis0 = time.perf_counter()
     world.run()
+    t_vis1 = time.perf_counter()
+    print(f'[time] visualization={(t_vis1 - t_vis0):.3f}s')
 
 
 if __name__ == '__main__':
