@@ -9,5 +9,6 @@ DATASETS_DIR = GPU_NULLSPACE_DIR / 'datasets'
 RUNS_DIR = GPU_NULLSPACE_DIR / 'runs'
 
 DEFAULT_H5 = DATASETS_DIR / 'xarmlite6_gpu_trajectories_100000_sub10.hdf5'
+DEFAULT_H5_PREF = DATASETS_DIR / 'xarmlite6_gpu_trajectories_100000_sub10_pref.hdf5'
 LNET_RUNS_DIR = RUNS_DIR / 'lnet_runs'
 LNET_CONTRASTIVE_RUNS_DIR = RUNS_DIR / 'lnet_contrastive_runs'

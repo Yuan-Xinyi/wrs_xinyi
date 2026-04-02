@@ -13,24 +13,24 @@ try:
     import wandb
 except ImportError:
     wandb = None
-from torch.utils.data import DataLoader, Dataset, random_split
+from torch.utils.data import DataLoader, Dataset, BatchSampler, random_split
 
 from lnet_contrastive import LNetContrastive
 from wrs.robot_sim.robots.xarmlite6_wg.xarm6_drill import XArmLite6Miller
 
-from paths import DEFAULT_H5, LNET_CONTRASTIVE_RUNS_DIR
+from paths import DEFAULT_H5_PREF, LNET_CONTRASTIVE_RUNS_DIR
 
 BASE_DIR = Path(__file__).resolve().parent
 DEFAULT_WORKDIR = LNET_CONTRASTIVE_RUNS_DIR
-DEFAULT_RUN_NAME = 'lnet_contrastive_q_cond_to_length_sub10'
+DEFAULT_RUN_NAME = 'lnet_contrastive_q_cond_to_length_sub10_pref'
 
 
 def parse_args() -> argparse.Namespace:
-    parser = argparse.ArgumentParser(description='Train contrastive LNet on the sub10 trajectory dataset.')
-    parser.add_argument('--h5-path', type=Path, default=DEFAULT_H5)
+    parser = argparse.ArgumentParser(description='Train contrastive LNet on the pref-indexed trajectory dataset.')
+    parser.add_argument('--h5-path', type=Path, default=DEFAULT_H5_PREF)
     parser.add_argument('--device', type=str, default='cuda' if torch.cuda.is_available() else 'cpu')
     parser.add_argument('--run-name', type=str, default=DEFAULT_RUN_NAME)
-    parser.add_argument('--batch-size', type=int, default=1024)
+    parser.add_argument('--batch-size', type=int, default=512)
     parser.add_argument('--epochs', type=int, default=1000)
     parser.add_argument('--lr', type=float, default=2e-4)
     parser.add_argument('--weight-decay', type=float, default=1e-4)
@@ -69,47 +69,70 @@ def set_seed(seed: int) -> None:
     torch.cuda.manual_seed_all(seed)
 
 
-class TrajectoryPointDataset(Dataset):
+class ContrastivePrefDataset(Dataset):
     def __init__(self, h5_path: Path):
-        q_list = []
-        cond_list = []
-        length_list = []
         with h5py.File(h5_path, 'r') as f:
-            for key in sorted(f['trajectories'].keys()):
-                grp = f['trajectories'][key]
-                q = np.asarray(grp['q'][:], dtype=np.float32)
-                pos = np.asarray(grp['tcp_pos'][:], dtype=np.float32)
-                direction = np.asarray(grp.attrs['direction'], dtype=np.float32)
-                normal = np.asarray(grp.attrs['target_normal'], dtype=np.float32)
-                cond = np.concatenate([
-                    pos,
-                    np.repeat(direction.reshape(1, 3), q.shape[0], axis=0),
-                    np.repeat(normal.reshape(1, 3), q.shape[0], axis=0),
-                ], axis=1).astype(np.float32)
-                length = np.asarray(grp['remaining_length'][:], dtype=np.float32)
-                q_list.append(q)
-                cond_list.append(cond)
-                length_list.append(length)
-        self.q = torch.from_numpy(np.concatenate(q_list, axis=0))
-        self.cond = torch.from_numpy(np.concatenate(cond_list, axis=0))
-        self.length = torch.from_numpy(np.concatenate(length_list, axis=0))
+            if 'contrastive_pref' not in f:
+                raise KeyError(f'Missing contrastive_pref group in {h5_path}. Run lnet_contrastive_pref.py first.')
+            pref = f['contrastive_pref']
+            self.q = torch.from_numpy(np.asarray(pref['q'][:], dtype=np.float32))
+            self.cond = torch.from_numpy(np.concatenate([
+                np.asarray(pref['pos'][:], dtype=np.float32),
+                np.asarray(pref['direction'][:], dtype=np.float32),
+                np.asarray(pref['normal'][:], dtype=np.float32),
+            ], axis=1))
+            self.length = torch.from_numpy(np.asarray(pref['length'][:], dtype=np.float32))
+            self.neighbor_offsets = np.asarray(pref['neighbor_offsets'][:], dtype=np.int64)
+            self.neighbor_index = np.asarray(pref['neighbor_index'][:], dtype=np.int32)
+            self.valid_anchor_index = np.asarray(pref['valid_anchor_index'][:], dtype=np.int32)
 
     def __len__(self) -> int:
-        return self.q.shape[0]
+        return int(self.valid_anchor_index.shape[0])
 
-    def __getitem__(self, idx: int) -> tuple[torch.Tensor, torch.Tensor, torch.Tensor]:
-        return self.q[idx], self.cond[idx], self.length[idx]
+    def __getitem__(self, idx: int) -> tuple[torch.Tensor, ...]:
+        anchor = int(self.valid_anchor_index[idx])
+        start = int(self.neighbor_offsets[anchor])
+        end = int(self.neighbor_offsets[anchor + 1])
+        if end <= start:
+            partner = anchor
+        else:
+            partner = int(np.random.choice(self.neighbor_index[start:end]))
+        return (
+            self.q[anchor], self.cond[anchor], self.length[anchor],
+            self.q[partner], self.cond[partner], self.length[partner],
+        )
 
 
-def compute_min_max(dataset: Dataset) -> tuple[torch.Tensor, torch.Tensor]:
-    if hasattr(dataset, 'indices'):
-        base = dataset.dataset
-        idx = torch.as_tensor(dataset.indices, dtype=torch.long)
-        q = base.q[idx]
-        cond = base.cond[idx]
-    else:
+class SameCondBatchSampler(BatchSampler):
+    def __init__(self, dataset: ContrastivePrefDataset, batch_size: int, seed: int, subset_indices: list[int] | np.ndarray):
+        self.dataset = dataset
+        self.batch_size = int(batch_size)
+        self.seed = int(seed)
+        self.subset_indices = np.asarray(subset_indices, dtype=np.int64)
+        self.epoch = 0
+
+    def set_epoch(self, epoch: int) -> None:
+        self.epoch = int(epoch)
+
+    def __iter__(self):
+        rng = np.random.default_rng(self.seed + self.epoch)
+        order = self.subset_indices.copy()
+        rng.shuffle(order)
+        for start in range(0, len(order), self.batch_size):
+            yield order[start:start + self.batch_size].tolist()
+
+    def __len__(self) -> int:
+        return int(np.ceil(len(self.subset_indices) / self.batch_size))
+
+
+def compute_min_max(dataset: ContrastivePrefDataset, pair_subset_indices: np.ndarray | None = None) -> tuple[torch.Tensor, torch.Tensor]:
+    if pair_subset_indices is None:
         q = dataset.q
         cond = dataset.cond
+    else:
+        anchor = torch.from_numpy(dataset.valid_anchor_index[pair_subset_indices]).long()
+        q = dataset.q[anchor]
+        cond = dataset.cond[anchor]
     x = torch.cat([q, cond], dim=1)
     return x.min(dim=0).values, x.max(dim=0).values
 
@@ -123,17 +146,21 @@ def evaluate(model: LNetContrastive, loader: DataLoader, device: torch.device) -
     total_count = 0
     total_pairs = 0
     with torch.no_grad():
-        for q, cond, target in loader:
-            q = q.to(device)
-            cond = cond.to(device)
-            target = target.to(device)
-            loss, aux = model.compute_loss(q, cond, target)
-            _, pred_length = model(q, cond)
-            bs = q.shape[0]
+        for q_i, cond_i, l_i, q_j, cond_j, l_j in loader:
+            q_i = q_i.to(device)
+            cond_i = cond_i.to(device)
+            l_i = l_i.to(device)
+            q_j = q_j.to(device)
+            cond_j = cond_j.to(device)
+            l_j = l_j.to(device)
+            loss, aux = model.compute_pair_loss(q_i, cond_i, l_i, q_j, cond_j, l_j)
+            _, pred_i = model(q_i, cond_i)
+            _, pred_j = model(q_j, cond_j)
+            bs = q_i.shape[0]
             total_loss += float(loss) * bs
             total_rank += aux['rank_loss'] * bs
             total_mse += aux['mse_loss'] * bs
-            total_abs += float((pred_length - target).abs().mean()) * bs
+            total_abs += 0.5 * float((pred_i - l_i).abs().mean() + (pred_j - l_j).abs().mean()) * bs
             total_count += bs
             total_pairs += aux['pair_count']
     denom = max(total_count, 1)
@@ -152,13 +179,15 @@ def main() -> None:
     run_dir = DEFAULT_WORKDIR / args.run_name
     run_dir.mkdir(parents=True, exist_ok=True)
 
-    dataset = TrajectoryPointDataset(args.h5_path)
+    dataset = ContrastivePrefDataset(args.h5_path)
     val_size = max(1, int(len(dataset) * args.val_ratio))
     train_size = len(dataset) - val_size
-    train_set, val_set = random_split(dataset, [train_size, val_size], generator=torch.Generator().manual_seed(args.seed))
+    perm = torch.randperm(len(dataset), generator=torch.Generator().manual_seed(args.seed)).numpy()
+    train_pair_idx = perm[:train_size]
+    val_pair_idx = perm[train_size:]
 
     q_limits = torch.from_numpy(XArmLite6Miller(enable_cc=False).jnt_ranges.astype(np.float32))
-    in_min, in_max = compute_min_max(train_set)
+    in_min, in_max = compute_min_max(dataset, train_pair_idx)
     model = LNetContrastive(
         q_min=q_limits[:, 0],
         q_max=q_limits[:, 1],
@@ -174,31 +203,30 @@ def main() -> None:
 
     use_wandb = args.wandb_mode != 'disabled' and wandb is not None
     if use_wandb:
-        wandb.init(
-            project=args.wandb_project,
-            name=args.wandb_name or args.run_name,
-            mode=args.wandb_mode,
-            config=vars(args),
-            dir=str(run_dir),
-        )
+        wandb.init(project=args.wandb_project, name=args.wandb_name or args.run_name, mode=args.wandb_mode, config=vars(args), dir=str(run_dir))
 
-    train_loader = DataLoader(train_set, batch_size=args.batch_size, shuffle=True, num_workers=0, drop_last=False)
-    val_loader = DataLoader(val_set, batch_size=args.batch_size, shuffle=False, num_workers=0, drop_last=False)
+    train_sampler = SameCondBatchSampler(dataset, args.batch_size, args.seed, train_pair_idx)
+    val_sampler = SameCondBatchSampler(dataset, args.batch_size, args.seed + 10_000, val_pair_idx)
+    train_loader = DataLoader(dataset, batch_sampler=train_sampler, num_workers=0)
+    val_loader = DataLoader(dataset, batch_sampler=val_sampler, num_workers=0)
 
     best_val = float('inf')
     global_step = 0
     for epoch in range(1, args.epochs + 1):
+        train_sampler.set_epoch(epoch)
         model.train()
-        for q, cond, target in train_loader:
-            q = q.to(device)
-            cond = cond.to(device)
-            target = target.to(device)
-            loss, aux = model.compute_loss(q, cond, target)
+        for q_i, cond_i, l_i, q_j, cond_j, l_j in train_loader:
+            q_i = q_i.to(device)
+            cond_i = cond_i.to(device)
+            l_i = l_i.to(device)
+            q_j = q_j.to(device)
+            cond_j = cond_j.to(device)
+            l_j = l_j.to(device)
+            loss, aux = model.compute_pair_loss(q_i, cond_i, l_i, q_j, cond_j, l_j)
             optimizer.zero_grad(set_to_none=True)
             loss.backward()
             optimizer.step()
             global_step += 1
-
             if use_wandb:
                 wandb.log({
                     'train/loss': float(loss),
@@ -209,16 +237,11 @@ def main() -> None:
                     'step': global_step,
                 }, step=global_step)
             if args.print_every > 0 and global_step % args.print_every == 0:
-                print(
-                    f'[train] epoch={epoch:03d} step={global_step:06d} loss={float(loss):.6f} '
-                    f'rank={aux["rank_loss"]:.6f} mse={aux["mse_loss"]:.6f} pairs={aux["pair_count"]}'
-                )
+                print(f'[train] epoch={epoch:03d} step={global_step:06d} loss={float(loss):.6f} rank={aux["rank_loss"]:.6f} mse={aux["mse_loss"]:.6f} pairs={aux["pair_count"]}')
 
+        val_sampler.set_epoch(epoch)
         val_loss, val_aux = evaluate(model, val_loader, device)
-        print(
-            f'[eval] epoch={epoch:03d} val_loss={val_loss:.6f} val_rank={val_aux["rank_loss"]:.6f} '
-            f'val_mse={val_aux["mse_loss"]:.6f} val_mae={val_aux["mae"]:.6f} pairs={val_aux["pair_count"]}'
-        )
+        print(f'[eval] epoch={epoch:03d} val_loss={val_loss:.6f} val_rank={val_aux["rank_loss"]:.6f} val_mse={val_aux["mse_loss"]:.6f} val_mae={val_aux["mae"]:.6f} pairs={val_aux["pair_count"]}')
         if use_wandb:
             wandb.log({
                 'eval/loss': val_loss,
@@ -249,12 +272,12 @@ def main() -> None:
 
     meta_payload = {
         'args': to_jsonable(vars(args)),
-        'train_size': train_size,
-        'val_size': val_size,
+        'num_valid_pairs': int(len(dataset)),
+        'train_size': int(train_size),
+        'val_size': int(val_size),
         'best_val': best_val,
     }
     (run_dir / 'metadata.json').write_text(json.dumps(meta_payload, indent=2))
-
     if use_wandb:
         wandb.finish()
 

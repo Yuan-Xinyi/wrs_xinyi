@@ -27,22 +27,6 @@ class ResidualBlock(nn.Module):
 
 
 class LNetContrastive(nn.Module):
-    """
-    Contrastive L-Net.
-
-    Inputs:
-        q: joint angles, shape (..., 6)
-        cond: task condition, shape (..., 9), ordered as pos(3), direction(3), normal(3)
-
-    Internal augmented feature:
-        [q, cond, dist_to_limit]
-        where dist_to_limit = min(q - q_min, q_max - q), normalized by joint range.
-
-    Outputs:
-        score: scalar ranking score used for guidance
-        length: auxiliary scalar physical-length regression
-    """
-
     def __init__(
         self,
         q_min: torch.Tensor,
@@ -103,36 +87,63 @@ class LNetContrastive(nn.Module):
         length = self.length_head(feat).squeeze(-1)
         return score, length
 
-    def _sample_pairs(self, target: torch.Tensor) -> tuple[torch.Tensor, torch.Tensor, torch.Tensor]:
-        n = target.shape[0]
-        if n < 2:
-            empty = torch.empty(0, dtype=torch.long, device=target.device)
-            return empty, empty, target.new_empty(0)
-        diff = target[:, None] - target[None, :]
-        valid = diff.abs() > self.pair_threshold
-        valid.fill_diagonal_(False)
-        pair_idx = valid.nonzero(as_tuple=False)
-        if pair_idx.numel() == 0:
-            empty = torch.empty(0, dtype=torch.long, device=target.device)
-            return empty, empty, target.new_empty(0)
-        if pair_idx.shape[0] > self.max_pairs:
-            perm = torch.randperm(pair_idx.shape[0], device=target.device)[: self.max_pairs]
-            pair_idx = pair_idx[perm]
-        i = pair_idx[:, 0]
-        j = pair_idx[:, 1]
-        sign = torch.sign(target[i] - target[j])
-        return i, j, sign
+    def compute_pair_loss(
+        self,
+        q_i: torch.Tensor,
+        cond_i: torch.Tensor,
+        l_i: torch.Tensor,
+        q_j: torch.Tensor,
+        cond_j: torch.Tensor,
+        l_j: torch.Tensor,
+    ) -> tuple[torch.Tensor, dict]:
+        score_i, length_i = self.forward(q_i, cond_i)
+        score_j, length_j = self.forward(q_j, cond_j)
+        length_gap = l_i - l_j
+        valid = length_gap.abs() > self.pair_threshold
+        if valid.any():
+            sign = torch.sign(length_gap[valid])
+            score_diff = score_i[valid] - score_j[valid]
+            rank_loss = F.relu(self.pair_margin - sign * score_diff).mean()
+            pair_count = int(valid.sum().item())
+        else:
+            rank_loss = score_i.new_tensor(0.0)
+            pair_count = 0
+        mse_loss = 0.5 * (F.mse_loss(length_i, l_i) + F.mse_loss(length_j, l_j))
+        total = self.rank_weight * rank_loss + self.mse_weight * mse_loss
+        aux = {
+            'rank_loss': float(rank_loss.detach()),
+            'mse_loss': float(mse_loss.detach()),
+            'pair_count': pair_count,
+            'score_i_mean': float(score_i.detach().mean()),
+            'score_j_mean': float(score_j.detach().mean()),
+            'length_i_mean': float(length_i.detach().mean()),
+            'length_j_mean': float(length_j.detach().mean()),
+        }
+        return total, aux
 
     def compute_loss(self, q: torch.Tensor, cond: torch.Tensor, l_gt: torch.Tensor) -> tuple[torch.Tensor, dict]:
         score, length = self.forward(q, cond)
-        i, j, sign = self._sample_pairs(l_gt)
-        if i.numel() == 0:
+        n = l_gt.shape[0]
+        if n < 2:
             rank_loss = score.new_tensor(0.0)
             pair_count = 0
         else:
-            score_diff = score[i] - score[j]
-            rank_loss = F.relu(self.pair_margin - sign * score_diff).mean()
-            pair_count = int(i.numel())
+            diff = l_gt[:, None] - l_gt[None, :]
+            valid = diff.abs() > self.pair_threshold
+            valid.fill_diagonal_(False)
+            pair_idx = valid.nonzero(as_tuple=False)
+            if pair_idx.numel() == 0:
+                rank_loss = score.new_tensor(0.0)
+                pair_count = 0
+            else:
+                if pair_idx.shape[0] > self.max_pairs:
+                    perm = torch.randperm(pair_idx.shape[0], device=l_gt.device)[: self.max_pairs]
+                    pair_idx = pair_idx[perm]
+                i = pair_idx[:, 0]
+                j = pair_idx[:, 1]
+                sign = torch.sign(l_gt[i] - l_gt[j])
+                rank_loss = F.relu(self.pair_margin - sign * (score[i] - score[j])).mean()
+                pair_count = int(i.numel())
         mse_loss = F.mse_loss(length, l_gt)
         total = self.rank_weight * rank_loss + self.mse_weight * mse_loss
         aux = {
