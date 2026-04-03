@@ -100,7 +100,7 @@ def main() -> None:
     franka = gpu_demo.FrankaResearch3GPU(device=device)
     robot = franka.robot
 
-    cc_model = SphereCollisionChecker('wrs/robot_sim/robots/franka_research_3/franka_research_3_sphere_visuals.urdf')
+    cc_model = SphereCollisionChecker('wrs/robot_sim/robots/franka_research_3/franka_research_3_ccsphere.urdf')
     vmap_jax_cost = jax.jit(jax.vmap(cc_model.self_collision_cost, in_axes=(0, None, None)))
     collision_fn = jax2torch.jax2torch(lambda q_batch: vmap_jax_cost(q_batch, 1.0, -0.005))
 

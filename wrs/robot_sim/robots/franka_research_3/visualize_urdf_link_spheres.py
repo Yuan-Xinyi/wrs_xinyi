@@ -8,7 +8,7 @@ from wrs.robot_sim.robots.franka_research_3.franka_research_3_sphere_collcheck i
 from wrs.robot_sim.robots.franka_research_3.sphere_collision_checker import SphereCollisionChecker
 from wrs.robot_sim.robots.franka_research_3.franka_research_3 import FrankaResearch3
 
-DEFAULT_URDF = Path('wrs/robot_sim/robots/franka_research_3/franka_research_3_sphere_visuals.urdf')
+DEFAULT_URDF = Path('wrs/robot_sim/robots/franka_research_3/franka_research_3_ccsphere.urdf')
 LINK_COLORS = [
     np.array([0.95, 0.25, 0.25]),
     np.array([0.95, 0.55, 0.20]),
@@ -40,6 +40,7 @@ def main() -> None:
     robot = FrankaResearch3(enable_cc=True)
     q = np.zeros(7, dtype=np.float64) if args.q is None else np.asarray(args.q, dtype=np.float64)
     # q = robot.rand_conf() if args.q is None else np.asarray(args.q, dtype=np.float64)
+    # q[6] = 3.14159265359
     robot.goto_given_conf(jnt_values=q)
     checker = SphereCollisionChecker(str(args.urdf))
     sphere_positions = np.asarray(checker.update(q))
@@ -90,7 +91,7 @@ def main() -> None:
         pts = sphere_positions[mask]
         rs = sphere_radii[mask]
         for pos, radius in zip(pts, rs):
-            mcm.gen_sphere(radius=float(radius), pos=np.asarray(pos), rgb=color, alpha=0.45).attach_to(world)
+            mcm.gen_sphere(radius=float(radius), pos=np.asarray(pos), rgb=color, alpha=0.2).attach_to(world)
         if len(pts) > 0:
             mgm.gen_frame(pos=pts.mean(axis=0), rotmat=np.eye(3), ax_length=0.08).attach_to(world)
 
