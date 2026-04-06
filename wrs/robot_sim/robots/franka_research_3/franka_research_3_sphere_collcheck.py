@@ -90,7 +90,7 @@ if __name__ == '__main__':
     robot.gen_meshmodel(alpha=0.6, toggle_tcp_frame=False, toggle_jnt_frames=False).attach_to(base)
     robot.gen_stickmodel(toggle_tcp_frame=True, toggle_jnt_frames=True).attach_to(base)
 
-    model = SphereCollisionChecker('wrs/robot_sim/robots/franka_research_3/franka_research_3_ccsphere.urdf')
+    model = SphereCollisionChecker('wrs/robot_sim/robots/franka_research_3/franka_research_3_ccsphere_wrsfix_v2.urdf')
     _ = model.update(jnp.array(np.zeros(robot.n_dof)))
     t1 = time.time()
     q_gpu = jnp.array(q)

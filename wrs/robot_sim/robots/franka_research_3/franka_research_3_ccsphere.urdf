@@ -65,7 +65,7 @@
   <joint name="joint1" type="revolute">
     <parent link="base_link"/>
     <child link="link1"/>
-    <origin xyz="0 0 0.135" rpy="0 0 0"/>
+    <origin xyz="0 0 0.333" rpy="0 0 0"/>
     <axis xyz="0 0 1"/>
     <limit lower="-2.8973" upper="2.8973" effort="50" velocity="3.14"/>
   </joint>
@@ -118,7 +118,7 @@
   <joint name="joint2" type="revolute">
     <parent link="link1"/>
     <child link="link2"/>
-    <origin xyz="0 0 0.2" rpy="-1.57079632679 0 0"/>
+    <origin xyz="0 0 0" rpy="-1.57079632679 0 0"/>
     <axis xyz="0 0 1"/>
     <limit lower="-1.8326" upper="1.8326" effort="50" velocity="3.14"/>
   </joint>
@@ -183,7 +183,7 @@
   <joint name="joint3" type="revolute">
     <parent link="link2"/>
     <child link="link3"/>
-    <origin xyz="0 -0.2 0" rpy="1.57079632679 0 0"/>
+    <origin xyz="0 -0.316 0" rpy="1.57079632679 0 0"/>
     <axis xyz="0 0 1"/>
     <limit lower="-2.8972" upper="2.8972" effort="50" velocity="3.14"/>
   </joint>
@@ -248,7 +248,7 @@
   <joint name="joint4" type="revolute">
     <parent link="link3"/>
     <child link="link4"/>
-    <origin xyz="0.0825 0 0.12" rpy="1.57079632679 0 0"/>
+    <origin xyz="0.0825 0 0" rpy="1.57079632679 0 0"/>
     <axis xyz="0 0 1"/>
     <limit lower="-3.0718" upper="-0.1222" effort="50" velocity="3.14"/>
   </joint>
@@ -313,7 +313,7 @@
   <joint name="joint5" type="revolute">
     <parent link="link4"/>
     <child link="link5"/>
-    <origin xyz="-0.0825 0.12 0" rpy="-1.57079632679 0 0"/>
+    <origin xyz="-0.0825 0.384 0" rpy="-1.57079632679 0 0"/>
     <axis xyz="0 0 1"/>
     <limit lower="-2.8798" upper="2.8798" effort="50" velocity="3.14"/>
   </joint>
@@ -378,7 +378,7 @@
   <joint name="joint6" type="revolute">
     <parent link="link5"/>
     <child link="link6"/>
-    <origin xyz="0 0.012 0.253" rpy="1.57079632679 0 0"/>
+    <origin xyz="0 0 0" rpy="1.57079632679 0 0"/>
     <axis xyz="0 0 1"/>
     <limit lower="0.4364" upper="4.6251" effort="50" velocity="3.14"/>
   </joint>
@@ -443,7 +443,7 @@
   <joint name="joint7" type="revolute">
     <parent link="link6"/>
     <child link="link7"/>
-    <origin xyz="0.088 -0.045 0" rpy="1.57079632679 0.78539816339 0"/>
+    <origin xyz="0.088 0 0" rpy="1.57079632679 0 0"/>
     <axis xyz="0 0 1"/>
     <limit lower="-3.0543" upper="3.0543" effort="50" velocity="3.14"/>
   </joint>
@@ -508,7 +508,7 @@
   <joint name="franka_fixed_joint" type="fixed">
     <parent link="link7"/>
     <child link="hand"/>
-    <origin xyz="0 0 0.0584" rpy="0 0 0.78539816339"/>
+    <origin xyz="0 0 0.107" rpy="0 0 0"/>
     <axis xyz="0 1 0"/>
   </joint>
 
@@ -572,9 +572,9 @@
   <joint name="finger_joint1" type="prismatic">
     <parent link="hand"/>
     <child link="left_finger"/>
-    <origin xyz="0 0.01 0.0584" rpy="0 0 0"/>
+    <origin xyz="0 0 0.0584" rpy="0 0 0"/>
     <axis xyz="0 1 0"/>
-    <limit lower="0.0" upper="0.04" effort="50" velocity="0.2"/>
+    <limit lower="0.0" upper="0.015" effort="50" velocity="0.2"/>
   </joint>
 
   <link name="left_finger">
@@ -637,9 +637,9 @@
   <joint name="finger_joint2" type="prismatic">
     <parent link="hand"/>
     <child link="right_finger"/>
-    <origin xyz="0 0.035 0.06" rpy="0 0 3.14159265359"/>
+    <origin xyz="0 0 0" rpy="0 0 3.14159265359"/>
     <axis xyz="0 1 0"/>
-    <limit lower="0.0" upper="0.04" effort="50" velocity="0.2"/>
+    <limit lower="0.0" upper="0.015" effort="50" velocity="0.2"/>
   </joint>
 
   <link name="right_finger">
@@ -649,7 +649,7 @@
       </geometry>
       <material name="Grey"/>
     </visual>
-    <!-- <collision>
+    <collision>
       <geometry>
         <sphere radius="0.014422"></sphere>
       </geometry>
@@ -696,7 +696,7 @@
         <sphere radius="0.011132"></sphere>
       </geometry>
       <origin xyz="-0.006860709321787674 0.015077026120077655 0.02936656352067707" rpy="0 0 0"></origin>
-    </collision> -->
+    </collision>
   </link>
 
 </robot>
