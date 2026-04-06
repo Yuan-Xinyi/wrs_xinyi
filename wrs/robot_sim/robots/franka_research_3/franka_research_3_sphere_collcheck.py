@@ -90,7 +90,7 @@ if __name__ == '__main__':
     robot.gen_meshmodel(alpha=0.6, toggle_tcp_frame=False, toggle_jnt_frames=False).attach_to(base)
     robot.gen_stickmodel(toggle_tcp_frame=True, toggle_jnt_frames=True).attach_to(base)
 
-    model = SphereCollisionChecker('wrs/robot_sim/robots/franka_research_3/franka_research_3_ccsphere_wrsfix_v2.urdf')
+    model = SphereCollisionChecker('wrs/robot_sim/robots/franka_research_3/franka_research_3_ccsphere.urdf')
     _ = model.update(jnp.array(np.zeros(robot.n_dof)))
     t1 = time.time()
     q_gpu = jnp.array(q)
@@ -107,9 +107,9 @@ if __name__ == '__main__':
 
     for idx in range(positions.shape[0]):
         if collision_flags[idx]:
-            sphere = mcm.gen_sphere(radius=float(model.sphere_radii[idx]), pos=positions[idx], rgb=[1, 0, 0], alpha=0.2)
+            sphere = mcm.gen_sphere(radius=float(model.sphere_radii[idx]), pos=positions[idx], rgb=[1, 0, 0], alpha=0.1)
         else:
-            sphere = mcm.gen_sphere(radius=float(model.sphere_radii[idx]), pos=positions[idx], rgb=[0, 0, 1], alpha=0.2)
+            sphere = mcm.gen_sphere(radius=float(model.sphere_radii[idx]), pos=positions[idx], rgb=[0, 0, 1], alpha=0.1)
         sphere.attach_to(base)
 
     print(f'[INFO] self collision cost = {model.self_collision_cost(q_gpu, scale=1)}')
