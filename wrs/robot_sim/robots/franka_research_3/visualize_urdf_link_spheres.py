@@ -39,7 +39,7 @@ def main() -> None:
     # robot = FrankaResearch3SphereCollCheck(enable_cc=False)
     robot = FrankaResearch3(enable_cc=True)
     q = np.zeros(7, dtype=np.float64) if args.q is None else np.asarray(args.q, dtype=np.float64)
-    # q = robot.rand_conf() if args.q is None else np.asarray(args.q, dtype=np.float64)
+    q = robot.rand_conf() if args.q is None else np.asarray(args.q, dtype=np.float64)
     # q[6] = 3.14159265359
     robot.goto_given_conf(jnt_values=q)
     checker = SphereCollisionChecker(str(args.urdf))
