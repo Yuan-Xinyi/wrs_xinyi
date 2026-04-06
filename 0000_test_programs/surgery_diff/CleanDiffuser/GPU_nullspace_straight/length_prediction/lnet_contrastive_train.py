@@ -16,11 +16,13 @@ except ImportError:
 from torch.utils.data import BatchSampler, DataLoader, Dataset
 
 from lnet_contrastive import LNetContrastive
-from paths import DEFAULT_H5_PREF, LNET_CONTRASTIVE_RUNS_DIR
+from paths import DATASETS_DIR, LNET_CONTRASTIVE_RUNS_DIR
+from wrs.robot_sim.robots.franka_research_3.franka_research_3 import FrankaResearch3
 from wrs.robot_sim.robots.xarmlite6_wg.xarm6_drill import XArmLite6Miller
 
 DEFAULT_WORKDIR = LNET_CONTRASTIVE_RUNS_DIR
-DEFAULT_RUN_NAME = 'lnet_contrastive_q_cond_to_length_sub10_pref'
+DEFAULT_H5_PREF = DATASETS_DIR / 'franka_research_3_gpu_trajectories_sub10_pref.hdf5'
+DEFAULT_RUN_NAME = 'lnet_contrastive_q_cond_to_length_fr3_sub10_pref'
 
 
 def parse_args() -> argparse.Namespace:
@@ -41,7 +43,7 @@ def parse_args() -> argparse.Namespace:
     parser.add_argument('--max-pairs', type=int, default=4096)
     parser.add_argument('--joint-noise-std', type=float, default=0.01)
     parser.add_argument('--print-every', type=int, default=200)
-    parser.add_argument('--wandb-project', type=str, default='xarm-lnet-contrastive')
+    parser.add_argument('--wandb-project', type=str, default='franka-lnet-contrastive')
     parser.add_argument('--wandb-name', type=str, default=None)
     parser.add_argument('--wandb-mode', choices=['online', 'offline', 'disabled'], default='online')
     return parser.parse_args()
@@ -202,6 +204,16 @@ def compute_min_max(base: ContrastivePrefBaseDataset, anchor_indices: np.ndarray
     return x.min(dim=0).values, x.max(dim=0).values
 
 
+def infer_q_limits(h5_path: Path) -> np.ndarray:
+    with h5py.File(h5_path, 'r') as f:
+        robot_name = str(f.attrs.get('robot', 'xarmlite6')).lower()
+    if robot_name == 'franka_research_3':
+        return FrankaResearch3(enable_cc=False).manipulator.jnt_ranges.astype(np.float32)
+    if robot_name in {'xarm_lite6', 'xarmlite6', 'xarmlite6_miller'}:
+        return XArmLite6Miller(enable_cc=False).jnt_ranges.astype(np.float32)
+    raise ValueError(f'Unsupported robot type in HDF5: {robot_name}')
+
+
 def augment_q(q: torch.Tensor, q_min: torch.Tensor, q_max: torch.Tensor, noise_std: float) -> torch.Tensor:
     if noise_std <= 0.0:
         return q
@@ -269,7 +281,7 @@ def main() -> None:
     base = ContrastivePrefBaseDataset(args.h5_path)
     train_dataset, val_dataset, split_stats = build_split_datasets(base, args.val_ratio, args.seed)
 
-    q_limits = torch.from_numpy(XArmLite6Miller(enable_cc=False).jnt_ranges.astype(np.float32))
+    q_limits = torch.from_numpy(infer_q_limits(args.h5_path))
     in_min, in_max = compute_min_max(base, train_dataset.anchor_indices)
     model = LNetContrastive(
         q_min=q_limits[:, 0],

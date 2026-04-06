@@ -1,30 +1,41 @@
 from __future__ import annotations
 
 import argparse
-import json
 from pathlib import Path
 
 import numpy as np
 import torch
 
-from diffusion import DEFAULT_H5_PATH, DEFAULT_RUN_NAME, DEFAULT_WORKDIR, normalize_condition
+from diffusion import normalize_condition
 from diffusion_sample import load_model
 from diffusion_eval_batch_candidates_lnet import (
     batch_position_error_and_correction,
-    build_tracker,
     load_lnet_contrastive_model,
     rollout_lengths_batch,
 )
 from diffusion_eval_contrastive_guidance import load_anchor, sample_with_guidance
 from length_prediction.paths import LNET_CONTRASTIVE_RUNS_DIR
+from trajectory_generation.fr3_nullspace_straight import FrankaResearch3GPU, GPUNullspaceStraightTracker, TrackerConfig
 import wrs.modeling.collision_model as mcm
 import wrs.modeling.geometric_model as mgm
 import wrs.visualization.panda.world as wd
-from wrs.robot_sim.robots.xarmlite6_wg.xarm6_drill import XArmLite6Miller
+from wrs.robot_sim.robots.franka_research_3.franka_research_3 import FrankaResearch3
+from wrs.robot_sim.robots.franka_research_3.sphere_collision_checker import SphereCollisionChecker
+import jax
+import jax2torch
+
+
+BASE_DIR = Path(__file__).resolve().parent
+GPU_NULLSPACE_DIR = BASE_DIR.parent
+DATASETS_DIR = GPU_NULLSPACE_DIR / 'datasets'
+RUNS_DIR = GPU_NULLSPACE_DIR / 'runs'
+DEFAULT_H5_PATH = DATASETS_DIR / 'franka_research_3_gpu_trajectories_sub10.hdf5'
+DEFAULT_WORKDIR = RUNS_DIR / 'dit_kinematic_inpainting_runs'
+DEFAULT_RUN_NAME = 'ddpm32_dit_inpaint_qL_from_posdirnormal_fr3_sub10'
+DEFAULT_LNET_CONTRASTIVE_CKPT = LNET_CONTRASTIVE_RUNS_DIR / 'lnet_contrastive_q_cond_to_length_fr3_sub10_pref' / 'lnet_contrastive_best.pt'
 
 
 DEFAULT_LAMBDAS = [0.1, 1.0, 5.0, 10.0]
-DEFAULT_LAMBDAS = [0.1]
 LAMBDA_COLORS = {
     0.1: np.array([0.25, 0.45, 0.95], dtype=np.float32),
     1.0: np.array([0.10, 0.70, 0.95], dtype=np.float32),
@@ -36,10 +47,10 @@ LAMBDA_COLORS = {
 def parse_args() -> argparse.Namespace:
     parser = argparse.ArgumentParser(description='Render final guided robot poses for one specified trajectory id in the WRS world.')
     parser.add_argument('--bundle', type=Path, default=DEFAULT_WORKDIR / DEFAULT_RUN_NAME / 'bundle_latest.pt')
-    parser.add_argument('--lnet-contrastive-ckpt', type=Path, default=LNET_CONTRASTIVE_RUNS_DIR / 'lnet_contrastive_q_cond_to_length_sub10_pref' / 'lnet_contrastive_best.pt')
+    parser.add_argument('--lnet-contrastive-ckpt', type=Path, default=DEFAULT_LNET_CONTRASTIVE_CKPT)
     parser.add_argument('--h5-path', type=Path, default=DEFAULT_H5_PATH)
-    parser.add_argument('--traj-id', type=str, default='traj_056550')
-    parser.add_argument('--point-idx', type=int, default=16)
+    parser.add_argument('--traj-id', type=str, default=None)  # traj_id should be in the format of 'traj_12345'
+    parser.add_argument('--point-idx', type=int, default=0)
     parser.add_argument('--title', type=str, default='contrastive_guidance_case')
     parser.add_argument('--device', type=str, default='cuda' if torch.cuda.is_available() else 'cpu')
     parser.add_argument('--seed', type=int, default=None)
@@ -50,7 +61,6 @@ def parse_args() -> argparse.Namespace:
     parser.add_argument('--correction-damping', type=float, default=1e-3)
     parser.add_argument('--lambdas', type=float, nargs='+', default=DEFAULT_LAMBDAS)
     parser.add_argument('--show-corrected', action='store_true', help='Render corrected q instead of raw generated q.')
-    parser.add_argument('--jsonl-path', type=Path, default=None, help='Optional JSONL output path. Defaults to guidance_vis_cases/log.jsonl and appends records.')
     return parser.parse_args()
 
 
@@ -147,6 +157,20 @@ def evaluate_case(anchor: dict, model, lnet_contrastive, tracker, tracker_device
     return gt_real, rows
 
 
+def build_tracker(device: torch.device) -> tuple[GPUNullspaceStraightTracker, torch.device]:
+    franka = FrankaResearch3GPU(device=device)
+    cc_model = SphereCollisionChecker('wrs/robot_sim/robots/franka_research_3/franka_research_3_ccsphere.urdf')
+    vmap_jax_cost = jax.jit(jax.vmap(cc_model.self_collision_cost, in_axes=(0, None, None)))
+    collision_fn = jax2torch.jax2torch(lambda q_batch: vmap_jax_cost(q_batch, 1.0, -0.005))
+    tracker = GPUNullspaceStraightTracker(
+        robot=franka.robot,
+        collision_fn=collision_fn,
+        config=TrackerConfig(),
+        print_every=0,
+    )
+    return tracker, device
+
+
 def render_world(anchor: dict, gt_real: float, rows: list[dict], show_corrected: bool) -> None:
     world = wd.World(cam_pos=[1.7, -1.5, 1.05], lookat_pos=[0.25, 0.0, 0.25])
     mgm.gen_frame().attach_to(world)
@@ -172,7 +196,7 @@ def render_world(anchor: dict, gt_real: float, rows: list[dict], show_corrected:
     mgm.gen_stick(spos=start, epos=gt_end, radius=0.0045, rgb=gt_color, alpha=0.9).attach_to(world)
     mgm.gen_sphere(gt_end, radius=0.009, rgb=gt_color, alpha=0.95).attach_to(world)
 
-    robot = XArmLite6Miller(enable_cc=True)
+    robot = FrankaResearch3(enable_cc=True)
     robot.goto_given_conf(anchor['q'])
     robot.gen_meshmodel(rgb=gt_color, alpha=0.45, toggle_tcp_frame=True).attach_to(world)
 
@@ -218,51 +242,13 @@ def main() -> None:
         device=device,
     )
 
-    pieces = [f"{args.title} ({args.traj_id})", f"GT:{fmt(gt_real)}"]
+    print(
+        f"traj={args.traj_id} pt={int(args.point_idx)} gt_dataset={fmt(anchor['gt_length'])} gt_real={fmt(gt_real)} render_q={'corr' if args.show_corrected else 'raw'}"
+    )
     for row in rows:
-        pieces.append(f"λ={float(row['lambda']):g}:{fmt(row['guided_real_len'])}")
-    print(' | '.join(pieces))
-
-    jsonl_path = args.jsonl_path
-    if jsonl_path is None:
-        jsonl_path = Path(__file__).resolve().parent / 'guidance_vis_cases' / 'log.jsonl'
-
-    meta_record = {
-        'record_type': 'meta',
-        'title': args.title,
-        'traj_id': args.traj_id,
-        'point_idx': int(args.point_idx),
-        'gt_dataset_length': round(float(anchor['gt_length']), 3),
-        'gt_real_length': round(float(gt_real), 3),
-        'render_q': 'corrected' if args.show_corrected else 'raw',
-        'direction': round_nested(np.asarray(anchor['direction']).tolist()),
-        'target_normal': round_nested(np.asarray(anchor['target_normal']).tolist()),
-        'pos': round_nested(np.asarray(anchor['pos']).tolist()),
-    }
-    lambda_records = [
-        {
-            'record_type': 'lambda',
-            'traj_id': args.traj_id,
-            'point_idx': int(args.point_idx),
-            'lambda': round(float(r['lambda']), 3),
-            'guided_real_len': round(float(r['guided_real_len']), 3),
-            'gain_vs_gt': round(float(r['gain_vs_gt']), 3),
-            'final_score': round(float(r['final_score']), 3),
-            'diff_pred_length': round(float(r['diff_pred_length']), 3),
-            'raw_pos_err_mm': round(float(r['raw_pos_err_mm']), 3),
-            'q_raw': round_nested(np.asarray(r['q_raw']).tolist()),
-            'q_corr': round_nested(np.asarray(r['q_corr']).tolist()),
-        }
-        for r in rows
-    ]
-
-    jsonl_path.parent.mkdir(parents=True, exist_ok=True)
-    with jsonl_path.open('a', encoding='utf-8') as f:
-        f.write(json.dumps(round_nested(meta_record), ensure_ascii=False, indent=2) + '\n')
-        for record in lambda_records:
-            f.write(json.dumps(round_nested(record), ensure_ascii=False, indent=2) + '\n')
-        f.write('\n')
-    print(f'[saved] {jsonl_path}')
+        print(
+            f"lambda={float(row['lambda']):g} guided_real={fmt(row['guided_real_len'])} gain={fmt(row['gain_vs_gt'])} score={fmt(row['final_score'])} diff_len={fmt(row['diff_pred_length'])} pos_err_mm={fmt(row['raw_pos_err_mm'])}"
+        )
 
     render_world(anchor, gt_real, rows, args.show_corrected)
 

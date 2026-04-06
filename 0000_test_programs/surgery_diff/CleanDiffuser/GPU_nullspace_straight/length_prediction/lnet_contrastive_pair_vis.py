@@ -10,8 +10,10 @@ import wrs.modeling.collision_model as mcm
 import wrs.modeling.geometric_model as mgm
 import wrs.visualization.panda.world as wd
 
-from paths import DEFAULT_H5_PREF
-from wrs.robot_sim.robots.xarmlite6_wg.xarm6_drill import XArmLite6Miller
+from paths import DATASETS_DIR
+from wrs.robot_sim.robots.franka_research_3.franka_research_3 import FrankaResearch3
+
+DEFAULT_H5_PREF = DATASETS_DIR / 'franka_research_3_gpu_trajectories_sub10_pref.hdf5'
 
 
 def parse_args() -> argparse.Namespace:
@@ -141,7 +143,7 @@ def visualize_pair(pair: dict) -> None:
         alpha=0.35,
     ).attach_to(world)
 
-    robot = XArmLite6Miller(enable_cc=True)
+    robot = FrankaResearch3(enable_cc=True)
     a_color = np.array([0.10, 0.75, 0.20], dtype=np.float32)
     b_color = np.array([0.95, 0.45, 0.10], dtype=np.float32)
 

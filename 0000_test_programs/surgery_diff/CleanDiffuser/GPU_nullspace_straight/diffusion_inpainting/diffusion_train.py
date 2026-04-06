@@ -12,9 +12,6 @@ except ImportError:
     wandb = None
 
 from diffusion import (
-    DEFAULT_CACHE_DIR,
-    DEFAULT_H5_PATH,
-    DEFAULT_RUN_NAME,
     DEFAULT_WORKDIR,
     InpaintingDataset,
     build_inpainting_x,
@@ -28,12 +25,21 @@ from diffusion import (
 )
 
 
+BASE_DIR = Path(__file__).resolve().parent
+GPU_NULLSPACE_DIR = BASE_DIR.parent
+DATASETS_DIR = GPU_NULLSPACE_DIR / 'datasets'
+RUNS_DIR = GPU_NULLSPACE_DIR / 'runs'
+FRANKA_DEFAULT_H5_PATH = DATASETS_DIR / 'franka_research_3_gpu_trajectories_sub10.hdf5'
+FRANKA_DEFAULT_CACHE_DIR = RUNS_DIR / 'franka_kinematic_token_cache_qL_normal_sub10'
+FRANKA_DEFAULT_RUN_NAME = 'ddpm32_dit_inpaint_qL_from_posdirnormal_fr3_sub10'
+
+
 def parse_args():
     parser = argparse.ArgumentParser(description='Train DDPM inpainting baseline for q and remaining-length generation from (pos, direction, normal).')
-    parser.add_argument('--h5-path', type=Path, default=DEFAULT_H5_PATH)
-    parser.add_argument('--cache-dir', type=Path, default=DEFAULT_CACHE_DIR)
+    parser.add_argument('--h5-path', type=Path, default=FRANKA_DEFAULT_H5_PATH)
+    parser.add_argument('--cache-dir', type=Path, default=FRANKA_DEFAULT_CACHE_DIR)
     parser.add_argument('--workdir', type=Path, default=DEFAULT_WORKDIR)
-    parser.add_argument('--run-name', type=str, default=DEFAULT_RUN_NAME)
+    parser.add_argument('--run-name', type=str, default=FRANKA_DEFAULT_RUN_NAME)
     parser.add_argument('--seed', type=int, default=20260330)
     parser.add_argument('--device', type=str, default='cuda' if torch.cuda.is_available() else 'cpu')
     parser.add_argument('--epochs', type=int, default=200)
@@ -48,7 +54,7 @@ def parse_args():
     parser.add_argument('--sample-entry-idx', type=int, default=0)
     parser.add_argument('--max-trajectories', type=int, default=None)
     parser.add_argument('--max-samples', type=int, default=None)
-    parser.add_argument('--wandb-project', type=str, default='xarm-diffusion-inpainting')
+    parser.add_argument('--wandb-project', type=str, default='franka-diffusion-inpainting')
     parser.add_argument('--wandb-name', type=str, default=None)
     parser.add_argument('--wandb-mode', type=str, default='online', choices=['online', 'offline', 'disabled'])
     return parser.parse_args()

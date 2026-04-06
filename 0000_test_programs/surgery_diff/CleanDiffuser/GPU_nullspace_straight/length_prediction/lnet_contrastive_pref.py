@@ -13,8 +13,8 @@ from paths import DATASETS_DIR
 
 def parse_args() -> argparse.Namespace:
     parser = argparse.ArgumentParser(description='Build a contrastive preference index with near-cond neighbors for LNetContrastive.')
-    parser.add_argument('--input', type=Path, default=DATASETS_DIR / 'xarmlite6_gpu_trajectories_100000_sub10.hdf5')
-    parser.add_argument('--output', type=Path, default=DATASETS_DIR / 'xarmlite6_gpu_trajectories_100000_sub10_pref.hdf5')
+    parser.add_argument('--input', type=Path, default=DATASETS_DIR / 'franka_research_3_gpu_trajectories_sub10.hdf5')
+    parser.add_argument('--output', type=Path, default=DATASETS_DIR / 'franka_research_3_gpu_trajectories_sub10_pref.hdf5')
     parser.add_argument('--pos-radius', type=float, default=0.02, help='Position radius in meters.')
     parser.add_argument('--angle-radius-deg', type=float, default=30.0, help='Angular radius for direction/normal matching, in degrees.')
     parser.add_argument('--k', type=int, default=200, help='Max nearest neighbors queried per sample before filtering.')
