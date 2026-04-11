@@ -150,22 +150,24 @@ def sample_with_guidance(
     model.classifier = adapter if float(lambda_guidance) != 0.0 else None
     try:
         record(sample_steps, xt)
+        total_steps = max(int(model.diffusion_steps) - 1, 1)
         for t in range(model.diffusion_steps - 1, -1, -1):
             t_batch = torch.tensor(t, device=device, dtype=torch.long).repeat(prior.shape[0])
             bar_alpha = model.bar_alpha[t]
             bar_alpha_prev = model.bar_alpha[t - 1] if t > 0 else torch.tensor(1.0, device=device)
             alpha = model.alpha[t]
             beta = model.beta[t]
+            lambda_t = float(lambda_guidance) * (float(t) / float(total_steps))
             pred_theta, _ = model.predict_function(
                 xt,
                 t_batch,
                 bar_alpha,
                 use_ema=True,
-                requires_grad=float(lambda_guidance) != 0.0,
+                requires_grad=lambda_t != 0.0,
                 condition_vec_cfg=None,
-                condition_vec_cg=cond_raw if float(lambda_guidance) != 0.0 else None,
+                condition_vec_cg=cond_raw if lambda_t != 0.0 else None,
                 w_cfg=0.0,
-                w_cg=float(lambda_guidance),
+                w_cg=lambda_t,
             )
             if model.predict_noise:
                 xt = 1.0 / alpha.sqrt() * (xt - beta / (1.0 - bar_alpha).sqrt() * pred_theta)
