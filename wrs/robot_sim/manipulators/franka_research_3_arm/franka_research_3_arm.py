@@ -1,3 +1,4 @@
+import array
 import os
 import wrs.basis.robot_math as rm
 import wrs.modeling.collision_model as mcm
