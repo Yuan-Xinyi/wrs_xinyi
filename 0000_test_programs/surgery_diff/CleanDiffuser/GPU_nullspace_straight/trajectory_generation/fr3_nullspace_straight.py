@@ -138,6 +138,15 @@ def joints_in_range_mask(robot, q_batch: torch.Tensor) -> torch.Tensor:
 
 
 
+def joint_limit_avoidance_velocity_batch(robot, q_batch: torch.Tensor) -> torch.Tensor:
+    lower = robot.jnt_ranges[:, 0].unsqueeze(0)
+    upper = robot.jnt_ranges[:, 1].unsqueeze(0)
+    span = (upper - lower).clamp_min(1e-6)
+    center = 0.5 * (lower + upper)
+    return -(q_batch - center) / span
+
+
+
 def rotation_matrix_from_normal(normal: np.ndarray) -> np.ndarray:
     z_axis = normal / max(np.linalg.norm(normal), 1e-12)
     helper = np.array([1.0, 0.0, 0.0]) if abs(z_axis[0]) < 0.9 else np.array([0.0, 1.0, 0.0])
@@ -154,6 +163,7 @@ class TrackerConfig:
     task_speed: float = 0.1
     damping: float = 1e-3
     null_gain: float = 0.6
+    joint_limit_gain: float = 0.2
     theta_max: float = np.deg2rad(30.0)
     boundary_gain: float = 10.0
     max_steps: int = 2000
@@ -274,7 +284,8 @@ class GPUNullspaceStraightTracker:
             v_task = torch.cat([v_pos, v_g], dim=1)
 
             q_dot_task = (j_pinv @ v_task).squeeze(-1)
-            q_dot_null = self.config.null_gain * grad_mu
+            q_dot_joint_limit = self.config.joint_limit_gain * joint_limit_avoidance_velocity_batch(self.robot, q_eval.detach())
+            q_dot_null = self.config.null_gain * grad_mu + q_dot_joint_limit
             q_dot = q_dot_task + (projector @ q_dot_null.unsqueeze(-1)).squeeze(-1)
             q_next = q + self.config.dt * q_dot
 
@@ -406,7 +417,8 @@ class GPUNullspaceStraightTracker:
             v_task = torch.cat([v_pos, v_g], dim=1)
 
             q_dot_task = (j_pinv @ v_task).squeeze(-1)
-            q_dot_null = self.config.null_gain * grad_mu
+            q_dot_joint_limit = self.config.joint_limit_gain * joint_limit_avoidance_velocity_batch(self.robot, q_eval.detach())
+            q_dot_null = self.config.null_gain * grad_mu + q_dot_joint_limit
             q_dot = q_dot_task + (projector @ q_dot_null.unsqueeze(-1)).squeeze(-1)
             q_next = q + self.config.dt * q_dot
 
@@ -548,6 +560,7 @@ def parse_args() -> argparse.Namespace:
     parser.add_argument('--speed', type=float, default=0.1)
     parser.add_argument('--damping', type=float, default=1e-3)
     parser.add_argument('--null-gain', type=float, default=0.6)
+    parser.add_argument('--joint-limit-gain', type=float, default=0.2)
     parser.add_argument('--theta-max-deg', type=float, default=30.0)
     parser.add_argument('--boundary-gain', type=float, default=10.0)
     parser.add_argument('--max-steps', type=int, default=2000)
@@ -583,6 +596,7 @@ def main() -> None:
             task_speed=args.speed,
             damping=args.damping,
             null_gain=args.null_gain,
+            joint_limit_gain=args.joint_limit_gain,
             theta_max=np.deg2rad(args.theta_max_deg),
             boundary_gain=args.boundary_gain,
             max_steps=args.max_steps,
@@ -610,6 +624,7 @@ def main() -> None:
     print('best_sample_target_normal =', np.array2string(normals_np[result.best_idx], precision=4, separator=', '))
     print(f'theta_max_deg = {args.theta_max_deg:.2f}')
     print(f'boundary_gain = {args.boundary_gain:.4f}')
+    print(f'joint_limit_gain = {args.joint_limit_gain:.4f}')
     print(f'pos_error_threshold = {args.pos_error_threshold:.4f} m')
     print(f'steps_mean = {steps.mean():.2f}')
     unique, counts = np.unique(term, return_counts=True)

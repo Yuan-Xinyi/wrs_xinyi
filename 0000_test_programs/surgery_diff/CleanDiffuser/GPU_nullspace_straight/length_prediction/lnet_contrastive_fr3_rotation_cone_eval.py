@@ -48,7 +48,9 @@ def parse_args() -> argparse.Namespace:
     parser.add_argument('--correction-iters', type=int, default=50)
     parser.add_argument('--correction-tol', type=float, default=1e-4)
     parser.add_argument('--correction-damping', type=float, default=1e-3)
-    parser.add_argument('--vis', type=bool, default=True)
+    parser.add_argument('--vis', dest='vis', action='store_true')
+    parser.add_argument('--no-vis', dest='vis', action='store_false')
+    parser.set_defaults(vis=True)
     return parser.parse_args()
 
 
@@ -219,6 +221,8 @@ def render_best_q_comparison(anchor: dict, q_batch_np: np.ndarray, score_np: np.
     best_real_idx = int(np.argmax(real_len_np))
     best_score_idx = int(np.argmax(score_np))
     start = anchor['pos']
+    world = wd.World(cam_pos=[1.8, -1.6, 1.1], lookat_pos=[0.2, 0.0, 0.35])
+    robot = FrankaResearch3(enable_cc=True)
     mgm.gen_sphere(start, radius=0.01, rgb=np.array([0.0, 0.7, 1.0]), alpha=1.0).attach_to(world)
     plane_rotmat = rotation_matrix_from_normal(normal)
     plane_center = start + 0.25 * direction
@@ -264,9 +268,6 @@ def main() -> None:
         float(args.correction_tol),
         float(args.correction_damping),
     )
-    for q in q_batch_np:
-        robot.goto_given_conf(q)
-        robot.gen_meshmodel(alpha=0.2).attach_to(world)
 
     pos_batch_np = np.repeat(task_anchor['pos'][None, :], q_batch_np.shape[0], axis=0).astype(np.float32)
     direction = task_anchor['direction']
