@@ -201,8 +201,8 @@ def collect_candidate_qs(tracker: GPUNullspaceStraightTracker, tracker_device: t
             err_keep = raw_err_np[valid.detach().cpu().numpy()]
             q_list.append(q_keep)
             err_list.append(err_keep)
-        collected = sum(arr.shape[0] for arr in q_list)
-        print(f'[collect] {collected}/{num_candidates} candidate qs')
+        # collected = sum(arr.shape[0] for arr in q_list)
+        # print(f'[collect] {collected}/{num_candidates} candidate qs')
 
     q_all = np.concatenate(q_list, axis=0)[:num_candidates].astype(np.float32)
     err_all = np.concatenate(err_list, axis=0)[:num_candidates].astype(np.float32)
@@ -211,8 +211,22 @@ def collect_candidate_qs(tracker: GPUNullspaceStraightTracker, tracker_device: t
 
 def rollout_same_task(tracker: GPUNullspaceStraightTracker, tracker_device: torch.device, q_batch_np: np.ndarray, direction: np.ndarray, normal: np.ndarray) -> np.ndarray:
     q_batch = torch.from_numpy(q_batch_np.astype(np.float32)).to(tracker_device)
-    direction_batch = torch.from_numpy(np.repeat(direction[None, :].astype(np.float32), q_batch_np.shape[0], axis=0)).to(tracker_device)
-    normal_batch = torch.from_numpy(np.repeat(normal[None, :].astype(np.float32), q_batch_np.shape[0], axis=0)).to(tracker_device)
+    direction_np = np.asarray(direction, dtype=np.float32)
+    normal_np = np.asarray(normal, dtype=np.float32)
+    if direction_np.ndim == 1:
+        direction_batch_np = np.repeat(direction_np[None, :], q_batch_np.shape[0], axis=0).astype(np.float32)
+    elif direction_np.ndim == 2 and direction_np.shape[0] == q_batch_np.shape[0]:
+        direction_batch_np = direction_np.astype(np.float32)
+    else:
+        raise ValueError(f'direction must have shape (3,) or ({q_batch_np.shape[0]}, 3), got {direction_np.shape}')
+    if normal_np.ndim == 1:
+        normal_batch_np = np.repeat(normal_np[None, :], q_batch_np.shape[0], axis=0).astype(np.float32)
+    elif normal_np.ndim == 2 and normal_np.shape[0] == q_batch_np.shape[0]:
+        normal_batch_np = normal_np.astype(np.float32)
+    else:
+        raise ValueError(f'normal must have shape (3,) or ({q_batch_np.shape[0]}, 3), got {normal_np.shape}')
+    direction_batch = torch.from_numpy(direction_batch_np).to(tracker_device)
+    normal_batch = torch.from_numpy(normal_batch_np).to(tracker_device)
     result = tracker.run_batch(q0_batch=q_batch, direction_batch=direction_batch, target_normal_batch=normal_batch)
     return result.projected_length.detach().cpu().numpy().astype(np.float32)
 
