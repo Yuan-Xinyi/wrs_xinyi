@@ -25,6 +25,8 @@ from diffusion_vis_contrastive_guidance_cases import (
 BASE_DIR = Path(__file__).resolve().parent
 GPU_NULLSPACE_DIR = BASE_DIR.parent
 DEFAULT_TASKS_JSONL = GPU_NULLSPACE_DIR / 'length_prediction' / 'eval_lnet_contrastive_fr3_top2000_tasks_by_oracle.jsonl'
+DEFAULT_OUTPUT_JSON = BASE_DIR / 'diffusion_eval_contrastive_guidance_fr3_batch_summary.json'
+DEFAULT_CASES_JSONL = BASE_DIR / 'diffusion_eval_contrastive_guidance_fr3_batch_cases.jsonl'
 
 
 def parse_args() -> argparse.Namespace:
@@ -32,6 +34,8 @@ def parse_args() -> argparse.Namespace:
     parser.add_argument('--bundle', type=Path, default=DEFAULT_WORKDIR / DEFAULT_RUN_NAME / 'bundle_latest.pt')
     parser.add_argument('--lnet-contrastive-ckpt', type=Path, default=DEFAULT_LNET_CONTRASTIVE_CKPT)
     parser.add_argument('--tasks-jsonl', type=Path, default=DEFAULT_TASKS_JSONL)
+    parser.add_argument('--output-json', type=Path, default=DEFAULT_OUTPUT_JSON)
+    parser.add_argument('--cases-jsonl', type=Path, default=DEFAULT_CASES_JSONL)
     parser.add_argument('--device', type=str, default='cuda' if torch.cuda.is_available() else 'cpu')
     parser.add_argument('--seed', type=int, default=None)
     parser.add_argument('--num-cases', type=int, default=2000)
@@ -101,6 +105,20 @@ def mean_std(values: list[float]) -> dict:
     }
 
 
+def to_jsonable(obj):
+    if isinstance(obj, Path):
+        return str(obj)
+    if isinstance(obj, dict):
+        return {k: to_jsonable(v) for k, v in obj.items()}
+    if isinstance(obj, (list, tuple)):
+        return [to_jsonable(v) for v in obj]
+    if isinstance(obj, np.ndarray):
+        return obj.tolist()
+    if isinstance(obj, np.generic):
+        return obj.item()
+    return obj
+
+
 def rollout_large_batch(
     tracker,
     tracker_device: torch.device,
@@ -128,6 +146,7 @@ def flush_rollout_buffer(
     rollout_batch_size: int,
     aggregate: dict,
     buffered_records: list[dict],
+    cases_jsonl: Path,
 ) -> None:
     if not buffered_records:
         return
@@ -171,6 +190,34 @@ def flush_rollout_buffer(
                 best_idx = idx
         aggregate['lambda'][lambda_values[int(best_idx)]]['best_count'] += 1
         record['rollout_time_share'] = rollout_time_share
+        case_payload = {
+            'task_index': int(record['task_index']),
+            'oracle_rank_among_6000': int(record['oracle_rank_among_6000']),
+            'gt_real': float(record['gt_real']),
+            'direction': record['direction'],
+            'target_normal': record['target_normal'],
+            'sampling_total_s': float(record['sampling_total']),
+            'jacobian_correction_s': float(record['jacobian_correction_s']),
+            'rollout_time_share_s': float(record['rollout_time_share']),
+            'total_case_time_s': float(record['case_time_prefix']) + float(record['rollout_time_share']),
+            'lambdas': {},
+        }
+        for idx, lam in enumerate(lambda_values):
+            result = record['results'][idx]
+            case_payload['lambdas'][str(lam)] = {
+                'selected_sample_idx': int(result['selected_sample_idx']),
+                'selected_from_num_samples': int(result['selected_from_num_samples']),
+                'sampling_time_s': float(result['sampling_time']),
+                'final_score': float(result['final_score']),
+                'final_pred_length': float(result['final_pred_length']),
+                'guided_real': float(record['guided_real_by_lambda'][lam]),
+                'gain_vs_gt': float(record['guided_real_by_lambda'][lam] - float(record['gt_real'])),
+                'raw_pos_err_mm': float(record['raw_pos_err_mm'][idx]),
+                'final_q': result['final_q'],
+                'q_corrected': record['q_corr_by_lambda'][lam],
+            }
+        with cases_jsonl.open('a', encoding='utf-8') as fh:
+            fh.write(json.dumps(to_jsonable(case_payload), ensure_ascii=False) + '\n')
 
 
 def main() -> None:
@@ -185,6 +232,9 @@ def main() -> None:
     steps = int(args.sample_steps) if args.sample_steps is not None else int(diffusion_steps)
     lambda_values = [float(v) for v in args.lambdas]
     tasks = load_tasks_from_jsonl(args.tasks_jsonl, args.num_cases)
+    args.cases_jsonl.parent.mkdir(parents=True, exist_ok=True)
+    args.output_json.parent.mkdir(parents=True, exist_ok=True)
+    args.cases_jsonl.write_text('', encoding='utf-8')
 
     aggregate = {
         'gt_real': [],
@@ -276,6 +326,8 @@ def main() -> None:
             'results': results,
             'raw_pos_err_mm': (raw_pos_err * 1e3).astype(np.float32),
             'case_time_prefix': t3 - t_case0,
+            'sampling_total': float(sampling_total),
+            'jacobian_correction_s': float(t3 - t2),
             'rollout_time_share': 0.0,
         }
         for idx, lam in enumerate(lambda_values):
@@ -291,6 +343,7 @@ def main() -> None:
                 rollout_batch_size=int(args.rollout_batch_size),
                 aggregate=aggregate,
                 buffered_records=rollout_buffer,
+                cases_jsonl=args.cases_jsonl,
             )
             rollout_buffer = []
 
@@ -309,6 +362,7 @@ def main() -> None:
         rollout_batch_size=int(args.rollout_batch_size),
         aggregate=aggregate,
         buffered_records=rollout_buffer,
+        cases_jsonl=args.cases_jsonl,
     )
 
     for case_idx, record in enumerate(case_records):
@@ -334,6 +388,8 @@ def main() -> None:
         'bundle': str(args.bundle),
         'lnet_contrastive_ckpt': str(args.lnet_contrastive_ckpt),
         'tasks_jsonl': str(args.tasks_jsonl),
+        'output_json': str(args.output_json),
+        'cases_jsonl': str(args.cases_jsonl),
         'sample_steps': int(steps),
         'samples_per_lambda': int(args.samples_per_lambda),
         'temperature': float(args.temperature),
@@ -361,6 +417,7 @@ def main() -> None:
             'sampling_time_s': mean_std(data['sampling_time']),
             'best_count': int(data['best_count']),
         }
+    args.output_json.write_text(json.dumps(to_jsonable(summary), indent=2, ensure_ascii=False), encoding='utf-8')
     print(json.dumps(summary, indent=2))
 
 
