@@ -127,7 +127,17 @@ def sample_with_guidance(
         fixed_guidance_step=fixed_guidance_step,
         grad_eps=guidance_grad_eps,
     )
-    cond_raw = torch.from_numpy(condition_raw_np[None, :].astype(np.float32)).to(device)
+    condition_raw_np = np.asarray(condition_raw_np, dtype=np.float32)
+    if condition_raw_np.ndim == 1:
+        cond_raw_np = np.repeat(condition_raw_np[None, :], int(prior.shape[0]), axis=0)
+    elif condition_raw_np.ndim == 2:
+        if int(condition_raw_np.shape[0]) != int(prior.shape[0]):
+            raise ValueError(
+                f'condition_raw_np batch={condition_raw_np.shape[0]} must match prior batch={prior.shape[0]}.'
+            )
+    else:
+        raise ValueError(f'condition_raw_np must have ndim 1 or 2, got shape={condition_raw_np.shape}.')
+    cond_raw = torch.from_numpy(cond_raw_np).to(device)
     xt = init_noise.clone().to(device) * float(temperature)
     xt = xt * (1.0 - model.fix_mask) + prior * model.fix_mask
 
@@ -182,11 +192,20 @@ def sample_with_guidance(
     finally:
         model.classifier = old_classifier
 
+    final_q_norm = xt[:, 0, :q_dim]
+    final_q_raw = final_q_norm * adapter.q_std + adapter.q_mean
+    with torch.no_grad():
+        final_score_batch, _ = lnet_contrastive(final_q_raw, cond_raw)
+    final_pred_length_batch = xt[:, 0, -1]
+
     return {
         'lambda': float(lambda_guidance),
         'final_q': history_q[-1],
+        'final_q_batch': final_q_raw.detach().cpu().numpy().astype(np.float32),
         'final_score': float(history_score[-1]),
+        'final_score_batch': final_score_batch.detach().cpu().numpy().astype(np.float32),
         'final_pred_length': float(history_pred_length[-1]),
+        'final_pred_length_batch': final_pred_length_batch.detach().cpu().numpy().astype(np.float32),
         'history_step': np.asarray(history_step, dtype=np.int32),
         'history_q': np.asarray(history_q, dtype=np.float32),
         'history_score': np.asarray(history_score, dtype=np.float32),
