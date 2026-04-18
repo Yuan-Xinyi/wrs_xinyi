@@ -49,8 +49,9 @@ def parse_args() -> argparse.Namespace:
     parser.add_argument('--print-every', type=int, default=10)
     parser.add_argument('--fixed-guidance-step', type=float, default=1.0)
     parser.add_argument('--guidance-grad-eps', type=float, default=1e-6)
-    parser.add_argument('--rollout-batch-size', type=int, default=5000)
-    parser.add_argument('--rollout-accum-size', type=int, default=1000)
+    parser.add_argument('--rollout-batch-size', type=int, default=500)
+    parser.add_argument('--rollout-accum-size', type=int, default=500)
+    parser.add_argument('--joint-limit-gains', type=float, nargs='+', default=[0.0, 0.2, 0.5, 1.0, 5.0])
     return parser.parse_args()
 
 
@@ -119,6 +120,27 @@ def to_jsonable(obj):
     return obj
 
 
+def gain_tag(gain: float) -> str:
+    text = f'{float(gain):.3f}'.rstrip('0').rstrip('.')
+    return text.replace('-', 'm').replace('.', 'p')
+
+
+def cases_jsonl_for_gain(base_path: Path, gain: float) -> Path:
+    return base_path.with_name(f'{base_path.stem}_jointlimit_{gain_tag(gain)}{base_path.suffix}')
+
+
+def make_aggregate() -> dict:
+    return {
+        'gt_real': [],
+        'timing_task_load': [],
+        'timing_correction': [],
+        'timing_rollout_guided': [],
+        'timing_total': [],
+        'timing_sampling_total': [],
+        'selected': {'real': [], 'score': [], 'diff_len': [], 'raw_pos_err_mm': []},
+    }
+
+
 def rollout_large_batch(
     tracker,
     tracker_device: torch.device,
@@ -136,6 +158,9 @@ def rollout_large_batch(
         n_chunk = torch.from_numpy(target_normal_batch[start:end].astype(np.float32)).to(tracker_device)
         result = tracker.run_batch(q0_batch=q_chunk, direction_batch=d_chunk, target_normal_batch=n_chunk)
         lengths.append(result.projected_length.detach().cpu().numpy())
+        del q_chunk, d_chunk, n_chunk, result
+        if tracker_device.type == 'cuda':
+            torch.cuda.empty_cache()
     return np.concatenate(lengths, axis=0).astype(np.float32)
 
 
@@ -154,11 +179,7 @@ def flush_rollout_buffer(
     direction_batch = np.stack([record['direction'] for record in buffered_records], axis=0).astype(np.float32)
     normal_batch = np.stack([record['target_normal'] for record in buffered_records], axis=0).astype(np.float32)
     
-    # Do rollout ONLY for selected samples (not all 64)
-    selected_q_batch = np.stack([
-        record['q_all_corr'][int(record['selected_sample_idx'])]
-        for record in buffered_records
-    ], axis=0).astype(np.float32)
+    selected_q_batch = np.stack([record['q_selected_corr'] for record in buffered_records], axis=0).astype(np.float32)
     selected_count = len(buffered_records)
     
     print(f'[rollout start] {selected_count} selected samples', flush=True)
@@ -189,6 +210,7 @@ def flush_rollout_buffer(
         case_payload = {
             'task_index': int(record['task_index']),
             'oracle_rank_among_6000': int(record['oracle_rank_among_6000']),
+            'joint_limit_gain': float(record['joint_limit_gain']),
             'gt_real': float(record['gt_real']),
             'direction': record['direction'],
             'target_normal': record['target_normal'],
@@ -221,32 +243,48 @@ def main() -> None:
     tracker, tracker_device = build_tracker(device)
     steps = int(args.sample_steps) if args.sample_steps is not None else int(diffusion_steps)
     tasks = load_tasks_from_jsonl(args.tasks_jsonl, args.num_cases)
+    joint_limit_gains = [float(v) for v in args.joint_limit_gains]
     args.cases_jsonl.parent.mkdir(parents=True, exist_ok=True)
     args.output_json.parent.mkdir(parents=True, exist_ok=True)
-    args.cases_jsonl.write_text('', encoding='utf-8')
+    cases_jsonl_map = {gain: cases_jsonl_for_gain(args.cases_jsonl, gain) for gain in joint_limit_gains}
+    for cases_path in cases_jsonl_map.values():
+        cases_path.write_text('', encoding='utf-8')
 
-    aggregate = {
-        'gt_real': [],
-        'timing_task_load': [],
-        'timing_correction': [],
-        'timing_rollout_guided': [],
-        'timing_total': [],
-        'timing_sampling_total': [],
-        'selected': {'real': [], 'score': [], 'diff_len': [], 'raw_pos_err_mm': []},
+    summary = {
+        'num_cases': int(len(tasks)),
+        'bundle': str(args.bundle),
+        'lnet_contrastive_ckpt': str(args.lnet_contrastive_ckpt),
+        'tasks_jsonl': str(args.tasks_jsonl),
+        'output_json': str(args.output_json),
+        'cases_jsonl': str(args.cases_jsonl),
+        'cases_jsonl_per_gain': {str(gain): str(path) for gain, path in cases_jsonl_map.items()},
+        'guidance_lambda': float(args.guidance_lambda),
+        'sample_steps': int(steps),
+        'num_samples': int(args.samples_per_lambda),
+        'temperature': float(args.temperature),
+        'fixed_guidance_step': float(args.fixed_guidance_step),
+        'rollout_batch_size': int(args.rollout_batch_size),
+        'rollout_accum_size': int(args.rollout_accum_size),
+        'joint_limit_gains': joint_limit_gains,
+        'per_gain': {},
     }
 
-    case_records = []
-    rollout_buffer = []
-
     print(f'[setup] loaded {len(tasks)} tasks from {args.tasks_jsonl}')
+    base_case_records = []
+    jnt_ranges = np.array([
+        [-2.8973, 2.8973],
+        [-1.8326, 1.8326],
+        [-2.8972, 2.8972],
+        [-3.0718, -0.1222],
+        [-2.8798, 2.8798],
+        [0.4364, 4.6251],
+        [-3.0543, 3.0543],
+    ], dtype=np.float32)
 
     for case_idx, anchor in enumerate(tasks):
         t_case0 = time.perf_counter()
-
         t0 = time.perf_counter()
         t1 = time.perf_counter()
-        aggregate['timing_task_load'].append(t1 - t0)
-        aggregate['gt_real'].append(float(anchor['gt_real']))
 
         condition_raw = np.concatenate([anchor['pos'], anchor['direction'], anchor['target_normal']], axis=0).astype(np.float32)
         condition_norm = normalize_condition(condition_raw[None, :], stats)[0]
@@ -278,7 +316,6 @@ def main() -> None:
         q_pred_batch = np.asarray(result['final_q_batch'], dtype=np.float32)
         best_sample_idx = int(np.argmax(score_batch))
         sampling_total = float(ts1 - ts0)
-        aggregate['timing_sampling_total'].append(sampling_total)
         print(f'[sampling done] case={case_idx + 1}/{args.num_cases} time={sampling_total:.2f}s', flush=True)
 
         t2 = time.perf_counter()
@@ -292,21 +329,8 @@ def main() -> None:
             tracker_device,
         )
         t3 = time.perf_counter()
-        aggregate['timing_correction'].append(t3 - t2)
-        print(f'[correction done] case={case_idx + 1}/{args.num_cases} time={t3-t2:.2f}s buffered={len(rollout_buffer)+1}', flush=True)
+        print(f'[correction done] case={case_idx + 1}/{args.num_cases} time={t3-t2:.2f}s', flush=True)
 
-        # FR3 joint limits (7 DOF)
-        jnt_ranges = np.array([
-            [-2.8973, 2.8973],   # joint 0
-            [-1.8326, 1.8326],   # joint 1
-            [-2.8972, 2.8972],   # joint 2
-            [-3.0718, -0.1222],  # joint 3
-            [-2.8798, 2.8798],   # joint 4
-            [0.4364, 4.6251],    # joint 5
-            [-3.0543, 3.0543]    # joint 6
-        ], dtype=np.float32)
-        
-        # Filter samples by joint safety (distance to limit > 3%)
         valid_mask = np.ones(int(q_corr_batch.shape[0]), dtype=bool)
         for jnt_idx in range(7):
             q_min, q_max = jnt_ranges[jnt_idx]
@@ -315,30 +339,27 @@ def main() -> None:
             dist_to_max = q_max - q_corr_batch[:, jnt_idx]
             margin_pct_min = dist_to_min / range_size
             margin_pct_max = dist_to_max / range_size
-            # Mark invalid if distance <= 3%
             valid_mask &= (margin_pct_min > 0.03) & (margin_pct_max > 0.03)
-        
+
         valid_indices = np.where(valid_mask)[0]
-        
         if len(valid_indices) > 0:
-            # From valid samples, select top-10 by position error
             valid_pos_err = raw_pos_err[valid_indices]
             top10_local_indices = np.argsort(valid_pos_err)[:min(10, len(valid_indices))]
             top10_indices = valid_indices[top10_local_indices]
-            
-            # From top-10, select best by LNet score
             scores_top10 = score_batch[top10_indices]
             best_in_top10 = np.argmax(scores_top10)
             best_sample_idx = int(top10_indices[best_in_top10])
-            
-            num_valid = len(valid_indices)
-            print(f'[selection] case={case_idx + 1} valid: {num_valid}/64, selected from top-10 pos_err: idx={best_sample_idx}, pos_err={raw_pos_err[best_sample_idx]*1e3:.2f}mm, score={score_batch[best_sample_idx]:.4f}', flush=True)
+            print(
+                f'[selection] case={case_idx + 1} valid: {len(valid_indices)}/{int(q_corr_batch.shape[0])}, '
+                f'selected idx={best_sample_idx}, pos_err={raw_pos_err[best_sample_idx]*1e3:.2f}mm, '
+                f'score={score_batch[best_sample_idx]:.4f}',
+                flush=True,
+            )
         else:
-            # Fallback: use best from all if none pass safety check
             best_sample_idx = int(np.argmax(score_batch))
             print(f'[warning] case={case_idx + 1} no valid samples (joint safety), using best of all', flush=True)
 
-        record = {
+        base_case_records.append({
             'task_index': int(anchor['task_index']),
             'oracle_rank_among_6000': int(anchor['oracle_rank_among_6000']),
             'gt_real': float(anchor['gt_real']),
@@ -347,99 +368,103 @@ def main() -> None:
             'target_normal': anchor['target_normal'],
             'q_selected_raw': q_pred_batch[best_sample_idx],
             'q_selected_corr': q_corr_batch[best_sample_idx],
-            'q_all_corr': q_corr_batch,
             'selected_sample_idx': best_sample_idx,
             'selected_from_num_samples': int(score_batch.shape[0]),
             'selected_score': float(score_batch[best_sample_idx]),
             'selected_pred_length': float(pred_length_batch[best_sample_idx]),
             'selected_raw_pos_err_mm': float(raw_pos_err[best_sample_idx] * 1e3),
-            'all_score_batch': score_batch,
-            'all_pred_length_batch': pred_length_batch,
-            'all_raw_pos_err_mm': (raw_pos_err * 1e3).astype(np.float32),
-            'case_time_prefix': t3 - t_case0,
+            'case_time_prefix': float(t3 - t_case0),
             'sampling_total': float(sampling_total),
             'jacobian_correction_s': float(t3 - t2),
+            'task_load_s': float(t1 - t0),
             'rollout_time_share': 0.0,
-        }
-        case_records.append(record)
-        rollout_buffer.append(record)
-
-        if len(rollout_buffer) >= int(args.rollout_accum_size):
-            print(f'[flush start] {len(rollout_buffer)} records', flush=True)
-            flush_rollout_buffer(
-                tracker=tracker,
-                tracker_device=tracker_device,
-                rollout_batch_size=int(args.rollout_batch_size),
-                aggregate=aggregate,
-                buffered_records=rollout_buffer,
-                cases_jsonl=args.cases_jsonl,
-            )
-            print(f'[flush done]', flush=True)
-            rollout_buffer = []
+        })
 
         if args.print_every > 0 and ((case_idx + 1) % args.print_every == 0 or case_idx + 1 == args.num_cases):
             print(
-                f'[prepare] {case_idx + 1}/{args.num_cases} '
-                f'task={np.mean(aggregate["timing_task_load"]):.3f}s '
-                f'sample_total={np.mean(aggregate["timing_sampling_total"]):.3f}s '
-                f'corr={np.mean(aggregate["timing_correction"]):.3f}s'
+                f'[prepare] fixed selections {case_idx + 1}/{args.num_cases} '
+                f'task={np.mean([r["task_load_s"] for r in base_case_records]):.3f}s '
+                f'sample_total={np.mean([r["sampling_total"] for r in base_case_records]):.3f}s '
+                f'corr={np.mean([r["jacobian_correction_s"] for r in base_case_records]):.3f}s'
             )
 
-    flush_rollout_buffer(
-        tracker=tracker,
-        tracker_device=tracker_device,
-        rollout_batch_size=int(args.rollout_batch_size),
-        aggregate=aggregate,
-        buffered_records=rollout_buffer,
-        cases_jsonl=args.cases_jsonl,
-    )
+    for joint_limit_gain in joint_limit_gains:
+        tracker.config.joint_limit_gain = float(joint_limit_gain)
+        aggregate = make_aggregate()
+        case_records = []
+        rollout_buffer = []
+        cases_jsonl = cases_jsonl_map[joint_limit_gain]
+        print(f'[gain] joint_limit_gain={joint_limit_gain:.3f} cases_jsonl={cases_jsonl}', flush=True)
 
-    for case_idx, record in enumerate(case_records):
-        gt_real = float(record['gt_real'])
-        parts = [
-            f'case={case_idx + 1}/{args.num_cases}',
-            f'task_idx={record["task_index"]}',
-            f'oracle_rank={record["oracle_rank_among_6000"]}',
-            f'gt={fmt(gt_real)}',
-            f'sel={fmt(record["selected_real"])}',
-            f'gsel={fmt(record["selected_real"] - gt_real)}',
-            f'mean={fmt(record["mean_real"])}',
-            f'gmean={fmt(record["mean_real"] - gt_real)}',
-            f'selidx={int(record["selected_sample_idx"]):02d}',
-        ]
-        total_case_time = float(record['case_time_prefix']) + float(record['rollout_time_share'])
-        aggregate['timing_total'].append(total_case_time)
-        print(' '.join(parts))
+        for record in base_case_records:
+            gain_record = dict(record)
+            gain_record['joint_limit_gain'] = float(joint_limit_gain)
+            gain_record['selected_real'] = None
+            gain_record['rollout_time_share'] = 0.0
+            case_records.append(gain_record)
+            rollout_buffer.append(gain_record)
+            aggregate['gt_real'].append(float(gain_record['gt_real']))
+            aggregate['timing_task_load'].append(float(gain_record['task_load_s']))
+            aggregate['timing_sampling_total'].append(float(gain_record['sampling_total']))
+            aggregate['timing_correction'].append(float(gain_record['jacobian_correction_s']))
 
-    summary = {
-        'num_cases': int(len(tasks)),
-        'bundle': str(args.bundle),
-        'lnet_contrastive_ckpt': str(args.lnet_contrastive_ckpt),
-        'tasks_jsonl': str(args.tasks_jsonl),
-        'output_json': str(args.output_json),
-        'cases_jsonl': str(args.cases_jsonl),
-        'guidance_lambda': float(args.guidance_lambda),
-        'sample_steps': int(steps),
-        'num_samples': int(args.samples_per_lambda),
-        'temperature': float(args.temperature),
-        'fixed_guidance_step': float(args.fixed_guidance_step),
-        'rollout_batch_size': int(args.rollout_batch_size),
-        'rollout_accum_size': int(args.rollout_accum_size),
-        'gt_real': mean_std(aggregate['gt_real']),
-        'timing': {
-            'task_loading_s': mean_std(aggregate['timing_task_load']),
-            'sampling_total_s': mean_std(aggregate['timing_sampling_total']),
-            'jacobian_correction_s': mean_std(aggregate['timing_correction']),
-            'rollout_total_s': mean_std(aggregate['timing_rollout_guided']),
-            'case_total_s': mean_std(aggregate['timing_total']),
-        },
-        'selected': {
-            'real': mean_std(aggregate['selected']['real']),
-            'score': mean_std(aggregate['selected']['score']),
-            'diff_len': mean_std(aggregate['selected']['diff_len']),
-            'raw_pos_err_mm': mean_std(aggregate['selected']['raw_pos_err_mm']),
+            if len(rollout_buffer) >= int(args.rollout_accum_size):
+                print(f'[flush start] gain={joint_limit_gain:.3f} {len(rollout_buffer)} records', flush=True)
+                flush_rollout_buffer(
+                    tracker=tracker,
+                    tracker_device=tracker_device,
+                    rollout_batch_size=int(args.rollout_batch_size),
+                    aggregate=aggregate,
+                    buffered_records=rollout_buffer,
+                    cases_jsonl=cases_jsonl,
+                )
+                print(f'[flush done] gain={joint_limit_gain:.3f}', flush=True)
+                rollout_buffer = []
+
+        flush_rollout_buffer(
+            tracker=tracker,
+            tracker_device=tracker_device,
+            rollout_batch_size=int(args.rollout_batch_size),
+            aggregate=aggregate,
+            buffered_records=rollout_buffer,
+            cases_jsonl=cases_jsonl,
+        )
+
+        for case_idx, record in enumerate(case_records):
+            gt_real = float(record['gt_real'])
+            parts = [
+                f'gain={joint_limit_gain:.3f}',
+                f'case={case_idx + 1}/{args.num_cases}',
+                f'task_idx={record["task_index"]}',
+                f'oracle_rank={record["oracle_rank_among_6000"]}',
+                f'gt={fmt(gt_real)}',
+                f'sel={fmt(record["selected_real"])}',
+                f'gsel={fmt(record["selected_real"] - gt_real)}',
+                f'selidx={int(record["selected_sample_idx"]):02d}',
+            ]
+            total_case_time = float(record['case_time_prefix']) + float(record['rollout_time_share'])
+            aggregate['timing_total'].append(total_case_time)
+            print(' '.join(parts))
+
+        summary['per_gain'][str(joint_limit_gain)] = {
+            'joint_limit_gain': float(joint_limit_gain),
+            'cases_jsonl': str(cases_jsonl),
+            'gt_real': mean_std(aggregate['gt_real']),
+            'timing': {
+                'task_loading_s': mean_std(aggregate['timing_task_load']),
+                'sampling_total_s': mean_std(aggregate['timing_sampling_total']),
+                'jacobian_correction_s': mean_std(aggregate['timing_correction']),
+                'rollout_total_s': mean_std(aggregate['timing_rollout_guided']),
+                'case_total_s': mean_std(aggregate['timing_total']),
+            },
+            'selected': {
+                'real': mean_std(aggregate['selected']['real']),
+                'score': mean_std(aggregate['selected']['score']),
+                'diff_len': mean_std(aggregate['selected']['diff_len']),
+                'raw_pos_err_mm': mean_std(aggregate['selected']['raw_pos_err_mm']),
+            },
         }
-    }
+
     args.output_json.write_text(json.dumps(to_jsonable(summary), indent=2, ensure_ascii=False), encoding='utf-8')
     print(json.dumps(summary, indent=2))
 
