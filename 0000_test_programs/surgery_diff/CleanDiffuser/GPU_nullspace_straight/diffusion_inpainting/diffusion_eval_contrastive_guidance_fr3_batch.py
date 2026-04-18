@@ -41,7 +41,7 @@ def parse_args() -> argparse.Namespace:
     parser.add_argument('--num-cases', type=int, default=2000)
     parser.add_argument('--guidance-lambda', type=float, default=0.0)
     parser.add_argument('--sample-steps', type=int, default=None)
-    parser.add_argument('--samples-per-lambda', type=int, default=64)
+    parser.add_argument('--samples-per-lambda', type=int, default=128)
     parser.add_argument('--temperature', type=float, default=1.0)
     parser.add_argument('--correction-iters', type=int, default=50)
     parser.add_argument('--correction-tol', type=float, default=1e-4)
