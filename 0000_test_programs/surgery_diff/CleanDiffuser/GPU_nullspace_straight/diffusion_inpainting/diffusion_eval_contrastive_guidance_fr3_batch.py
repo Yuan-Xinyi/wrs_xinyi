@@ -30,7 +30,7 @@ DEFAULT_CASES_JSONL = BASE_DIR / 'diffusion_eval_contrastive_guidance_fr3_batch_
 
 
 def parse_args() -> argparse.Namespace:
-    parser = argparse.ArgumentParser(description='Batch-evaluate Franka contrastive guidance on a fixed FR3 task list with timing breakdowns.')
+    parser = argparse.ArgumentParser(description='Batch-evaluate unguided diffusion on a fixed FR3 task list by comparing the selected seed against the mean of 32 sampled seeds.')
     parser.add_argument('--bundle', type=Path, default=DEFAULT_WORKDIR / DEFAULT_RUN_NAME / 'bundle_latest.pt')
     parser.add_argument('--lnet-contrastive-ckpt', type=Path, default=DEFAULT_LNET_CONTRASTIVE_CKPT)
     parser.add_argument('--tasks-jsonl', type=Path, default=DEFAULT_TASKS_JSONL)
@@ -39,7 +39,7 @@ def parse_args() -> argparse.Namespace:
     parser.add_argument('--device', type=str, default='cuda' if torch.cuda.is_available() else 'cpu')
     parser.add_argument('--seed', type=int, default=None)
     parser.add_argument('--num-cases', type=int, default=2000)
-    parser.add_argument('--lambdas', type=float, nargs='+', default=[0.0, 0.1, 0.5, 1.0, 5.0])
+    parser.add_argument('--guidance-lambda', type=float, default=0.0)
     parser.add_argument('--sample-steps', type=int, default=None)
     parser.add_argument('--samples-per-lambda', type=int, default=32)
     parser.add_argument('--temperature', type=float, default=1.0)
@@ -142,7 +142,6 @@ def rollout_large_batch(
 def flush_rollout_buffer(
     tracker,
     tracker_device: torch.device,
-    lambda_values: list[float],
     rollout_batch_size: int,
     aggregate: dict,
     buffered_records: list[dict],
@@ -152,43 +151,53 @@ def flush_rollout_buffer(
         return
 
     rollout_started = time.perf_counter()
-    guided_real_by_lambda = {}
-    for lam in lambda_values:
-        q_batch = np.stack([record['q_corr_by_lambda'][lam] for record in buffered_records], axis=0).astype(np.float32)
-        direction_batch = np.stack([record['direction'] for record in buffered_records], axis=0).astype(np.float32)
-        normal_batch = np.stack([record['target_normal'] for record in buffered_records], axis=0).astype(np.float32)
-        guided_real_by_lambda[lam] = rollout_large_batch(
-            tracker,
-            tracker_device,
-            q_batch,
-            direction_batch,
-            normal_batch,
-            int(rollout_batch_size),
-        )
+    direction_batch = np.stack([record['direction'] for record in buffered_records], axis=0).astype(np.float32)
+    normal_batch = np.stack([record['target_normal'] for record in buffered_records], axis=0).astype(np.float32)
+    selected_q_batch = np.stack([record['q_selected_corr'] for record in buffered_records], axis=0).astype(np.float32)
+    selected_real = rollout_large_batch(
+        tracker,
+        tracker_device,
+        selected_q_batch,
+        direction_batch,
+        normal_batch,
+        int(rollout_batch_size),
+    )
+    all_count = len(buffered_records) * int(buffered_records[0]['q_all_corr'].shape[0])
+    all_q_batch = np.stack([record['q_all_corr'] for record in buffered_records], axis=0).astype(np.float32).reshape(all_count, -1)
+    all_direction_batch = np.repeat(direction_batch, buffered_records[0]['q_all_corr'].shape[0], axis=0).astype(np.float32)
+    all_normal_batch = np.repeat(normal_batch, buffered_records[0]['q_all_corr'].shape[0], axis=0).astype(np.float32)
+    all_real_flat = rollout_large_batch(
+        tracker,
+        tracker_device,
+        all_q_batch,
+        all_direction_batch,
+        all_normal_batch,
+        int(rollout_batch_size),
+    )
+    sample_count = int(buffered_records[0]['q_all_corr'].shape[0])
+    all_real_by_case = all_real_flat.reshape(len(buffered_records), sample_count)
     rollout_finished = time.perf_counter()
     rollout_time = float(rollout_finished - rollout_started)
     aggregate['timing_rollout_guided'].append(rollout_time)
     rollout_time_share = rollout_time / max(len(buffered_records), 1)
 
     for record_idx, record in enumerate(buffered_records):
-        best_idx = None
-        best_val = None
-        for idx, lam in enumerate(lambda_values):
-            guided_real = float(guided_real_by_lambda[lam][record_idx])
-            gain = guided_real - float(record['gt_real'])
-            final_score = float(record['results'][idx]['final_score'])
-            diff_len = float(record['results'][idx]['final_pred_length'])
-            pos_err_mm = float(record['raw_pos_err_mm'][idx])
-            aggregate['lambda'][lam]['guided_real'].append(guided_real)
-            aggregate['lambda'][lam]['gain'].append(gain)
-            aggregate['lambda'][lam]['score'].append(final_score)
-            aggregate['lambda'][lam]['diff_len'].append(diff_len)
-            aggregate['lambda'][lam]['pos_err_mm'].append(pos_err_mm)
-            record['guided_real_by_lambda'][lam] = guided_real
-            if best_val is None or guided_real > best_val:
-                best_val = guided_real
-                best_idx = idx
-        aggregate['lambda'][lambda_values[int(best_idx)]]['best_count'] += 1
+        selected_real_i = float(selected_real[record_idx])
+        mean_real_i = float(all_real_by_case[record_idx].mean())
+        selected_gain = selected_real_i - float(record['gt_real'])
+        mean_gain = mean_real_i - float(record['gt_real'])
+        aggregate['selected']['real'].append(selected_real_i)
+        aggregate['selected']['gain'].append(selected_gain)
+        aggregate['selected']['score'].append(float(record['selected_score']))
+        aggregate['selected']['diff_len'].append(float(record['selected_pred_length']))
+        aggregate['selected']['raw_pos_err_mm'].append(float(record['selected_raw_pos_err_mm']))
+        aggregate['mean']['real'].append(mean_real_i)
+        aggregate['mean']['gain'].append(mean_gain)
+        aggregate['mean']['score'].append(float(np.mean(record['all_score_batch'])))
+        aggregate['mean']['diff_len'].append(float(np.mean(record['all_pred_length_batch'])))
+        aggregate['mean']['raw_pos_err_mm'].append(float(np.mean(record['all_raw_pos_err_mm'])))
+        record['selected_real'] = selected_real_i
+        record['mean_real'] = mean_real_i
         record['rollout_time_share'] = rollout_time_share
         case_payload = {
             'task_index': int(record['task_index']),
@@ -200,22 +209,29 @@ def flush_rollout_buffer(
             'jacobian_correction_s': float(record['jacobian_correction_s']),
             'rollout_time_share_s': float(record['rollout_time_share']),
             'total_case_time_s': float(record['case_time_prefix']) + float(record['rollout_time_share']),
-            'lambdas': {},
+            'guidance_lambda': float(record['guidance_lambda']),
+            'selected': {
+                'selected_sample_idx': int(record['selected_sample_idx']),
+                'selected_from_num_samples': int(record['selected_from_num_samples']),
+                'sampling_time_s': float(record['sampling_time']),
+                'final_score': float(record['selected_score']),
+                'final_pred_length': float(record['selected_pred_length']),
+                'guided_real': float(record['selected_real']),
+                'gain_vs_gt': float(record['selected_real'] - float(record['gt_real'])),
+                'raw_pos_err_mm': float(record['selected_raw_pos_err_mm']),
+                'final_q': record['q_selected_raw'],
+                'q_corrected': record['q_selected_corr'],
+            },
+            'mean': {
+                'sampling_time_s': float(record['sampling_time']),
+                'score_mean': float(np.mean(record['all_score_batch'])),
+                'score_std': float(np.std(record['all_score_batch'])),
+                'pred_length_mean': float(np.mean(record['all_pred_length_batch'])),
+                'guided_real_mean': float(record['mean_real']),
+                'gain_vs_gt': float(record['mean_real'] - float(record['gt_real'])),
+                'raw_pos_err_mm_mean': float(np.mean(record['all_raw_pos_err_mm'])),
+            },
         }
-        for idx, lam in enumerate(lambda_values):
-            result = record['results'][idx]
-            case_payload['lambdas'][str(lam)] = {
-                'selected_sample_idx': int(result['selected_sample_idx']),
-                'selected_from_num_samples': int(result['selected_from_num_samples']),
-                'sampling_time_s': float(result['sampling_time']),
-                'final_score': float(result['final_score']),
-                'final_pred_length': float(result['final_pred_length']),
-                'guided_real': float(record['guided_real_by_lambda'][lam]),
-                'gain_vs_gt': float(record['guided_real_by_lambda'][lam] - float(record['gt_real'])),
-                'raw_pos_err_mm': float(record['raw_pos_err_mm'][idx]),
-                'final_q': result['final_q'],
-                'q_corrected': record['q_corr_by_lambda'][lam],
-            }
         with cases_jsonl.open('a', encoding='utf-8') as fh:
             fh.write(json.dumps(to_jsonable(case_payload), ensure_ascii=False) + '\n')
 
@@ -230,7 +246,6 @@ def main() -> None:
     lnet_contrastive = load_lnet_contrastive_model(args.lnet_contrastive_ckpt, device)
     tracker, tracker_device = build_tracker(device)
     steps = int(args.sample_steps) if args.sample_steps is not None else int(diffusion_steps)
-    lambda_values = [float(v) for v in args.lambdas]
     tasks = load_tasks_from_jsonl(args.tasks_jsonl, args.num_cases)
     args.cases_jsonl.parent.mkdir(parents=True, exist_ok=True)
     args.output_json.parent.mkdir(parents=True, exist_ok=True)
@@ -243,7 +258,8 @@ def main() -> None:
         'timing_rollout_guided': [],
         'timing_total': [],
         'timing_sampling_total': [],
-        'lambda': {lam: {'guided_real': [], 'gain': [], 'score': [], 'diff_len': [], 'pos_err_mm': [], 'sampling_time': [], 'best_count': 0} for lam in lambda_values},
+        'selected': {'real': [], 'gain': [], 'score': [], 'diff_len': [], 'raw_pos_err_mm': [], 'sampling_time': []},
+        'mean': {'real': [], 'gain': [], 'score': [], 'diff_len': [], 'raw_pos_err_mm': [], 'sampling_time': []},
     }
 
     case_records = []
@@ -267,40 +283,31 @@ def main() -> None:
         prior = torch.from_numpy(prior_np).float().to(device)
         init_noise = torch.randn_like(prior)
 
-        results = []
-        sampling_total = 0.0
-        for lam in lambda_values:
-            ts0 = time.perf_counter()
-            result = sample_with_guidance(
-                model=model,
-                lnet_contrastive=lnet_contrastive,
-                stats=stats,
-                q_dim=q_dim,
-                condition_raw_np=condition_raw,
-                prior=prior,
-                init_noise=init_noise,
-                sample_steps=steps,
-                temperature=float(args.temperature),
-                lambda_guidance=float(lam),
-                device=device,
-                fixed_guidance_step=float(args.fixed_guidance_step),
-                guidance_grad_eps=float(args.guidance_grad_eps),
-            )
-            ts1 = time.perf_counter()
-            score_batch = np.asarray(result['final_score_batch'], dtype=np.float32)
-            best_sample_idx = int(np.argmax(score_batch))
-            result['selected_sample_idx'] = best_sample_idx
-            result['selected_from_num_samples'] = int(score_batch.shape[0])
-            result['final_q'] = np.asarray(result['final_q_batch'][best_sample_idx], dtype=np.float32)
-            result['final_score'] = float(score_batch[best_sample_idx])
-            result['final_pred_length'] = float(np.asarray(result['final_pred_length_batch'], dtype=np.float32)[best_sample_idx])
-            result['sampling_time'] = float(ts1 - ts0)
-            sampling_total += result['sampling_time']
-            results.append(result)
-            aggregate['lambda'][lam]['sampling_time'].append(result['sampling_time'])
+        ts0 = time.perf_counter()
+        result = sample_with_guidance(
+            model=model,
+            lnet_contrastive=lnet_contrastive,
+            stats=stats,
+            q_dim=q_dim,
+            condition_raw_np=condition_raw,
+            prior=prior,
+            init_noise=init_noise,
+            sample_steps=steps,
+            temperature=float(args.temperature),
+            lambda_guidance=float(args.guidance_lambda),
+            device=device,
+            fixed_guidance_step=float(args.fixed_guidance_step),
+            guidance_grad_eps=float(args.guidance_grad_eps),
+        )
+        ts1 = time.perf_counter()
+        score_batch = np.asarray(result['final_score_batch'], dtype=np.float32)
+        pred_length_batch = np.asarray(result['final_pred_length_batch'], dtype=np.float32)
+        q_pred_batch = np.asarray(result['final_q_batch'], dtype=np.float32)
+        best_sample_idx = int(np.argmax(score_batch))
+        sampling_total = float(ts1 - ts0)
         aggregate['timing_sampling_total'].append(sampling_total)
-
-        q_pred_batch = np.stack([r['final_q'] for r in results], axis=0).astype(np.float32)
+        aggregate['selected']['sampling_time'].append(sampling_total)
+        aggregate['mean']['sampling_time'].append(sampling_total)
 
         t2 = time.perf_counter()
         q_corr_batch, raw_pos_err = batch_position_error_and_correction(
@@ -319,19 +326,25 @@ def main() -> None:
             'task_index': int(anchor['task_index']),
             'oracle_rank_among_6000': int(anchor['oracle_rank_among_6000']),
             'gt_real': float(anchor['gt_real']),
+            'guidance_lambda': float(args.guidance_lambda),
             'direction': anchor['direction'],
             'target_normal': anchor['target_normal'],
-            'q_corr_by_lambda': {},
-            'guided_real_by_lambda': {},
-            'results': results,
-            'raw_pos_err_mm': (raw_pos_err * 1e3).astype(np.float32),
+            'q_selected_raw': q_pred_batch[best_sample_idx],
+            'q_selected_corr': q_corr_batch[best_sample_idx],
+            'q_all_corr': q_corr_batch,
+            'selected_sample_idx': best_sample_idx,
+            'selected_from_num_samples': int(score_batch.shape[0]),
+            'selected_score': float(score_batch[best_sample_idx]),
+            'selected_pred_length': float(pred_length_batch[best_sample_idx]),
+            'selected_raw_pos_err_mm': float(raw_pos_err[best_sample_idx] * 1e3),
+            'all_score_batch': score_batch,
+            'all_pred_length_batch': pred_length_batch,
+            'all_raw_pos_err_mm': (raw_pos_err * 1e3).astype(np.float32),
             'case_time_prefix': t3 - t_case0,
             'sampling_total': float(sampling_total),
             'jacobian_correction_s': float(t3 - t2),
             'rollout_time_share': 0.0,
         }
-        for idx, lam in enumerate(lambda_values):
-            record['q_corr_by_lambda'][lam] = q_corr_batch[idx]
         case_records.append(record)
         rollout_buffer.append(record)
 
@@ -339,7 +352,6 @@ def main() -> None:
             flush_rollout_buffer(
                 tracker=tracker,
                 tracker_device=tracker_device,
-                lambda_values=lambda_values,
                 rollout_batch_size=int(args.rollout_batch_size),
                 aggregate=aggregate,
                 buffered_records=rollout_buffer,
@@ -358,7 +370,6 @@ def main() -> None:
     flush_rollout_buffer(
         tracker=tracker,
         tracker_device=tracker_device,
-        lambda_values=lambda_values,
         rollout_batch_size=int(args.rollout_batch_size),
         aggregate=aggregate,
         buffered_records=rollout_buffer,
@@ -372,13 +383,12 @@ def main() -> None:
             f'task_idx={record["task_index"]}',
             f'oracle_rank={record["oracle_rank_among_6000"]}',
             f'gt={fmt(gt_real)}',
+            f'sel={fmt(record["selected_real"])}',
+            f'gsel={fmt(record["selected_real"] - gt_real)}',
+            f'mean={fmt(record["mean_real"])}',
+            f'gmean={fmt(record["mean_real"] - gt_real)}',
+            f'selidx={int(record["selected_sample_idx"]):02d}',
         ]
-        for idx, lam in enumerate(lambda_values):
-            guided_real = float(record['guided_real_by_lambda'][lam])
-            gain = guided_real - gt_real
-            parts.append(f'lam{lam:g}={fmt(guided_real)}')
-            parts.append(f'g{lam:g}={fmt(gain)}')
-            parts.append(f'sel{lam:g}={int(record["results"][idx]["selected_sample_idx"]):02d}')
         total_case_time = float(record['case_time_prefix']) + float(record['rollout_time_share'])
         aggregate['timing_total'].append(total_case_time)
         print(' '.join(parts))
@@ -390,8 +400,9 @@ def main() -> None:
         'tasks_jsonl': str(args.tasks_jsonl),
         'output_json': str(args.output_json),
         'cases_jsonl': str(args.cases_jsonl),
+        'guidance_lambda': float(args.guidance_lambda),
         'sample_steps': int(steps),
-        'samples_per_lambda': int(args.samples_per_lambda),
+        'num_samples': int(args.samples_per_lambda),
         'temperature': float(args.temperature),
         'fixed_guidance_step': float(args.fixed_guidance_step),
         'rollout_batch_size': int(args.rollout_batch_size),
@@ -399,23 +410,23 @@ def main() -> None:
         'gt_real': mean_std(aggregate['gt_real']),
         'timing': {
             'task_loading_s': mean_std(aggregate['timing_task_load']),
-            'guidance_sampling_total_s': mean_std(aggregate['timing_sampling_total']),
+            'sampling_total_s': mean_std(aggregate['timing_sampling_total']),
             'jacobian_correction_s': mean_std(aggregate['timing_correction']),
-            'rollout_guided_total_s': mean_std(aggregate['timing_rollout_guided']),
+            'rollout_total_s': mean_std(aggregate['timing_rollout_guided']),
             'case_total_s': mean_std(aggregate['timing_total']),
         },
-        'lambdas': {},
+        'selected': {},
+        'mean': {},
     }
-    for lam in lambda_values:
-        data = aggregate['lambda'][lam]
-        summary['lambdas'][str(lam)] = {
-            'guided_real': mean_std(data['guided_real']),
+    for key in ['selected', 'mean']:
+        data = aggregate[key]
+        summary[key] = {
+            'real': mean_std(data['real']),
             'gain_vs_gt': mean_std(data['gain']),
             'score': mean_std(data['score']),
             'diff_len': mean_std(data['diff_len']),
-            'raw_pos_err_mm': mean_std(data['pos_err_mm']),
+            'raw_pos_err_mm': mean_std(data['raw_pos_err_mm']),
             'sampling_time_s': mean_std(data['sampling_time']),
-            'best_count': int(data['best_count']),
         }
     args.output_json.write_text(json.dumps(to_jsonable(summary), indent=2, ensure_ascii=False), encoding='utf-8')
     print(json.dumps(summary, indent=2))
