@@ -50,7 +50,7 @@ def parse_args() -> argparse.Namespace:
     parser.add_argument('--fixed-guidance-step', type=float, default=1.0)
     parser.add_argument('--guidance-grad-eps', type=float, default=1e-6)
     parser.add_argument('--rollout-batch-size', type=int, default=5000)
-    parser.add_argument('--rollout-accum-size', type=int, default=20)
+    parser.add_argument('--rollout-accum-size', type=int, default=1000)
     return parser.parse_args()
 
 
@@ -154,31 +154,23 @@ def flush_rollout_buffer(
     direction_batch = np.stack([record['direction'] for record in buffered_records], axis=0).astype(np.float32)
     normal_batch = np.stack([record['target_normal'] for record in buffered_records], axis=0).astype(np.float32)
     
-    # Do only ONE rollout for all samples (selected + all)
-    all_count = len(buffered_records) * int(buffered_records[0]['q_all_corr'].shape[0])
-    all_q_batch = np.stack([record['q_all_corr'] for record in buffered_records], axis=0).astype(np.float32).reshape(all_count, -1)
-    all_direction_batch = np.repeat(direction_batch, buffered_records[0]['q_all_corr'].shape[0], axis=0).astype(np.float32)
-    all_normal_batch = np.repeat(normal_batch, buffered_records[0]['q_all_corr'].shape[0], axis=0).astype(np.float32)
+    # Do rollout ONLY for selected samples (not all 64)
+    selected_q_batch = np.stack([
+        record['q_all_corr'][int(record['selected_sample_idx'])]
+        for record in buffered_records
+    ], axis=0).astype(np.float32)
+    selected_count = len(buffered_records)
     
-    print(f'[rollout start] {all_count} samples', flush=True)
-    all_real_flat = rollout_large_batch(
+    print(f'[rollout start] {selected_count} selected samples', flush=True)
+    selected_real_flat = rollout_large_batch(
         tracker,
         tracker_device,
-        all_q_batch,
-        all_direction_batch,
-        all_normal_batch,
+        selected_q_batch,
+        direction_batch,
+        normal_batch,
         int(rollout_batch_size),
     )
     print(f'[rollout done]', flush=True)
-    
-    sample_count = int(buffered_records[0]['q_all_corr'].shape[0])
-    all_real_by_case = all_real_flat.reshape(len(buffered_records), sample_count)
-    
-    # Extract selected sample results for each case
-    selected_real = np.array([
-        float(all_real_by_case[i, int(buffered_records[i]['selected_sample_idx'])])
-        for i in range(len(buffered_records))
-    ], dtype=np.float32)
     
     rollout_finished = time.perf_counter()
     rollout_time = float(rollout_finished - rollout_started)
@@ -186,78 +178,33 @@ def flush_rollout_buffer(
     rollout_time_share = rollout_time / max(len(buffered_records), 1)
 
     for record_idx, record in enumerate(buffered_records):
-        selected_real_i = float(selected_real[record_idx])
-        mean_real_i = float(all_real_by_case[record_idx].mean())
-        selected_gain = selected_real_i - float(record['gt_real'])
-        mean_gain = mean_real_i - float(record['gt_real'])
+        selected_real_i = float(selected_real_flat[record_idx])
         aggregate['selected']['real'].append(selected_real_i)
-        aggregate['selected']['gain'].append(selected_gain)
         aggregate['selected']['score'].append(float(record['selected_score']))
         aggregate['selected']['diff_len'].append(float(record['selected_pred_length']))
         aggregate['selected']['raw_pos_err_mm'].append(float(record['selected_raw_pos_err_mm']))
-        aggregate['mean']['real'].append(mean_real_i)
-        aggregate['mean']['gain'].append(mean_gain)
-        aggregate['mean']['score'].append(float(np.mean(record['all_score_batch'])))
-        aggregate['mean']['diff_len'].append(float(np.mean(record['all_pred_length_batch'])))
-        aggregate['mean']['raw_pos_err_mm'].append(float(np.mean(record['all_raw_pos_err_mm'])))
         record['selected_real'] = selected_real_i
-        record['mean_real'] = mean_real_i
         record['rollout_time_share'] = rollout_time_share
         
-        # Compute top-k statistics
-        all_scores = record['all_score_batch']
-        all_reals = all_real_by_case[record_idx]
-        top_k_results = {}
-        for k in [1, 3, 5]:
-            k_val = min(k, len(all_scores))
-            top_indices = np.argsort(all_scores)[-k_val:]
-            top_k_reals = all_reals[top_indices]
-            top_k_scores = all_scores[top_indices]
-            top_k_results[k] = {
-                'mean_real': float(top_k_reals.mean()),
-                'mean_gain_vs_gt': float(top_k_reals.mean() - float(record['gt_real'])),
-                'mean_score': float(top_k_scores.mean()),
-                'indices': [int(idx) for idx in top_indices],
-            }
-        
         case_payload = {
-            'gain': float(record['selected_real'] - record['mean_real']),
             'task_index': int(record['task_index']),
             'oracle_rank_among_6000': int(record['oracle_rank_among_6000']),
             'gt_real': float(record['gt_real']),
             'direction': record['direction'],
             'target_normal': record['target_normal'],
+            'selected_sample_idx': int(record['selected_sample_idx']),
+            'selected_from_num_samples': int(record['selected_from_num_samples']),
+            'final_score': float(record['selected_score']),
+            'final_pred_length': float(record['selected_pred_length']),
+            'selected_real': float(record['selected_real']),
+            'gain_vs_gt': float(record['selected_real'] - float(record['gt_real'])),
+            'raw_pos_err_mm': float(record['selected_raw_pos_err_mm']),
+            'q_corrected': record['q_selected_corr'],
             'sampling_total_s': float(record['sampling_total']),
             'jacobian_correction_s': float(record['jacobian_correction_s']),
             'rollout_time_share_s': float(record['rollout_time_share']),
             'total_case_time_s': float(record['case_time_prefix']) + float(record['rollout_time_share']),
             'guidance_lambda': float(record['guidance_lambda']),
-            'selected': {
-                'selected_sample_idx': int(record['selected_sample_idx']),
-                'selected_from_num_samples': int(record['selected_from_num_samples']),
-                'sampling_time_s': float(record['sampling_total']),
-                'final_score': float(record['selected_score']),
-                'final_pred_length': float(record['selected_pred_length']),
-                'guided_real': float(record['selected_real']),
-                'gain_vs_gt': float(record['selected_real'] - float(record['gt_real'])),
-                'raw_pos_err_mm': float(record['selected_raw_pos_err_mm']),
-                'final_q': record['q_selected_raw'],
-                'q_corrected': record['q_selected_corr'],
-            },
-            'mean': {
-                'sampling_time_s': float(record['sampling_total']),
-                'score_mean': float(np.mean(record['all_score_batch'])),
-                'score_std': float(np.std(record['all_score_batch'])),
-                'pred_length_mean': float(np.mean(record['all_pred_length_batch'])),
-                'guided_real_mean': float(record['mean_real']),
-                'gain_vs_gt': float(record['mean_real'] - float(record['gt_real'])),
-                'raw_pos_err_mm_mean': float(np.mean(record['all_raw_pos_err_mm'])),
-            },
-            'top_k_comparison': {
-                'top_1': top_k_results[1],
-                'top_3': top_k_results[3],
-                'top_5': top_k_results[5],
-            },
         }
         with cases_jsonl.open('a', encoding='utf-8') as fh:
             fh.write(json.dumps(to_jsonable(case_payload), ensure_ascii=False) + '\n')
@@ -285,8 +232,7 @@ def main() -> None:
         'timing_rollout_guided': [],
         'timing_total': [],
         'timing_sampling_total': [],
-        'selected': {'real': [], 'gain': [], 'score': [], 'diff_len': [], 'raw_pos_err_mm': [], 'sampling_time': []},
-        'mean': {'real': [], 'gain': [], 'score': [], 'diff_len': [], 'raw_pos_err_mm': [], 'sampling_time': []},
+        'selected': {'real': [], 'score': [], 'diff_len': [], 'raw_pos_err_mm': []},
     }
 
     case_records = []
@@ -333,8 +279,6 @@ def main() -> None:
         best_sample_idx = int(np.argmax(score_batch))
         sampling_total = float(ts1 - ts0)
         aggregate['timing_sampling_total'].append(sampling_total)
-        aggregate['selected']['sampling_time'].append(sampling_total)
-        aggregate['mean']['sampling_time'].append(sampling_total)
         print(f'[sampling done] case={case_idx + 1}/{args.num_cases} time={sampling_total:.2f}s', flush=True)
 
         t2 = time.perf_counter()
@@ -351,12 +295,48 @@ def main() -> None:
         aggregate['timing_correction'].append(t3 - t2)
         print(f'[correction done] case={case_idx + 1}/{args.num_cases} time={t3-t2:.2f}s buffered={len(rollout_buffer)+1}', flush=True)
 
-        # Select best sample from top-10 by position error
-        top10_pos_err_indices = np.argsort(raw_pos_err)[:10]  # Indices of 10 smallest position errors
-        scores_top10 = score_batch[top10_pos_err_indices]
-        best_in_top10 = np.argmax(scores_top10)
-        best_sample_idx = int(top10_pos_err_indices[best_in_top10])
-        print(f'[selection] case={case_idx + 1} selected from top-10 pos_err: idx={best_sample_idx}, pos_err={raw_pos_err[best_sample_idx]*1e3:.2f}mm, score={score_batch[best_sample_idx]:.4f}', flush=True)
+        # FR3 joint limits (7 DOF)
+        jnt_ranges = np.array([
+            [-2.8973, 2.8973],   # joint 0
+            [-1.8326, 1.8326],   # joint 1
+            [-2.8972, 2.8972],   # joint 2
+            [-3.0718, -0.1222],  # joint 3
+            [-2.8798, 2.8798],   # joint 4
+            [0.4364, 4.6251],    # joint 5
+            [-3.0543, 3.0543]    # joint 6
+        ], dtype=np.float32)
+        
+        # Filter samples by joint safety (distance to limit > 3%)
+        valid_mask = np.ones(int(q_corr_batch.shape[0]), dtype=bool)
+        for jnt_idx in range(7):
+            q_min, q_max = jnt_ranges[jnt_idx]
+            range_size = q_max - q_min
+            dist_to_min = q_corr_batch[:, jnt_idx] - q_min
+            dist_to_max = q_max - q_corr_batch[:, jnt_idx]
+            margin_pct_min = dist_to_min / range_size
+            margin_pct_max = dist_to_max / range_size
+            # Mark invalid if distance <= 3%
+            valid_mask &= (margin_pct_min > 0.03) & (margin_pct_max > 0.03)
+        
+        valid_indices = np.where(valid_mask)[0]
+        
+        if len(valid_indices) > 0:
+            # From valid samples, select top-10 by position error
+            valid_pos_err = raw_pos_err[valid_indices]
+            top10_local_indices = np.argsort(valid_pos_err)[:min(10, len(valid_indices))]
+            top10_indices = valid_indices[top10_local_indices]
+            
+            # From top-10, select best by LNet score
+            scores_top10 = score_batch[top10_indices]
+            best_in_top10 = np.argmax(scores_top10)
+            best_sample_idx = int(top10_indices[best_in_top10])
+            
+            num_valid = len(valid_indices)
+            print(f'[selection] case={case_idx + 1} valid: {num_valid}/64, selected from top-10 pos_err: idx={best_sample_idx}, pos_err={raw_pos_err[best_sample_idx]*1e3:.2f}mm, score={score_batch[best_sample_idx]:.4f}', flush=True)
+        else:
+            # Fallback: use best from all if none pass safety check
+            best_sample_idx = int(np.argmax(score_batch))
+            print(f'[warning] case={case_idx + 1} no valid samples (joint safety), using best of all', flush=True)
 
         record = {
             'task_index': int(anchor['task_index']),
@@ -453,19 +433,13 @@ def main() -> None:
             'rollout_total_s': mean_std(aggregate['timing_rollout_guided']),
             'case_total_s': mean_std(aggregate['timing_total']),
         },
-        'selected': {},
-        'mean': {},
-    }
-    for key in ['selected', 'mean']:
-        data = aggregate[key]
-        summary[key] = {
-            'real': mean_std(data['real']),
-            'gain_vs_gt': mean_std(data['gain']),
-            'score': mean_std(data['score']),
-            'diff_len': mean_std(data['diff_len']),
-            'raw_pos_err_mm': mean_std(data['raw_pos_err_mm']),
-            'sampling_time_s': mean_std(data['sampling_time']),
+        'selected': {
+            'real': mean_std(aggregate['selected']['real']),
+            'score': mean_std(aggregate['selected']['score']),
+            'diff_len': mean_std(aggregate['selected']['diff_len']),
+            'raw_pos_err_mm': mean_std(aggregate['selected']['raw_pos_err_mm']),
         }
+    }
     args.output_json.write_text(json.dumps(to_jsonable(summary), indent=2, ensure_ascii=False), encoding='utf-8')
     print(json.dumps(summary, indent=2))
 
