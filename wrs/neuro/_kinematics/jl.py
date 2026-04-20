@@ -7,8 +7,8 @@ import wrs.modeling.collision_model as mcm
 import wrs.basis.constant as bc
 
 device = torch.device("cuda" if torch.cuda.is_available() else "cpu")
-def clean(tensor):
-    return torch.tensor(tensor, dtype=torch.float32, device=device)
+def clean(tensor, device_override=None):
+    return torch.tensor(tensor, dtype=torch.float32, device=device_override or device)
 
 class Link(object):
     """
@@ -18,12 +18,17 @@ class Link(object):
 
     def __init__(self,
                  name="auto",
-                 loc_pos=torch.zeros(3, device=device),
-                 loc_rotmat=torch.eye(3, device=device),
-                 com=torch.zeros(3, device=device),
-                 inertia=torch.eye(3, device=device),
+                 loc_pos=None,
+                 loc_rotmat=None,
+                 com=None,
+                 inertia=None,
                  mass=0,
                  cmodel=None):
+        tensor_device = loc_pos.device if isinstance(loc_pos, torch.Tensor) else device
+        loc_pos = torch.zeros(3, device=tensor_device) if loc_pos is None else loc_pos
+        loc_rotmat = torch.eye(3, device=tensor_device) if loc_rotmat is None else loc_rotmat
+        com = torch.zeros(3, device=tensor_device) if com is None else com
+        inertia = torch.eye(3, device=tensor_device) if inertia is None else inertia
         self.name = name
         self._loc_pos = loc_pos
         self._loc_rotmat = loc_rotmat
@@ -35,8 +40,8 @@ class Link(object):
         self._gl_pos = self._loc_pos
         self._gl_rotmat = self._loc_rotmat
         # grafting target
-        self._root_pos = torch.zeros(3)
-        self._root_rotmat = torch.eye(3)
+        self._root_pos = torch.zeros(3, device=tensor_device)
+        self._root_rotmat = torch.eye(3, device=tensor_device)
         # delay
         self._is_gl_pose_delayed = False
 
@@ -139,13 +144,17 @@ class Link(object):
         self._cmodel = cmodel
         self._cmodel.pose = (self._gl_pos, self._gl_rotmat)
 
-    def install_onto(self, pos=torch.zeros(3), rotmat=torch.eye(3)):
+    def install_onto(self, pos=None, rotmat=None):
         """
         update the global parameters with given reference pos, reference rotmat
         :param pos:
         :param rotmat:
         :return:
         """
+        if pos is None:
+            pos = torch.zeros(3, device=self._loc_pos.device)
+        if rotmat is None:
+            rotmat = torch.eye(3, device=pos.device)
         self._root_pos = pos
         self._root_rotmat = rotmat
         self._gl_pos = self._root_pos + self._root_rotmat @ self._loc_pos
@@ -184,8 +193,8 @@ class Anchor(object):
 
     def __init__(self,
                  name="auto",
-                 pos=torch.zeros(3, device=device),
-                 rotmat=torch.eye(3, device=device),
+                 pos=None,
+                 rotmat=None,
                  n_flange=1,
                  n_lnk=1):
         """
@@ -195,14 +204,17 @@ class Anchor(object):
         :param loc_flange_pos: pos for mounting (local in the pos/rotmat frame)
         :param loc_flange_rotmat: rotmat for mounting (local in the pos/rotmat frame)
         """
+        tensor_device = pos.device if isinstance(pos, torch.Tensor) else device
+        pos = torch.zeros(3, device=tensor_device) if pos is None else pos
+        rotmat = torch.eye(3, device=tensor_device) if rotmat is None else rotmat
         self.name = name
         self._pos = pos
         self._rotmat = rotmat
         self._n_flange = n_flange
         self._n_lnk = n_lnk
-        self._loc_flange_pose_list = [[torch.zeros(3, device=device), torch.eye(3, device=device)] for _ in range(self._n_flange)]
+        self._loc_flange_pose_list = [[torch.zeros(3, device=tensor_device), torch.eye(3, device=tensor_device)] for _ in range(self._n_flange)]
         self._gl_flange_pose_list = self.compute_gl_flange()
-        self._lnk_list = [Link(name=name) for _ in range(self._n_lnk)]
+        self._lnk_list = [Link(name=name, loc_pos=torch.zeros(3, device=tensor_device), loc_rotmat=torch.eye(3, device=tensor_device)) for _ in range(self._n_lnk)]
         self._is_gl_flange_delayed = True
         self._is_lnk_delayed = True
 
@@ -360,24 +372,29 @@ class Joint(object):
     def __init__(self,
                  name="auto",
                  type=rkc.JntType.REVOLUTE,
-                 loc_pos=torch.zeros(3, device=device),
-                 loc_rotmat=torch.eye(3, device=device),
-                 loc_motion_ax=torch.tensor([0, 1, 0], device=device),
-                 motion_range=torch.tensor([-torch.pi, torch.pi], device=device)):
+                 loc_pos=None,
+                 loc_rotmat=None,
+                 loc_motion_ax=None,
+                 motion_range=None):
+        tensor_device = loc_pos.device if isinstance(loc_pos, torch.Tensor) else device
+        loc_pos = torch.zeros(3, device=tensor_device) if loc_pos is None else loc_pos
+        loc_rotmat = torch.eye(3, device=tensor_device) if loc_rotmat is None else loc_rotmat
+        loc_motion_ax = torch.tensor([0, 1, 0], device=tensor_device) if loc_motion_ax is None else loc_motion_ax
+        motion_range = torch.tensor([-torch.pi, torch.pi], device=tensor_device) if motion_range is None else motion_range
         self.name = name
         self.loc_pos = loc_pos
         self.loc_rotmat = loc_rotmat
         self.loc_motion_ax = loc_motion_ax
         self.motion_range = motion_range
         # the following parameters will be updated automatically
-        self._motion_value = torch.tensor(.0, requires_grad=True)
+        self._motion_value = torch.tensor(.0, requires_grad=True, device=tensor_device)
         self._gl_pos_0 = self.loc_pos
         self._gl_rotmat_0 = self.loc_rotmat
         self._gl_motion_ax = self.loc_motion_ax
         self._gl_pos_q = self._gl_pos_0
         self._gl_rotmat_q = self._gl_rotmat_0
         # the following parameter has a setter function
-        self._lnk = Link(name=name)
+        self._lnk = Link(name=name, loc_pos=torch.zeros(3, device=tensor_device), loc_rotmat=torch.eye(3, device=tensor_device))
         # the following parameter should not be changed
         self._type = type
 
@@ -448,8 +465,8 @@ class Joint(object):
             self._gl_pos_q = self._gl_pos_0 + self._gl_motion_ax * self._motion_value
             self._gl_rotmat_q = self._gl_rotmat_0
 
-    def update_globals(self, pos=torch.zeros(3), rotmat=torch.eye(3),
-                       motion_value=torch.tensor(.0, requires_grad=True)):
+    def update_globals(self, pos=None, rotmat=None,
+                       motion_value=None):
         """
         update the global parameters against give reference pos, reference rotmat, and motion_value
         :param pos:
@@ -457,6 +474,12 @@ class Joint(object):
         :param motion_value:
         :return:
         """
+        if pos is None:
+            pos = torch.zeros(3, device=self.loc_pos.device)
+        if rotmat is None:
+            rotmat = torch.eye(3, device=pos.device)
+        if motion_value is None:
+            motion_value = torch.tensor(.0, requires_grad=True, device=pos.device)
         self._gl_pos_0 = pos + rotmat @ self.loc_pos  # TODO offset to loc
         self._gl_rotmat_0 = rotmat @ self.loc_rotmat
         self._gl_motion_ax = self._gl_rotmat_0 @ self.loc_motion_ax
@@ -473,10 +496,10 @@ class Joint(object):
         self.assert_motion_value(value=motion_value)
         if self.type == rkc.JntType.REVOLUTE:
             rotmat_by_motion = nkm.rotmat_from_axangle(self.loc_motion_ax, motion_value)
-            return self.loc_homomat @ nkm.homomat_from_posrot(pos=torch.zeros(3,device=device), rotmat=rotmat_by_motion)
+            return self.loc_homomat @ nkm.homomat_from_posrot(pos=torch.zeros(3, device=self.loc_pos.device), rotmat=rotmat_by_motion)
         elif self.type == rkc.JntType.PRISMATIC:
             pos_by_motion = self.loc_motion_ax * motion_value
-            return self.loc_homomat @ nkm.homomat_from_posrot(pos=pos_by_motion, rotmat=torch.eye(3, device=device))
+            return self.loc_homomat @ nkm.homomat_from_posrot(pos=pos_by_motion, rotmat=torch.eye(3, device=self.loc_pos.device))
 
     def gen_model(self,
                   toggle_frame_0=True,

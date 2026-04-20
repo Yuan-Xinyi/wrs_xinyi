@@ -10,8 +10,8 @@ import wrs.robot_sim._kinematics.constant as rkc
 # TODO delay finalize
 # TODO joint gl -> flange
 device = torch.device("cuda" if torch.cuda.is_available() else "cpu")
-def clean(tensor):
-    return torch.tensor(tensor, dtype=torch.float32, device=device)
+def clean(tensor, device_override=None):
+    return torch.tensor(tensor, dtype=torch.float32, device=device_override or device)
 
 class JLChain(object):
     """
@@ -24,8 +24,8 @@ class JLChain(object):
 
     def __init__(self,
                  name="auto",
-                 pos=torch.zeros(3, device=device),
-                 rotmat=torch.eye(3, device=device),
+                 pos=None,
+                 rotmat=None,
                  n_dof=6):
         """
         conf -- configuration: target joint values
@@ -35,9 +35,12 @@ class JLChain(object):
         :param home: number of joints
         :param name:
         """
+        tensor_device = pos.device if isinstance(pos, torch.Tensor) else device
+        pos = torch.zeros(3, device=tensor_device) if pos is None else pos
+        rotmat = torch.eye(3, device=tensor_device) if rotmat is None else rotmat
         self.name = name
         self.n_dof = n_dof
-        self.home = torch.zeros(self.n_dof, dtype=torch.float32, device=device)  # self.n_dof joints plus one anchor
+        self.home = torch.zeros(self.n_dof, dtype=torch.float32, device=tensor_device)  # self.n_dof joints plus one anchor
         # initialize anchor
         self.anchor = nkjl.Anchor(name=f"{name}_anchor", pos=pos, rotmat=rotmat)
         # initialize joints and links
@@ -46,8 +49,8 @@ class JLChain(object):
         # default flange joint id, loc_xxx are considered described in it
         self._flange_jnt_id = self.n_dof - 1
         # default flange for cascade connection
-        self._loc_flange_pos = torch.zeros(3, device=device)
-        self._loc_flange_rotmat = torch.eye(3, device=device)
+        self._loc_flange_pos = torch.zeros(3, device=tensor_device)
+        self._loc_flange_rotmat = torch.eye(3, device=tensor_device)
         self._gl_flange_pos = self._loc_flange_pos
         self._gl_flange_rotmat = self._loc_flange_rotmat
         # finalizing tag
@@ -128,9 +131,10 @@ class JLChain(object):
         date: 20161202, 20201009osaka, 20230823
         """
         if not update:
-            homomat = self.anchor.gl_flange_homomat_list[0].to(device)
-            jnt_pos = torch.zeros((self.n_dof, 3), device=device)
-            jnt_motion_ax = torch.zeros((self.n_dof, 3), device=device)
+            tensor_device = self.anchor.pos.device
+            homomat = self.anchor.gl_flange_homomat_list[0].to(tensor_device)
+            jnt_pos = torch.zeros((self.n_dof, 3), device=tensor_device)
+            jnt_motion_ax = torch.zeros((self.n_dof, 3), device=tensor_device)
             for i in range(self.flange_jnt_id + 1):
                 jnt_pos[i, :] = homomat[:3, 3] + homomat[:3, :3] @ self.jnts[i].loc_pos
                 homomat = homomat @ self.jnts[i].get_motion_homomat(motion_value=jnt_values[i])
@@ -196,7 +200,7 @@ class JLChain(object):
                 K = torch.tensor([[0, -ax[2], ax[1]],
                                 [ax[2], 0, -ax[0]],
                                 [-ax[1], ax[0], 0]], device=device).unsqueeze(0)
-                I = torch.eye(3, device=device).unsqueeze(0)
+                I = torch.eye(3, device=self.anchor.pos.device).unsqueeze(0)
                 R = I + torch.sin(theta) * K + (1 - torch.cos(theta)) * torch.bmm(K, K)
 
             # apply motion to H

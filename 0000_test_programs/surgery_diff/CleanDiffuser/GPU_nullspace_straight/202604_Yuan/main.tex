@@ -279,28 +279,28 @@ The purpose of failure protection is not to replace the learned model, but to pr
 Test-set & Selection Strategy & {Mean} & {Med.} & {Std} & {Min} & {Max} & {Mean} & {Med.} & {Std} & {Min} & {Max} \\
 \midrule
 \multirow{7}{*}{\shortstack{All Tasks}} 
-& Mean-in-Batch ($bs=32$) & 0 & 0 & 0 & 0 & 0 & 0 & 0 & 0 & 0 & 0 \\
-& Best-in-Batch ($bs=32$) & \limebox{0.61} & \limebox{0.58} & 0.36 & 0.01 & 1.71 & --- & --- & --- & --- & 100.00 \\
-& Optimal Reference (GT) & --- & --- & --- & --- & 0 & --- & --- & --- & --- & 100.00 \\
+& Mean-in-Batch ($bs=32$) & \rev{0.40} & \rev{0.39} & \rev{0.22} & \rev{0.00} & \rev{1.20} & \rev{67.73} & \rev{71.49} & \rev{18.75} & \rev{1.94} & \rev{99.09} \\
+& Best-in-Batch ($bs=32$) & \limebox{0.61} & \limebox{0.58} & 0.36 & 0.01 & 1.71 & \rev{97.08} & \rev{99.17} & \rev{7.58} & \rev{12.15} & \rev{100.00} \\
+& Optimal Reference (GT) & \rev{0.63} & \rev{0.59} & \rev{0.36} & \rev{0.01} & \rev{1.72} & --- & --- & --- & --- & 100.00 \\
 \cmidrule{2-12}
-& SelRank Top-1 Selection   & 0.54 & 0.50 & \limebox{0.34} & 0.00 & 1.60 & 88.73 & 98.13 & 22.43 & 0.00 & 100.00 \\
-& SelRank Top-3 Selection   & 0.58 & 0.55 & 0.35 & 0.00 & 1.67 & 95.16 & 99.31 & 12.91 & 0.00 & 100.00 \\
-& SelRank Top-5 Selection   & 0.59 & 0.56 & 0.35 & 0.00 & 1.71 & \limebox{96.71} & \limebox{99.64} & \limebox{10.25} & 0.00 & 100.00 \\
+& SelRank Top-1 Selection   & 0.54 & 0.50 & \limebox{0.34} & 0.00 & 1.60 & \rev{86.54} & \rev{96.62} & \rev{23.20} & \rev{0.00} & \rev{100.00} \\
+& SelRank Top-3 Selection   & 0.58 & 0.55 & 0.35 & 0.00 & 1.67 & \rev{92.63} & \rev{98.02} & \rev{14.92} & \rev{0.00} & \rev{100.00} \\
+& SelRank Top-5 Selection   & 0.59 & 0.56 & 0.35 & 0.00 & 1.71 & \rev{\limebox{94.08}} & \rev{\limebox{98.41}} & \rev{\limebox{12.78}} & \rev{0.00} & \rev{100.00} \\
 \midrule
 \multirow{7}{*}{\shortstack{Long Tasks}} 
-& Mean-in-Batch ($bs=32$) & 0 & 0 & 0 & 0 & 0 & 0 & 0 & 0 & 0 & 0 \\
-& Best-in-Batch ($bs=32$) & \limebox{1.03} & \limebox{0.99} & 0.21 & 0.75 & 1.71 & --- & --- & --- & --- & 100.00 \\
-& Optimal Reference (GT) & --- & --- & --- & --- & 0 & --- & --- & --- & --- & 100.00 \\
+& Mean-in-Batch ($bs=32$) & \rev{0.60} & \rev{0.61} & \rev{0.18} & \rev{0.05} & \rev{1.20} & \rev{58.90} & \rev{61.14} & \rev{18.25} & \rev{5.57} & \rev{98.31} \\
+& Best-in-Batch ($bs=32$) & \limebox{1.03} & \limebox{0.99} & 0.21 & 0.75 & 1.71 & \rev{99.01} & \rev{99.63} & \rev{3.16} & \rev{54.00} & \rev{100.00} \\
+& Optimal Reference (GT) & \rev{1.05} & \rev{1.00} & \rev{0.21} & \rev{0.75} & \rev{1.72} & --- & --- & --- & --- & 100.00 \\
 \cmidrule{2-12}
-& SelRank Top-1 Selection   & 0.85 & 0.88 & 0.32 & 0.00 & 1.60 & 83.74 & 98.87 & 27.84 & 0.00 & 100.00 \\
-& SelRank Top-3 Selection   & 0.96 & 0.94 & 0.25 & 0.00 & 1.67 & 93.47 & 99.62 & 17.10 & 0.00 & 100.00 \\
-& SelRank Top-5 Selection   & \limebox{0.99} & \limebox{0.95} & \limebox{0.23} & 0.02 & 1.71 & \limebox{95.73} & \limebox{99.82} & \limebox{13.71} & 2.09 & 100.00 \\
+& SelRank Top-1 Selection   & 0.85 & 0.88 & 0.32 & 0.00 & 1.60 & \rev{83.02} & \rev{98.12} & \rev{27.86} & \rev{0.00} & \rev{100.00} \\
+& SelRank Top-3 Selection   & 0.96 & 0.94 & 0.25 & 0.00 & 1.67 & \rev{92.62} & \rev{98.99} & \rev{17.37} & \rev{0.00} & \rev{100.00} \\
+& SelRank Top-5 Selection   & \limebox{0.99} & \limebox{0.95} & \limebox{0.23} & 0.02 & 1.71 & \rev{\limebox{94.85}} & \rev{\limebox{99.23}} & \rev{\limebox{14.07}} & \rev{2.07} & \rev{100.00} \\
 \bottomrule
 \end{tabular}
 \begin{tablenotes}
-    \item[Note 1] We evaluated 6,000 random tasks, defining a subset of 2,000 tasks with a maximum length exceeding 0.75 m as \emph{long tasks}.
+    \item[Note 1] We evaluated 6,000 random tasks and additionally report the top-2,000 oracle-ranked tasks as the \emph{long-task} subset in this table.
     \item[Note 2] For SelRank-based selection, the result is chosen from a batch of 32 sampled candidate configurations.
-    \item[Note 3] The \emph{Optimal Reference} is obtained by sampling 1,000 candidate configurations to approximate the global optimum.
+    \item[Note 3] The \emph{Optimal Reference} is defined task-wise as the maximum rollout length across the 32-sample in-batch oracle, the 1,000-sample resampled reference pool, and the five joint-limit ablation runs.
 \end{tablenotes}
 }
 \end{threeparttable}
@@ -319,19 +319,23 @@ Test-set & Selection Strategy & {Mean} & {Med.} & {Std} & {Min} & {Max} & {Mean}
         \cmidrule(lr){5-8} \cmidrule(lr){9-12}
         Category & Method & Time (s) & Pos. (mm) & Mean & Std & Min & Max & Mean & Std & Min & Max \\
         \midrule
-        Optimal Reference (GT) & Enumeration Max. & --- & --- & 0 & 0 & 0 & 0 & --- & --- & --- & 100 \\
+        Optimal Reference (GT) & Enumeration Max. & --- & --- & \rev{1.05} & \rev{0.21} & \rev{0.75} & \rev{1.72} & --- & --- & --- & 100 \\
         \midrule
         \multirow{2}{*}{\shortstack{Baselines}} 
-        & Opt-based & 0  & 0 & 0 & 0 & 0 & 0 & 0 & 0 & 0 & 0 \\
-        & MPC-based & 0  & 0 & 0 & 0 & 0 & 0 & 0 & 0 & 0 & 0 \\
+        & Continuous Optimization & \rev{---}  & \rev{---} & \rev{---} & \rev{---} & \rev{---} & \rev{---} & \rev{---} & \rev{---} & \rev{---} & \rev{---} \\
+        & Receding-horizon MPC & \rev{---}  & \rev{---} & \rev{---} & \rev{---} & \rev{---} & \rev{---} & \rev{---} & \rev{---} & \rev{---} & \rev{---} \\
         \midrule
         \multirow{3}{*}{\shortstack{Proposed Generator}} 
-        & Mean-DiT & 0.10  & 53.38 & 0.54 & 0.33 & 0.00 & 1.54 & 0 & 0 & 0 & 0 \\
+        & Mean-DiT & \rev{0.10}  & \rev{53.38} & \rev{0.54} & \rev{0.33} & \rev{0.00} & \rev{1.54} & \rev{53.23} & \rev{31.21} & \rev{0.27} & \rev{99.94} \\
         % & Mean-Guided-DiT    & 0  & 0 & 0 & 0 & 0 & 0 & 0 & 0 & 0 & 0 \\
-        & Selected DiT & 0.10  & 17.72 & 0.61 & 0.40 & 0.00 & 1.71 & 0 & 0 & 0 & 0 \\
-        & Double-Selected DiT & 0.09  & \limebox{14.98} & \limebox{0.84} & \limebox{0.31} & 0.00 & \limebox{1.71} & 0 & 0 & 0 & 0 \\
+        & Selected DiT & \rev{0.10}  & \rev{17.72} & \rev{0.60} & \rev{0.40} & \rev{0.00} & \rev{1.71} & \rev{58.84} & \rev{36.99} & \rev{0.00} & \rev{100.00} \\
+        & Double-Selected DiT & \rev{0.09}  & \rev{\limebox{14.98}} & \rev{\limebox{0.84}} & \rev{\limebox{0.31}} & \rev{0.00} & \rev{\limebox{1.71}} & \rev{\limebox{81.92}} & \rev{\limebox{26.66}} & \rev{0.00} & \rev{100.00} \\
         \bottomrule
     \end{tabular}
+\begin{tablenotes}
+    \item[Note 1] The \emph{Optimal Reference} is defined task-wise as the maximum rollout length across the merged GT reference, the five joint-limit ablation runs, and the three proposed-generator variants in this table.
+    \item[Note 2] The two classical baselines are implemented separately but are omitted here because the full 2,000-task runs were not finalized at the time of this draft.
+\end{tablenotes}
 }
 \end{threeparttable}
 \end{table*}
@@ -367,15 +371,16 @@ Test-set & Selection Strategy & {Mean} & {Med.} & {Std} & {Min} & {Max} & {Mean}
         \toprule
         $k_{\mathrm{jl}}$ & $l$ (Mean / Std / Min / Max (m)) & $\%$ (Mean / Std / Min / Max) \\
         \midrule
-        0.0 & \pinkbox{0.80} / 0.31 / 0.00 / 1.71 & \pinkbox{78.60} / 28.31 / 0.00 / 123.01 \\
-        0.2 & 0.84 / 0.31 / 0.00 / 1.71 & 82.59 / 26.61 / 0.00 / 119.24 \\
-        0.5 & 0.87 / 0.30 / 0.00 / 1.72 & 84.70 / 25.53 / 0.00 / 126.08 \\
-        1.0 & 0.88 / 0.30 / 0.00 / 1.71 & 85.93 / 25.08 / 0.00 / 160.41 \\
-        5.0 & \limebox{0.88} / 0.32 / 0.00 / 1.71 & \limebox{86.07} / 25.99 / 0.00 / 160.66 \\
+        0.0 & \pinkbox{0.80} / 0.31 / 0.00 / 1.71 & \rev{\pinkbox{77.90}} / \rev{28.22} / \rev{0.00} / \rev{100.00} \\
+        0.2 & 0.84 / 0.31 / 0.00 / 1.71 & \rev{81.85} / \rev{26.56} / \rev{0.00} / \rev{100.00} \\
+        0.5 & 0.87 / 0.30 / 0.00 / 1.72 & \rev{83.94} / \rev{25.49} / \rev{0.00} / \rev{100.00} \\
+        1.0 & 0.88 / 0.30 / 0.00 / 1.71 & \rev{85.11} / \rev{24.95} / \rev{0.00} / \rev{100.00} \\
+        5.0 & \limebox{0.88} / 0.32 / 0.00 / 1.71 & \rev{\limebox{85.24}} / \rev{25.79} / \rev{0.00} / \rev{100.00} \\
         \bottomrule
     \end{tabular}
-\begin{tablenotes}
+    \begin{tablenotes}
     \item[Note 1] The gain of joint limit avoidance is 0.2 by default.
+    \item[Note 2] The percentage is computed against a task-wise reference defined as the maximum rollout length across the merged GT reference and all five joint-limit ablation runs.
 \end{tablenotes}
 }
 \end{threeparttable}
@@ -389,7 +394,7 @@ All experiments are conducted on the Franka Research 3 manipulator. At evaluatio
 
 The experimental design separates decision quality, generator-level performance, and sensitivity to control parameters. Table~\ref{tab:lnetresult} evaluates SelRank on 6{,}000 randomly sampled task conditions and additionally reports the 2{,}000-task long-horizon subset whose oracle rollout length exceeds 0.75\,m. Table~\ref{tab:mainresult} focuses on the fixed top-2{,}000 oracle-ranked task list used by the diffusion evaluation script, where each query is solved by parallel diffusion sampling followed by Jacobian correction and rollout. Table~\ref{tab:ablation_guidance} then sweeps the joint-limit gain $k_{\mathrm{jl}}$ in the same evaluation loop. Under the default setting, the 2{,}000-task batch evaluation spends about 0.09\,s on sampling, 0.11\,s on Jacobian correction, and 0.26\,s total per query, which provides a concrete runtime reference for the online method.
 
-For representative non-generative baselines, we implement two lightweight online selectors on the same long-task list. The Opt-based baseline first samples a feasible candidate-configuration pool by batched Jacobian correction from random joint seeds, and then performs batched gradient ascent on a local surrogate composed of directional manipulability, TCP-normal alignment, position-consistency penalty, and joint-center regularization before choosing the highest-scoring repaired candidate configuration. The MPC-based baseline reuses the same feasible candidate-configuration pool, but scores each candidate by a short-horizon rollout under the same GPU path-following controller and selects the candidate with the largest finite-horizon predicted rollout length. Both baselines are finally evaluated by the same full-horizon rollout and the same JSONL case-recording protocol as the proposed method, so the comparison isolates the effect of candidate-generation and selection strategy rather than downstream rollout implementation.
+For representative non-generative baselines, we implement one continuous-optimization baseline and one receding-horizon MPC baseline on the same long-task list. The continuous-optimization baseline directly treats the initial joint configuration $\mathbf{q}_{0}$ as the decision variable. Starting from several random feasible seeds, it first optimizes start-pose consistency with respect to the prescribed TCP position and normal, and then maximizes a differentiable finite-horizon rollout objective that rewards forward progress while penalizing position-tracking error, orientation violation, joint-boundary violation, low manipulability, collision cost, and excessive control magnitude. The receding-horizon MPC baseline instead optimizes a short control sequence online. At each step, it solves a finite-horizon control problem under the same differentiable rollout objective, executes only the first control increment, and replans from the updated state until termination. Both baselines log per-case timing and outcome statistics to JSONL files, enabling direct comparison between test-time generation and classical online optimization/control strategies.
 
 \subsection{\xinyi{Dataset Collection}}
 We first report the scale and coverage of the collected dataset. The FR3 trajectory corpus contains 100{,}000 rollout trajectories and 4{,}106{,}374 retained state samples after subsampling, each labeled with remaining rollout length under the same controller used at evaluation time. The trajectories contain 41.06 states on average (median 35, 90th percentile 84), and their total rollout length has mean 0.395\,m, median 0.333\,m, and 90th percentile 0.822\,m. These statistics show that the dataset is not dominated by only trivial short motions, but spans a wide range of path-following difficulty.
@@ -404,20 +409,20 @@ Beyond raw sample count, the key issue is whether the dataset captures sufficien
 % \end{figure*}
 
 \subsection{\xinyi{Result Analysis}}
-We first examine the decision quality of the learned preference model independently of full online generation. Table~\ref{tab:lnetresult} compares different top-$k$ selection strategies based on SelRank scores against the strongest sample available in a fixed candidate-configuration pool. This experiment isolates the ranking ability of the preference model from the diffusion generator itself, and directly tests whether SelRank assigns higher scores to configurations that truly preserve longer future rollout capability.
+We first examine the decision quality of the learned preference model independently of full online generation. Table~\ref{tab:lnetresult} compares different top-$k$ selection strategies based on SelRank scores against a task-wise reference that aggregates the strongest rollout observed across the in-batch oracle, the 1,000-sample resampled pool, and the joint-limit ablation runs. This experiment isolates the ranking ability of the preference model from the diffusion generator itself, and directly tests whether SelRank assigns higher scores to configurations that truly preserve longer future rollout capability.
 
-Table~\ref{tab:lnetresult} shows a consistent top-$k$ trend. On the full test set, Top-1 reaches 0.54\,m mean length and 88.73\% mean proximity to the best-in-batch reference, while Top-3 and Top-5 improve this to 95.16\% and 96.71\%, respectively. The medians are even higher, reaching 99.31\% for Top-3 and 99.64\% for Top-5. The same pattern is stronger on the long-horizon subset, where Top-5 reaches 0.99\,m mean length, 95.73\% mean proximity, and 99.82\% median proximity. The comprehensive 6{,}000-task evaluation also reports a mean pairwise ordering accuracy of 73.62\% and mean Kendall $\tau$ of 0.518, indicating that the learned score is not merely selecting a few isolated winners, but captures a reasonably consistent ordering over the feasible batch.
+Table~\ref{tab:lnetresult} shows a clear and stable top-$k$ trend. On the full 6{,}000-task set, Top-1 reaches 0.54\,m mean length and 86.54\% mean proximity to the unified reference, while Top-3 and Top-5 improve this to 92.63\% and 94.08\%, respectively. The medians are substantially higher, reaching 98.02\% for Top-3 and 98.41\% for Top-5, which indicates that most tasks are ranked well and that the remaining gap is concentrated in harder outliers. On the top-2{,}000 long-task subset, the same pattern becomes more pronounced: Mean-in-Batch recovers only 58.90\% of the unified reference on average, whereas SelRank Top-5 reaches 0.99\,m mean length, 94.85\% mean proximity, and 99.23\% median proximity. The comprehensive 6{,}000-task evaluation also reports a mean pairwise ordering accuracy of 73.62\% and mean Kendall $\tau$ of 0.518, indicating that the learned score captures a globally meaningful ordering over the feasible batch rather than selecting only a few isolated winners.
 
-These results support the separation between feasibility generation and preference-based ranking. Given a sufficiently diverse feasible batch, SelRank can consistently recover candidate configurations whose rollout performance is close to the best available one.
+These results support the separation between feasibility generation and preference-based ranking. Given a sufficiently diverse feasible batch, SelRank consistently closes most of the gap between the batch mean and the best available candidate, especially on the harder long-horizon tasks where naive averaging is least effective.
 
-Table~\ref{tab:mainresult} shows how this translates to end-to-end candidate-configuration generation. Mean-DiT, which averages diffusion samples before correction, yields a large position error of 53.38\,mm and only 0.54\,m mean rollout length. Replacing averaging with score-based selection reduces the error to 17.72\,mm and raises the mean rollout length to 0.61\,m. The full Double-Selected DiT strategy further improves the mean rollout length to 0.84\,m while achieving the lowest position error of 14.98\,mm. On the corresponding 2{,}000-task case file, this configuration reaches 82.69\% mean proximity to the oracle rollout length with a mean per-query runtime of 0.24\,s, showing that most of the benefit is preserved even under a lightweight online budget.
+Table~\ref{tab:mainresult} shows how this ranking signal translates to end-to-end candidate-configuration generation. Mean-DiT, which averages diffusion samples before correction, yields a large position error of 53.38\,mm and only 0.54\,m mean rollout length, corresponding to 53.23\% of the unified reference. Replacing averaging with sample selection raises the mean rollout length to 0.60\,m and improves the mean proximity to 58.84\%, while simultaneously reducing the position error to 17.72\,mm. The full Double-Selected DiT strategy further improves the mean rollout length to 0.84\,m, reaches 81.92\% mean proximity to the unified reference, and achieves the lowest position error of 14.98\,mm with an average online time of 0.09\,s for the sampling stage. The gain from Mean-DiT to Selected DiT shows that preserving sample diversity is already important, while the additional jump to Double-Selected DiT indicates that the second screening stage removes many residual low-quality but locally plausible candidates.
 
-This comparison shows that the gain comes from combining generative diversity with preference-based filtering, rather than from the diffusion prior alone. The second selection stage improves long-horizon rollout performance while preserving Cartesian accuracy.
+This comparison shows that the gain comes from combining generative diversity with preference-based filtering, rather than from the diffusion prior alone. The second selection stage improves long-horizon rollout performance while preserving Cartesian accuracy, and it is the main factor that moves the generator from a moderate-quality initializer to a strong online selector.
 
 \subsection{\xinyi{Ablation Studies}}
 The ablations then investigate which parts of the proposed pipeline are responsible for the observed performance gains. Table~\ref{tab:ablation_guidance} studies the joint-limit gain $k_{\mathrm{jl}}$ used during path-following rollout and dataset generation. This parameter directly affects the quality of the supervisory signal because it changes how strongly the controller exploits redundancy before reaching boundary regions.
 
-The effect is monotonic. Without joint-limit avoidance ($k_{\mathrm{jl}}=0.0$), the mean length is 0.80\,m and the mean proximity is 78.60\%. Increasing the gain steadily improves both metrics, reaching 0.88\,m mean length and 86.07\% mean proximity at $k_{\mathrm{jl}}=5.0$. The improvement from $k_{\mathrm{jl}}=0.2$ to $k_{\mathrm{jl}}=1.0$ is already substantial, raising the mean realized length from 0.843\,m to 0.882\,m, while the additional gain from $1.0$ to $5.0$ is comparatively small. This indicates that moderate joint-limit awareness is the main ingredient, whereas very aggressive pushing away from boundaries mainly refines tail cases.
+The effect is monotonic. Without joint-limit avoidance ($k_{\mathrm{jl}}=0.0$), the mean length is 0.80\,m and the mean proximity is 77.90\%. Increasing the gain steadily improves both metrics, reaching 0.88\,m mean length and 85.24\% mean proximity at $k_{\mathrm{jl}}=5.0$. The improvement from $k_{\mathrm{jl}}=0.2$ to $k_{\mathrm{jl}}=1.0$ is already substantial, raising the mean realized length from 0.84\,m to 0.88\,m and the mean proximity from 81.85\% to 85.11\%, while the additional gain from $1.0$ to $5.0$ is comparatively small. This indicates that moderate joint-limit awareness is the main ingredient, whereas very aggressive pushing away from boundaries mainly refines tail cases.
 
 This suggests that joint-limit-aware null-space control is not merely a safety heuristic, but a direct contributor to long-horizon rollout quality. The gain also saturates between $k_{\mathrm{jl}}=1.0$ and $5.0$, indicating that stronger avoidance mainly improves robustness once the mechanism is already active.
 
