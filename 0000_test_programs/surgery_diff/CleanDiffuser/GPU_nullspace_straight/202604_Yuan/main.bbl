@@ -176,8 +176,4 @@ R.~Rafailov, A.~Sharma, E.~Mitchell, C.~D. Manning, S.~Ermon, and C.~Finn,
   model,'' \emph{Advances in neural information processing systems}, vol.~36,
   pp. 53\,728--53\,741, 2023.
 
-\bibitem{kim2025test}
-S.~Kim, M.~Kim, and D.~Park, ``Test-time alignment of diffusion models without
-  reward over-optimization,'' \emph{arXiv preprint arXiv:2501.05803}, 2025.
-
 \end{thebibliography}

@@ -19,7 +19,7 @@ from diffusion import (
     create_loader,
     create_model,
     prepare_raw_token_cache,
-    sample_q_length_from_condition,
+    sample_q_from_condition,
     save_bundle,
     set_seed,
 )
@@ -35,7 +35,7 @@ FRANKA_DEFAULT_RUN_NAME = 'ddpm32_dit_inpaint_qL_from_posdirnormal_fr3_sub10'
 
 
 def parse_args():
-    parser = argparse.ArgumentParser(description='Train DDPM inpainting baseline for q and remaining-length generation from (pos, direction, normal).')
+    parser = argparse.ArgumentParser(description='Train DDPM inpainting baseline for joint angle generation from (pos, direction, normal) condition.')
     parser.add_argument('--h5-path', type=Path, default=FRANKA_DEFAULT_H5_PATH)
     parser.add_argument('--cache-dir', type=Path, default=FRANKA_DEFAULT_CACHE_DIR)
     parser.add_argument('--workdir', type=Path, default=DEFAULT_WORKDIR)
@@ -108,10 +108,10 @@ def main():
     x_min = train_x.min(axis=0).astype(np.float32)
     x_max = train_x.max(axis=0).astype(np.float32)
 
-    train_dataset = InpaintingDataset(train_x, train_raw[:, layout.length_slice].reshape(-1))
-    val_dataset = InpaintingDataset(val_x, val_raw[:, layout.length_slice].reshape(-1))
-    train_loader = create_loader(train_dataset, args.batch_size, weighted=True)
-    val_loader = create_loader(val_dataset, args.eval_batch_size, weighted=False, shuffle=False)
+    train_dataset = InpaintingDataset(train_x)
+    val_dataset = InpaintingDataset(val_x)
+    train_loader = create_loader(train_dataset, args.batch_size, shuffle=True)
+    val_loader = create_loader(val_dataset, args.eval_batch_size, shuffle=False)
 
     device = torch.device(args.device)
     model = create_model(device=device, x_min=x_min, x_max=x_max, diffusion_steps=args.diffusion_steps, q_dim=layout.q_dim)
@@ -225,7 +225,7 @@ def main():
                     wandb.log({'eval/best_val_loss': best_val}, step=global_step)
 
         if epoch % args.save_interval == 0:
-            demo_q, demo_len, _ = sample_q_length_from_condition(
+            demo_q = sample_q_from_condition(
                 model=model,
                 stats=stats,
                 condition=demo_condition,
@@ -237,8 +237,7 @@ def main():
             )
             print(
                 f'[SampleDemo] epoch={epoch:04d} entry_idx={demo_idx} '
-                f'samples_q={np.array2string(demo_q, precision=4, separator=", ")} '
-                f'samples_length={np.array2string(demo_len, precision=4, separator=", ")}',
+                f'samples_q={np.array2string(demo_q, precision=4, separator=", ")}',
                 flush=True,
             )
             if use_wandb:
@@ -246,8 +245,6 @@ def main():
                     {
                         'sample/demo_mean_abs_q': float(np.mean(np.abs(demo_q))),
                         'sample/demo_std_q': float(np.std(demo_q)),
-                        'sample/demo_mean_length': float(np.mean(demo_len)),
-                        'sample/demo_std_length': float(np.std(demo_len)),
                     },
                     step=global_step,
                 )
