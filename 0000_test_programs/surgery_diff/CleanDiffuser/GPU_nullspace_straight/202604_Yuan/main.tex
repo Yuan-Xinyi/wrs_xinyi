@@ -1,0 +1,490 @@
+\documentclass[journal, twoside]{IEEEtran}
+\let\labelindent\relax
+
+% math related package
+\usepackage{amsmath}
+\usepackage{amssymb}
+\usepackage{mathtools}
+\usepackage{eqlist}
+\usepackage{amsfonts}
+%% math -- mathbold
+\def\mathbi#1{\textbf{\em #1}}
+%% math -- observation command
+\usepackage{amsthm}
+\newtheorem*{observation}{Important Observation}
+% table related package
+\usepackage{tabularx}
+\usepackage{threeparttable}
+\usepackage{booktabs}
+\usepackage{makecell}
+\usepackage{colortbl}
+% figure related package
+\usepackage{graphicx}
+\usepackage{wrapfig}
+\usepackage{subcaption}
+% algorithm related package
+\usepackage[lined, ruled, linesnumbered, commentsnumbered, noend]{algorithm2e}
+\usepackage[colorlinks=true, allcolors=blue]{hyperref}
+\newcommand\mycommfont[1]{\footnotesize\ttfamily\textcolor{blue}{#1}}
+\renewcommand{\thefootnote}{\tiny~Note \arabic{footnote}}
+\SetCommentSty{mycommfont}
+% formatting related package
+\usepackage{enumitem}
+\usepackage{lipsum}
+\usepackage{stfloats}
+\usepackage{ulem}
+\normalem
+\usepackage[numbers]{natbib}
+\usepackage[usenames,dvipsnames]{xcolor}
+\usepackage{comment}
+\usepackage{flushend}
+%% formatting -- multirow underline
+\usepackage{multirow}
+\newcommand\dunderline[3][-2pt]{{%
+  \setbox0=\hbox{#3}
+  \ooalign{\copy0\cr\rule[\dimexpr#1-#2\relax]{\wd0}{#2}}}}
+% how to broke words
+\hyphenation{}
+% displacement
+\usepackage{tikz}
+\usetikzlibrary{fit, shapes.misc}
+\newcommand\marktopleft[1]{%
+    \tikz[overlay,remember picture]
+        \node (marker-#1-a) at (0,1.5ex) {};%
+}
+\newcommand\markbottomright[1]{%
+    \tikz[overlay,remember picture]
+        \node (marker-#1-b) at (0,0) {};%
+    \tikz[overlay,remember picture,thick,inner sep=3pt]
+        \node[draw, rectangle, color=teal, fit=(marker-#1-a.center) (marker-#1-b.center)] {};%
+}
+\newcommand{\circnum}[1]{\raisebox{0.2ex}{\textcircled{\raisebox{-0.2ex}{#1}}}}
+% colored box
+\newcommand{\limebox}[1]{\setlength{\fboxsep}{0pt}{\colorbox{lime}{#1}}}
+\newcommand{\pinkbox}[1]{\setlength{\fboxsep}{0pt}{\colorbox{yellow}{#1}}}
+% international fonts
+\usepackage{CJKutf8}
+% check and revision
+\definecolor{bleudefrance}{rgb}{0.19, 0.55, 0.91}
+\definecolor{awesome}{rgb}{1.0, 0.13, 0.32}
+\definecolor{darkgreen}{rgb}{0.0, 0.65, 0.0}
+\definecolor{babyblue}{rgb}{0.29, 0.75, 0.93}
+\newcommand{\wan}[1]{{\color{purple}\begin{CJK*}{UTF8}{gkai}#1\end{CJK*}}}
+\newcommand{\wanex}[1]{{\color{violet}\begin{CJK*}{UTF8}{gkai}#1\end{CJK*}}}
+\newcommand{\wanexex}[1]{{\color{brown}\begin{CJK*}{UTF8}{gkai}#1\end{CJK*}}}
+\newcommand{\wanfinal}[1]{{\color{blue}\begin{CJK*}{UTF8}{gkai}#1\end{CJK*}}}
+\definecolor{darkorange}{rgb}{1.0, 0.55, 0.0}
+\newcommand{\xinyi}[1]{{\color{darkorange}\begin{CJK*}{UTF8}{gkai}#1\end{CJK*}}}
+\newcommand{\xinyitodo}[1]{{\color{darkgreen}\begin{CJK*}{UTF8}{gkai}#1\end{CJK*}}}
+\newcommand{\harada}[1]{\textcolor{green}{#1}}
+\newcommand{\recheck}[1]{\textcolor{olive}{#1}}
+\newcommand{\rev}[1]{\begingroup\color{magenta}#1\endgroup}
+
+\begin{document}
+\title{\xinyi{Preference-Guided Diffusion Inverse Kinematics for\\ Precise Straight-Line Trajectory Tracking}}
+\author{Xinyi Yuan, Weiwei Wan$^{*}$, Kensuke Harada
+\thanks{Department of System Innovation, Graduate School of Engineering Science, The University of Osaka, Toyonaka, Osaka, Japan.}
+\thanks{$^{*}$Contact: Weiwei Wan, {\tt\small wan@sys.es.osaka-u.ac.jp}}}
+\markboth{IEEE Transactions on Automation Science and Engineering, 2026.}%
+{Yuan \MakeLowercase{\textit{et al.}}: Farsighted Inverse Kinematics via Contrastively Guided Diffusion}
+\maketitle
+
+\bstctlcite{IEEEexample:BSTcontrol}
+%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%
+\begin{abstract}
+Inverse kinematics (IK) for redundant manipulators is usually treated as an instantaneous feasibility problem. For precise straight-line path-following, however, different feasible joint configurations can have very different future rollout capability under the same position, motion direction, and contact normal. We therefore formulate redundant IK as a preference-aware generation problem: produce a feasible configuration that not only satisfies the current task constraint, but also preserves longer future straight-line motion. Our method combines four components: null-space rollout dataset generation, conditional diffusion for multimodal candidate-configuration generation, a contrastive preference model SelRank (denoted as LNet) for rollout-potential scoring, and test-time sampling with Jacobian correction and failure protection. The diffusion model captures the feasible joint manifold, while the learned preference provides a differentiable guidance signal toward high-potential regions. Experiments on FR3 show that SelRank Top-5 selection recovers 96.71\% of the best rollout length in a 32-sample pool, and the final diffusion selector achieves 0.84\,m mean rollout length with 14.98\,mm Cartesian pre-correction error and 0.24\,s average online latency on a 2{,}000-task benchmark.
+\end{abstract}
+
+
+\begin{IEEEkeywords}
+Inverse kinematics, diffusion models, manipulator redundancy resolution, contrastive learning, performance-guided generation, motion capability optimization
+\end{IEEEkeywords}
+
+%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%
+
+\section{Introduction} % 1.5 page
+
+\IEEEPARstart{M}{any} \xinyi{manipulation tasks require a robot not merely to reach a target pose, but to sustain contact and continue exerting motion along a pre-defined path. A representative example is a manipulator pushing a box along a given direction, where success is measured not by whether initial contact can be established, but by how far the object can be pushed during the sustained path-following. Symmetric bi-manual setups naturally generalize this to dual-contact transport. Both scenarios prioritize long-term task feasibility over instantaneous kinematic constraint satisfaction.}
+
+This issue is especially pronounced in straight-line path-following under redundancy. Even when the current Cartesian position, travel direction, and contact normal are fixed, distinct joint configurations can exhibit drastically different downstream rollout capability. One configuration may permit long and stable motion along the prescribed direction, whereas another may quickly encounter singularity, self-collision, joint-limit saturation, or geometric dead ends. Consequently, an IK solution should not be judged solely by instantaneous feasibility, but also by how well it preserves future maneuverability under the specified task geometry.
+
+The above observation exposes a fundamental limitation of conventional redundancy resolution. Classical IK methods are primarily designed to return one feasible solution among many, often using local secondary objectives such as manipulability maximization, joint-limit avoidance, or minimum norm motion. Although effective in many settings, these heuristics remain proxies of downstream execution quality rather than direct indicators of future straight-line path-following capability. The challenge becomes even more severe in continuous IK along a trajectory: errors or poor choices made at one instant accumulate over subsequent steps, and a locally acceptable configuration can still lead to premature tracking failure.
+
+This paper addresses the problem from a generative viewpoint. Instead of solving IK as a purely instantaneous constraint satisfaction problem, we formulate it as \emph{preference-aware configuration selection}: given the current Cartesian position and the intended local task geometry, generate a feasible joint configuration that is maximally favorable for subsequent straight-line execution. The key idea is to embed anticipated downstream performance into the configuration generation process itself, so that the robot can make a strategically advantageous choice at the current step.
+
+To this end, we propose a preference-guided diffusion IK framework. A conditional diffusion model serves as a prior generator over the feasible joint-configuration manifold and performs kinematic inpainting under task conditions formed by the current position, desired motion direction, and target normal. To inject task-oriented preference, we introduce a contrastive evaluation network, SelRank (denoted as LNet), which is trained to rank candidate configurations according to their attainable future rollout length. Rather than predicting absolute rollout length with direct regression, SelRank learns relative performance ordering, yielding a more robust supervisory signal for long-horizon quality estimation. During reverse diffusion, the gradient of this learned preference function guides samples toward regions associated with greater rollout potential. To ensure strict final position consistency, a damped Jacobian correction is further applied in the later sampling stage, coupling generative search with deterministic kinematic projection.
+
+%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%
+
+\section{Related Work} % 2 page
+% However, effective redundancy resolution remains a critical determinant of overall system stability and efficiency. 
+\xinyi{The redundancy in high-DoF robotics systems offers superior operational flexibility while introducing significant challenges in redundancy resolution. The following section first reviews redundant Inverse Kinematics (IK) methods, then characterizes the motion capability through manipulability and reachability. The last subsection examines generative-based techniques to contextualize our proposed method.}
+
+\subsection{\xinyi{Inverse Kinematics Redundancy Resolution}}
+
+\xinyi{The primary IK solving methods are broadly categorized into analytical, numerical, and learning-based approaches, where redundancy resolution is specifically critical for high-DoF systems. 
+
+Parameterized analytical-based IK solvers typically transform the non-unique mapping into deterministic closed-form equations \cite{wu2021t}. In contrast, numerical-based approaches rely on iterative optimization to minimize the distance between the manipulator's current TCP pose and the target TCP pose \cite{beeson2015trac}. The core of numerical-IK methods for redundant manipulators is to utilize the null space in their Jacobian matrix to achieve secondary tasks, such as joint limit avoidance \cite{ananthanarayanan2015real} and task constraint satisfaction. For example, \cite{taghirad2011analytic} leveraged null space projection within an analytical-iterative framework to ensure cable tension for a parallel manipulator. To further mitigate singularities in the Jacobian matrix, \cite{wang2024hierarchical} proposed the Hierarchical Incremental Model Predictive Control (HIMPC) framework, where task priorities are maintained through equality constraints.
+
+Inherently, redundancy stems from the one-to-many mapping between the Cartesian task space and the joint space. In contrast to explicit redundancy resolution in classical methods, this property naturally aligns with learning-based methods, which capture the multi-modal distribution over the feasible solution space. Prior work includes reinforcement learning-based methods \cite{malik2022deep} and generative approaches such as IKFlow \cite{ames2022ikflow} and IKDiffuser \cite{zhang2025ikdiffuser}.
+
+Nevertheless, existing IK solvers primarily optimize local surrogate objectives. While preserving static feasibility, they do not explicitly consider long-horizon path-following execution. Consequently, identifying an appropriate candidate configuration that facilitates stable downstream motion remains challenging, particularly for task-space path-following with joint-space constraints. To address this issue, our proposed method explicitly integrates long-horizon motion expectation into the redundancy resolution process.} 
+
+\subsection{\xinyi{Manipulability and Reachability}}
+\xinyi{Manipulability and reachability describe local instantaneous motion dexterity and global spatial feasibility, respectively.
+
+Specifically, the manipulability ellipsoid \cite{yoshikawa1985manipulability} characterizes the relationship between joint and task-space velocities via the Jacobian. Building on this representation, directional capability can be evaluated by projecting the ellipsoid along a specified task-space direction. To utilize this measure online, \cite{jin2017manipulability} adopted a dynamic neural network to achieve inverse-free manipulability optimization. Recent studies have extended manipulability awareness to various motion planning structures. For example, \cite{shen2023adaptive} proposed a manipulability-aware $\text{RRT}^{\star}$ planner that integrated the measure into both the cost function and adaptive step size. Similarly, \cite{cai2025just} introduces a motion performance module that balances path cost and manipulability during planning to mitigate singularities. To capture the dexterity of human experts, \cite{jaquier2021geometry} treated manipulability ellipsoids as geometric descriptors to learn from expert manipulability patterns.
+
+Complementary to local dexterity, reachability analysis defines the global spatial boundaries. Early works by \cite{yang2009placement} and \cite{makhal2018reuleaux} established geometric and voxel-based reachability maps to automate base placement without exhaustive IK computations. To enhance task quality, \cite{yao2023enhanced} and \cite{chen2018dexterous} integrated whole-body dexterity and visual manipulability to optimize configurations in the nullspace for dexterous grasping. Moving toward dynamic intelligence, \cite{feng2025predictive} introduced predictive reachability via world models for embodiment selection, while \cite{jauhri2022robot} utilized reachability priors to accelerate RL-based control policy learning. To bridge the gap between performance and safety, \cite{selim2022safe} proposed a Black-box Reachability-based Safety Layer (BRSL) using differentiable polytope collision checks, ensuring formal safety guarantees under unknown dynamics.
+
+Despite these achievements, a critical gap remains between local instantaneous dexterity and global spatial feasibility. Due to the redundancy, the selection of a candidate configuration is critical for subsequent motion ability in terms of singularity avoidance and reachability maintenance. Current manipulability-related techniques effectively avoid local singularity but lack foresight, while reachability-based methods only provide static spatial priors.}
+
+\subsection{\xinyi{Generative Priors and Gradient Guidance}}
+% 这一段的视角是如何借助生成模型得到机器人物理可行的信息。有两种方法，前者是后接优化，然后后者讨论一下梯度引导的技术和应用。
+\xinyi{Generative models are notable for capturing multi-modal distributions within the expert dataset. To further obtain physically feasible motion for robots via those models, researchers either rely on post-hoc optimization or leverage gradient guidance techniques during the denoising process. 
+
+The first regime regards generated samples as high-quality initializations to accelerate downstream optimization. For example, DiffusionSeeder \cite{huang2024diffusionseeder} generated multi-modal collision-free trajectory initializations in clutter environments. Similarly, the earlier work \cite{yoon2023learning} proposed an RL-based initialization generator with null-space projected imitation reward. While effective, the decoupling between generation and optimization underexploits the internal gradient information during the denoising. For example, \cite{carvalho2025motion} demonstrated that naively performing post-hoc optimization often fails to adapt to new obstacles.}
+
+\xinyi{
+Regarding the gradient guidance within the denoising process, early research mainly adopted Classifier-Guidance (CG) \cite{dhariwal2021diffusion} from pre-trained discriminators. For example, \cite{janner2022planning,ajay2022conditional} steered diffusion-based planners toward high-value trajectories through test-time alignment. To eliminate the training of an external classifier, \cite{ho2022classifier} proposed the Classifier-Free Guidance (CFG). However, it requires from-scratch training when adapting to new labels \cite{bansal2023universal}. 
+}
+
+\xinyi{Despite their efficacy, aligning generative priors with robotic constraints while preserving multi-modality remains challenging. While preference-based fine-tuning methods like Direct Preference Optimization (DPO) \cite{rafailov2023direct} provided a flexible offline alignment framework, such approaches often suffer from reward over-optimization and mode collapse. To circumvent these issues, recent studies have increasingly explored test-time alignment strategies that steer the denoising trajectory via reward gradients during inference without retraining \cite{kim2025test}.
+
+Consequently, we adopt test-time alignment to preserve the multi-modality of redundant IK solutions while ensuring flexibility for diverse industrial applications.}
+
+%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%
+
+\section{Method}
+
+\subsection{Overall Framework}
+The proposed pipeline integrates four stages: dataset generation via null-space rollouts, training of a task-conditioned diffusion candidate generator, optimization of a contrastive ranking network SelRank (denoted as LNet), and preference-guided inference. While the diffusion backbone models the feasible joint manifold for a given task, SelRank learns to differentiate candidate configurations based on their long-range rollout potential. During inference, SelRank-derived gradients steer the reverse diffusion process toward high-utility regions, followed by Jacobian-based refinement and safeguards to ensure physical consistency.
+
+\subsection{\xinyi{Problem Formulation}}
+\xinyi{Consider a redundant manipulator with $n$ degrees of freedom, where $\mathbf{q} \in \mathbb{R}^{n}$ denotes the joint configuration. Let $\mathbf{p}(\mathbf{q}) \in \mathbb{R}^{3}$ denote the TCP position and let $\mathbf{z}(\mathbf{q}) \in \mathbb{R}^{3}$ denote the TCP local $z$-axis expressed in the world frame. Given a straight-line path-following task defined in Cartesian space as:
+\begin{equation}
+\label{cond}
+\mathbf{c} = [\mathbf{p}_{0}; \mathbf{d}; \mathbf{n}] \in \mathbb{R}^{9},  
+\end{equation}
+where $\mathbf{p}_{0}$ denotes the starting position, and $\mathbf{d}$ and $\mathbf{n}$ are unit vectors representing the desired motion direction and task-plane normal, respectively. The objective is to identify a good candidate configuration $\mathbf{q}_{0}^{*}$ that approximates the maximum feasible rollout length. Formally, this objective can be expressed as the following constrained optimization problem:
+\begin{align}
+\text{maximize} \quad & \mathcal{L}(\mathbf{q}^{*}_{0};\mathbf{p}_{0}, \mathbf{d}, \mathbf{n}) \\
+\text{subject to} \quad & \|\mathbf{p}(\mathbf{q}_{t}^{*}) - \mathbf{p}_{t}\| \leq \epsilon_p, \quad \forall t \in [0, T] \\
+& \arccos \left( \mathbf{z}(\mathbf{q}_{t}^{*})^{\top} \mathbf{n} \right) \leq \theta_{\max}, \quad \forall t \in [0, T] \label{eq:ori_constraint}
+\end{align}
+where $\mathcal{L}$ denotes the feasible length, and the constraints guarantee the positional and rotational alignment between the end-effector and the task surface.
+}
+
+\subsection{\xinyi{Path Following Controller}}
+\xinyi{We leverage a parallelized Jacobian-based null-space controller to collect large-scale joint trajectories for the desired path-following task. 
+
+The controller calculates the joint velocity $\dot{\mathbf{q}}$ by prioritizing the primary path-following task while optimizing for directional potential and safety in the null space:
+\begin{equation}
+\dot{\mathbf{q}} = \mathbf{J}_\lambda^\dagger(\mathbf{q})\mathbf{v}_{\mathrm{task}} + \mathbf{N}_\lambda(\mathbf{q}) \left( k_\mu \nabla_{\mathbf{q}} \mu(\mathbf{q},\mathbf{d}) + k_{\mathrm{jl}} \mathbf{v}_{\mathrm{jl}}(\mathbf{q}) \right)
+\end{equation}
+where $\mathbf{J}_\lambda^\dagger(\mathbf{q})$ is the damped pseudoinverse of the task Jacobian $\mathbf{J}_\lambda(\mathbf{q})$, and $\mathbf{N}_\lambda(\mathbf{q}) = \mathbf{I} - \mathbf{J}_\lambda^\dagger(\mathbf{q})\mathbf{J}_\lambda(\mathbf{q})$ denotes the associated null-space projector. The gains $k_\mu$ and $k_{\mathrm{jl}}$ represent the weights of the directional manipulability term and the joint-limit avoidance term, respectively.
+
+To enforce orientation consistency, we define $g(\mathbf{q}) = \mathbf{z}(\mathbf{q})^{\top}\mathbf{n}$ and augment the primary task Jacobian with the orientation-constraint term in Eq. \eqref{eq:ori_constraint} when the boundary becomes active:
+\begin{equation}
+\mathbf{J}_\lambda = \begin{cases} 
+\mathbf{J}_p, & g(\mathbf{q}) > \cos\theta_{\max} \\
+[\mathbf{J}_p^\top, \mathbf{j}_g^\top]^\top, & \text{otherwise}.
+\end{cases}
+\end{equation}
+
+To make large-scale rollout collection practical, the Jacobian-related computation is fully vectorized on the GPU. For a batch of joint states $\{\mathbf{q}^{(b)}\}_{b=1}^{B}$, the simulator evaluates batched forward kinematics $\mathbf{p}^{(b)} = f(\mathbf{q}^{(b)})$, and the positional Jacobian is then obtained by automatic differentiation with respect to the whole batch tensor. Concretely, for each Cartesian coordinate $k\in\{x,y,z\}$, we backpropagate the summed scalar $\sum_{b=1}^{B} [\mathbf{p}^{(b)}]_k$ through the batched forward-kinematics graph, which yields the gradient matrix $\partial [\mathbf{p}^{(b)}]_k/\partial \mathbf{q}^{(b)}$ for all samples simultaneously. Stacking the three gradients forms a batched Jacobian tensor $\mathbf{J}_p \in \mathbb{R}^{B\times 3\times n}$. The same batched autograd mechanism is used to compute the orientation constraint gradient $\mathbf{j}_g$, after which the damped pseudoinverse, null-space projector, manipulability term, and joint-limit term are all evaluated by batched tensor linear algebra on the GPU. As a result, Jacobian construction is amortized over hundreds to thousands of rollouts per launch, instead of being recomputed by serial CPU-side IK calls.
+}
+
+\subsection{\xinyi{Proposed Model Architecture}}
+
+\subsubsection{\xinyi{SelRank: Contrastive Learning Network}}
+\xinyi{
+The SelRank network aims to learn a task-conditioned preference in terms of continuous path-following capability. Specifically, given the task condition described in equation (\ref{cond}), let $\mathbf{q}_i$ and $\mathbf{q}_j$ be two feasible candidate configurations with realized rollout lengths $L_i$ and $L_j$. The SelRank network $s_{\phi}(\mathbf{q},\mathbf{c})$ is trained such that:
+\begin{equation}
+L_i>L_j \Rightarrow s_{\phi}(\mathbf{q}_i,\mathbf{c})>s_{\phi}(\mathbf{q}_j,\mathbf{c}).
+\end{equation}
+To facilitate this ordering, we adopt a pairwise ranking loss as follows:
+\begin{equation}
+\mathcal{L}_{\mathrm{rank}}=
+\begin{cases}
+\max(0,\gamma-(s_i-s_j)), & L_i > L_j,\\
+\max(0,\gamma-(s_j-s_i)), & L_j > L_i.
+\end{cases}
+\end{equation}
+where $\gamma$ is the ranking margin. 
+
+An additional regression head is further used to predict the rollout length, yielding the overall objective:
+\begin{equation}
+\mathcal{L}=\lambda_r \mathcal{L}_{\mathrm{rank}}+\lambda_m \mathcal{L}_{\mathrm{mse}},
+\end{equation}
+and it enables the network to provide ranking information while preserving the physical meaning of absolute rollout length.
+
+Since $s_{\phi}(\mathbf{q},\mathbf{c})$ is differentiable with respect to $\mathbf{q}$, its gradient can be directly incorporated into diffusion-based candidate-configuration generation as a guidance signal.
+}
+
+\subsubsection{\xinyi{Guided-Diffusion Candidate Generator}}
+\xinyi{
+Given the same task condition as above, we employ a conditional diffusion model to generate feasible IK candidate configurations. Let $\mathbf{x}_t$ denote the noisy token at diffusion step $t$, where the condition token is fixed through the impainting technique. The reverse process is parameterized as
+\begin{equation}
+p_{\theta}(\mathbf{x}_{t-1}\mid \mathbf{x}_t,\mathbf{c}).
+\end{equation}
+This formulation enables the model to represent a multimodal distribution over feasible candidate configurations under the same task condition.
+
+To bias sampling toward candidate configurations with better downstream rollout capability, we incorporate the SelRank score as a guidance signal. At each reverse step $t$, the guidance direction is given by
+\begin{equation}
+\mathbf{g}_t=\nabla_{\mathbf{q}} s_{\phi}(\mathbf{q}_t,\mathbf{c}),
+\end{equation}
+and the normalized guidance term is defined as
+\begin{equation}
+\tilde{\mathbf{g}}_t=\lambda_g \frac{\mathbf{g}_t}{\|\mathbf{g}_t\|+\epsilon},
+\end{equation}
+where $\lambda_g$ controls the guidance scale. In this way, the diffusion sampler is encouraged to move toward joint configurations with higher predicted preference scores while remaining constrained by the learned prior.
+}
+For each task and each $\lambda_g$, we sample $K$ candidate configurations in parallel and select the highest-scoring one:
+\begin{equation}
+k^{\star}=\arg\max_{k} s_{\phi}(\mathbf{q}^{(k)},\mathbf{c}).
+\end{equation}
+The selected candidate configuration is further refined by damped Jacobian correction toward the target TCP position $\mathbf{p}_{0}$,
+\begin{equation}
+\Delta\mathbf{q}=\mathbf{J}^{\top}(\mathbf{J}\mathbf{J}^{\top}+\lambda_d \mathbf{I})^{-1}(\mathbf{p}_{0}-\mathbf{p}(\mathbf{q})),
+\end{equation}
+so that the TCP is projected back to the desired Cartesian position before rollout evaluation. This procedure combines generative diversity, score-based selection, and geometric correction into a unified candidate-configuration generation framework.
+
+
+
+\subsection{\xinyi{Post-hoc Failure Protection}}
+\xinyitodo{Because the task constraint is broad, diffusion sampling does not always land on a precise task-consistent joint manifold. Since forward kinematics is inexpensive, we first reject samples whose pre-correction position error is already too large; these typically indicate substantial drift from the feasible manifold. We then apply a joint-limit-aware filter, because some failure cases arise when the ranking model assigns overly high scores to aggressive samples near joint boundaries. A representative visualization will illustrate both failure modes and the effect of this two-stage screening.}
+Because the task involves highly nonlinear kinematics, guided sampling can fail in several ways, including excessive departure from the feasible manifold, poor ranking in underrepresented regions, and sensitivity near joint limits or singular configurations. For this reason, the framework includes an explicit failure-protection layer. This layer monitors whether a guided candidate configuration can be repaired to the target pose, whether the resulting rollout remains valid, and whether a fallback candidate configuration with weaker guidance or lower raw score should be selected instead.
+
+Operationally, failure protection acts as a safeguard between learned preference and physical feasibility. If a candidate configuration exhibits excessive pre-correction error, unsuccessful Jacobian repair, or invalid rollout behavior after correction, the system can reject that sample and fall back to a more conservative alternative, such as a weaker-guidance sample or a high-confidence feasible candidate configuration from the same batch. This design is especially important in singular or boundary regions, where small perturbations in joint space may produce disproportionately large changes in Cartesian behavior.
+
+In the implementation used for the FR3 experiments, this protection is realized by a simple but effective two-stage rule. First, all sampled candidate configurations are repaired toward $\mathbf{p}_{0}$ by damped Jacobian iterations. Second, candidate configurations whose corrected joints lie within 3\% of any joint range boundary are discarded. Among the remaining candidates, we keep the ten samples with the smallest raw pre-correction position error and then choose the one with the highest SelRank score. If no candidate configuration survives the joint-safety mask, the system falls back to the globally highest-scoring sample. This strategy keeps the learned ranking signal active, while preventing obviously brittle boundary configurations from dominating the final decision.
+
+The purpose of failure protection is not to replace the learned model, but to preserve reliability when the guidance signal is overly aggressive or the learned preference is uncertain. As a result, the final system does not rely on the assumption that every guided sample is trustworthy. Instead, it combines a learned search mechanism with a lightweight physical screening process, thereby improving robustness without reverting to exhaustive online search.
+
+%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%
+
+\section{Experiments and Results} % 1.5 page
+
+\begin{table*}[!htbp]
+\centering
+\caption{Performance of SelRank Selection on 6,000 Random and 2,000 Long-horizon Tasks.}
+\label{tab:lnetresult}
+\begin{threeparttable}
+\xinyi{
+\begin{tabular}{llcccccccccc}
+\toprule
+& & \multicolumn{5}{c}{Length (m)} & \multicolumn{5}{c}{Proximity to Optimal Length (\%)} \\
+\cmidrule(lr){3-7} \cmidrule(lr){8-12}
+Test-set & Selection Strategy & {Mean} & {Med.} & {Std} & {Min} & {Max} & {Mean} & {Med.} & {Std} & {Min} & {Max} \\
+\midrule
+\multirow{7}{*}{\shortstack{All Tasks}} 
+& Mean-in-Batch ($bs=32$) & 0 & 0 & 0 & 0 & 0 & 0 & 0 & 0 & 0 & 0 \\
+& Best-in-Batch ($bs=32$) & \limebox{0.61} & \limebox{0.58} & 0.36 & 0.01 & 1.71 & --- & --- & --- & --- & 100.00 \\
+& Optimal Reference (GT) & --- & --- & --- & --- & 0 & --- & --- & --- & --- & 100.00 \\
+\cmidrule{2-12}
+& SelRank Top-1 Selection   & 0.54 & 0.50 & \limebox{0.34} & 0.00 & 1.60 & 88.73 & 98.13 & 22.43 & 0.00 & 100.00 \\
+& SelRank Top-3 Selection   & 0.58 & 0.55 & 0.35 & 0.00 & 1.67 & 95.16 & 99.31 & 12.91 & 0.00 & 100.00 \\
+& SelRank Top-5 Selection   & 0.59 & 0.56 & 0.35 & 0.00 & 1.71 & \limebox{96.71} & \limebox{99.64} & \limebox{10.25} & 0.00 & 100.00 \\
+\midrule
+\multirow{7}{*}{\shortstack{Long Tasks}} 
+& Mean-in-Batch ($bs=32$) & 0 & 0 & 0 & 0 & 0 & 0 & 0 & 0 & 0 & 0 \\
+& Best-in-Batch ($bs=32$) & \limebox{1.03} & \limebox{0.99} & 0.21 & 0.75 & 1.71 & --- & --- & --- & --- & 100.00 \\
+& Optimal Reference (GT) & --- & --- & --- & --- & 0 & --- & --- & --- & --- & 100.00 \\
+\cmidrule{2-12}
+& SelRank Top-1 Selection   & 0.85 & 0.88 & 0.32 & 0.00 & 1.60 & 83.74 & 98.87 & 27.84 & 0.00 & 100.00 \\
+& SelRank Top-3 Selection   & 0.96 & 0.94 & 0.25 & 0.00 & 1.67 & 93.47 & 99.62 & 17.10 & 0.00 & 100.00 \\
+& SelRank Top-5 Selection   & \limebox{0.99} & \limebox{0.95} & \limebox{0.23} & 0.02 & 1.71 & \limebox{95.73} & \limebox{99.82} & \limebox{13.71} & 2.09 & 100.00 \\
+\bottomrule
+\end{tabular}
+\begin{tablenotes}
+    \item[Note 1] We evaluated 6,000 random tasks, defining a subset of 2,000 tasks with a maximum length exceeding 0.75 m as \emph{long tasks}.
+    \item[Note 2] For SelRank-based selection, the result is chosen from a batch of 32 sampled candidate configurations.
+    \item[Note 3] The \emph{Optimal Reference} is obtained by sampling 1,000 candidate configurations to approximate the global optimum.
+\end{tablenotes}
+}
+\end{threeparttable}
+\end{table*}
+
+
+\begin{table*}[!htbp]
+\centering
+\caption{Performance Comparison of Candidate-Configuration Selection Strategies}
+\label{tab:mainresult}
+\begin{threeparttable}
+\xinyi{
+    \begin{tabular}{llcccccccccc}
+        \toprule
+        & & & & \multicolumn{4}{c}{Length (m)} & \multicolumn{4}{c}{Proximity to Optimal Length (\%)} \\
+        \cmidrule(lr){5-8} \cmidrule(lr){9-12}
+        Category & Method & Time (s) & Pos. (mm) & Mean & Std & Min & Max & Mean & Std & Min & Max \\
+        \midrule
+        Optimal Reference (GT) & Enumeration Max. & --- & --- & 0 & 0 & 0 & 0 & --- & --- & --- & 100 \\
+        \midrule
+        \multirow{2}{*}{\shortstack{Baselines}} 
+        & Opt-based & 0  & 0 & 0 & 0 & 0 & 0 & 0 & 0 & 0 & 0 \\
+        & MPC-based & 0  & 0 & 0 & 0 & 0 & 0 & 0 & 0 & 0 & 0 \\
+        \midrule
+        \multirow{3}{*}{\shortstack{Proposed Generator}} 
+        & Mean-DiT & 0.10  & 53.38 & 0.54 & 0.33 & 0.00 & 1.54 & 0 & 0 & 0 & 0 \\
+        % & Mean-Guided-DiT    & 0  & 0 & 0 & 0 & 0 & 0 & 0 & 0 & 0 & 0 \\
+        & Selected DiT & 0.10  & 17.72 & 0.61 & 0.40 & 0.00 & 1.71 & 0 & 0 & 0 & 0 \\
+        & Double-Selected DiT & 0.09  & \limebox{14.98} & \limebox{0.84} & \limebox{0.31} & 0.00 & \limebox{1.71} & 0 & 0 & 0 & 0 \\
+        \bottomrule
+    \end{tabular}
+}
+\end{threeparttable}
+\end{table*}
+
+% \begin{table}[!htbp]
+% \centering
+% \caption{Ablation Study on the Guidance Scale}
+% \label{tab:ablation_guidance}
+% \begin{threeparttable}
+% \xinyi{
+% \begin{tabular}{cccc}
+% \toprule
+% $\gamma$ & $t$ (ms) & $l$ (m) & $\%$ \\
+% \midrule
+% 0.0 & \limebox{96} & \limebox{0.84} / 0.33 / 0 / 1.71 & \limebox{81.9} / 29.1 / 0 / 131.2 \\
+% 0.1 & 201 & 0.83 / 0.33 / 0 / 1.66 & 81.4 / 29.3 / 0 / 125.2 \\
+% 0.5 & 201 & 0.83 / 0.33 / 0 / 1.66 & 81.7 / 29.1 / 0 / 135.8 \\
+% 1.0 & 201 & 0.83 / 0.34 / 0 / 1.66 & \pinkbox{80.9} / 30.4 / 0 / 121.1 \\
+% 5.0 & \pinkbox{202} & 0.83 / 0.34 / 0 / 1.63 & \pinkbox{80.9} / 30.5 / 0 / 120.8 \\
+% \bottomrule
+% \end{tabular}
+% }
+% \end{threeparttable}
+% \end{table}
+
+\begin{table}[!htbp]
+\centering
+\caption{Ablation Study on the Joint Limit Avoidance in Null-Space Control}
+\label{tab:ablation_guidance}
+\begin{threeparttable}
+\xinyi{
+    \begin{tabular}{ccc}
+        \toprule
+        $k_{\mathrm{jl}}$ & $l$ (Mean / Std / Min / Max (m)) & $\%$ (Mean / Std / Min / Max) \\
+        \midrule
+        0.0 & \pinkbox{0.80} / 0.31 / 0.00 / 1.71 & \pinkbox{78.60} / 28.31 / 0.00 / 123.01 \\
+        0.2 & 0.84 / 0.31 / 0.00 / 1.71 & 82.59 / 26.61 / 0.00 / 119.24 \\
+        0.5 & 0.87 / 0.30 / 0.00 / 1.72 & 84.70 / 25.53 / 0.00 / 126.08 \\
+        1.0 & 0.88 / 0.30 / 0.00 / 1.71 & 85.93 / 25.08 / 0.00 / 160.41 \\
+        5.0 & \limebox{0.88} / 0.32 / 0.00 / 1.71 & \limebox{86.07} / 25.99 / 0.00 / 160.66 \\
+        \bottomrule
+    \end{tabular}
+\begin{tablenotes}
+    \item[Note 1] The gain of joint limit avoidance is 0.2 by default.
+\end{tablenotes}
+}
+\end{threeparttable}
+\end{table}
+
+
+This section evaluates whether the proposed framework can consistently select IK solutions with superior downstream straight-line path-following capability while preserving Cartesian accuracy. The experiments are organized to answer five questions: 1) whether the collected dataset provides sufficient task-space and joint-space coverage, 2) how the computational cost is distributed across the pipeline, 3) how much the contrastive guidance and failure-protection modules contribute, 4) how the full method compares with representative baselines, and 5) why the remaining failures occur.
+
+\subsection{\xinyi{Experimental Setup}}
+All experiments are conducted on the Franka Research 3 manipulator. At evaluation time, each task condition contains the target position, desired straight-line direction, and target normal, and the same GPU-based null-space straight-line tracker is used to evaluate realized rollout length under self-collision checking with a sphere-based approximation. The rollout controller follows the implementation in `TrackerConfig`: $\Delta t=0.01$, task speed $=0.1$\,m/s, damping $=10^{-3}$, null-space gain $=0.6$, default joint-limit gain $=0.2$, orientation threshold $\theta_{\max}=30^\circ$, boundary gain $=10.0$, and horizon cap $=2000$ steps. Together, these settings define the physical regime in which all labels and online comparisons are produced.
+
+The experimental design separates decision quality, generator-level performance, and sensitivity to control parameters. Table~\ref{tab:lnetresult} evaluates SelRank on 6{,}000 randomly sampled task conditions and additionally reports the 2{,}000-task long-horizon subset whose oracle rollout length exceeds 0.75\,m. Table~\ref{tab:mainresult} focuses on the fixed top-2{,}000 oracle-ranked task list used by the diffusion evaluation script, where each query is solved by parallel diffusion sampling followed by Jacobian correction and rollout. Table~\ref{tab:ablation_guidance} then sweeps the joint-limit gain $k_{\mathrm{jl}}$ in the same evaluation loop. Under the default setting, the 2{,}000-task batch evaluation spends about 0.09\,s on sampling, 0.11\,s on Jacobian correction, and 0.26\,s total per query, which provides a concrete runtime reference for the online method.
+
+For representative non-generative baselines, we implement two lightweight online selectors on the same long-task list. The Opt-based baseline first samples a feasible candidate-configuration pool by batched Jacobian correction from random joint seeds, and then performs batched gradient ascent on a local surrogate composed of directional manipulability, TCP-normal alignment, position-consistency penalty, and joint-center regularization before choosing the highest-scoring repaired candidate configuration. The MPC-based baseline reuses the same feasible candidate-configuration pool, but scores each candidate by a short-horizon rollout under the same GPU path-following controller and selects the candidate with the largest finite-horizon predicted rollout length. Both baselines are finally evaluated by the same full-horizon rollout and the same JSONL case-recording protocol as the proposed method, so the comparison isolates the effect of candidate-generation and selection strategy rather than downstream rollout implementation.
+
+\subsection{\xinyi{Dataset Collection}}
+We first report the scale and coverage of the collected dataset. The FR3 trajectory corpus contains 100{,}000 rollout trajectories and 4{,}106{,}374 retained state samples after subsampling, each labeled with remaining rollout length under the same controller used at evaluation time. The trajectories contain 41.06 states on average (median 35, 90th percentile 84), and their total rollout length has mean 0.395\,m, median 0.333\,m, and 90th percentile 0.822\,m. These statistics show that the dataset is not dominated by only trivial short motions, but spans a wide range of path-following difficulty.
+
+Beyond raw sample count, the key issue is whether the dataset captures sufficiently broad variation on the feasible joint manifold. The recorded TCP workspace spans approximately $x\in[-0.95,0.95]$\,m, $y\in[-0.95,0.95]$\,m, and $z\in[-0.45,1.28]$\,m, while the dot product between sampled directions and target normals remains numerically centered at zero, confirming the intended orthogonality of in-plane motion and surface-normal conditions. This combination of broad workspace support and diverse rollout-length labels provides a meaningful supervision signal for both the diffusion prior and the preference model.
+
+% \begin{figure*}
+%     \centering
+%     \includegraphics[width=1\linewidth]{imgs/dataset.png}
+%     \caption{Overview of the collected FR3 trajectory dataset. (a) distribution of trajectory lengths. (b) voxelized TCP workspace occupancy on the xy-plane and xz-plane, with color indicating sample density. Each axis is uniformly discretized into 120 bins.\xinyitodo{正式画的时候，tcp的位姿可以画小一点，然后刚好用来标记坐标轴。不然感觉视觉冲击力太强了。}}
+%     \label{fig:placeholder}
+% \end{figure*}
+
+\subsection{\xinyi{Result Analysis}}
+We first examine the decision quality of the learned preference model independently of full online generation. Table~\ref{tab:lnetresult} compares different top-$k$ selection strategies based on SelRank scores against the strongest sample available in a fixed candidate-configuration pool. This experiment isolates the ranking ability of the preference model from the diffusion generator itself, and directly tests whether SelRank assigns higher scores to configurations that truly preserve longer future rollout capability.
+
+Table~\ref{tab:lnetresult} shows a consistent top-$k$ trend. On the full test set, Top-1 reaches 0.54\,m mean length and 88.73\% mean proximity to the best-in-batch reference, while Top-3 and Top-5 improve this to 95.16\% and 96.71\%, respectively. The medians are even higher, reaching 99.31\% for Top-3 and 99.64\% for Top-5. The same pattern is stronger on the long-horizon subset, where Top-5 reaches 0.99\,m mean length, 95.73\% mean proximity, and 99.82\% median proximity. The comprehensive 6{,}000-task evaluation also reports a mean pairwise ordering accuracy of 73.62\% and mean Kendall $\tau$ of 0.518, indicating that the learned score is not merely selecting a few isolated winners, but captures a reasonably consistent ordering over the feasible batch.
+
+These results support the separation between feasibility generation and preference-based ranking. Given a sufficiently diverse feasible batch, SelRank can consistently recover candidate configurations whose rollout performance is close to the best available one.
+
+Table~\ref{tab:mainresult} shows how this translates to end-to-end candidate-configuration generation. Mean-DiT, which averages diffusion samples before correction, yields a large position error of 53.38\,mm and only 0.54\,m mean rollout length. Replacing averaging with score-based selection reduces the error to 17.72\,mm and raises the mean rollout length to 0.61\,m. The full Double-Selected DiT strategy further improves the mean rollout length to 0.84\,m while achieving the lowest position error of 14.98\,mm. On the corresponding 2{,}000-task case file, this configuration reaches 82.69\% mean proximity to the oracle rollout length with a mean per-query runtime of 0.24\,s, showing that most of the benefit is preserved even under a lightweight online budget.
+
+This comparison shows that the gain comes from combining generative diversity with preference-based filtering, rather than from the diffusion prior alone. The second selection stage improves long-horizon rollout performance while preserving Cartesian accuracy.
+
+\subsection{\xinyi{Ablation Studies}}
+The ablations then investigate which parts of the proposed pipeline are responsible for the observed performance gains. Table~\ref{tab:ablation_guidance} studies the joint-limit gain $k_{\mathrm{jl}}$ used during path-following rollout and dataset generation. This parameter directly affects the quality of the supervisory signal because it changes how strongly the controller exploits redundancy before reaching boundary regions.
+
+The effect is monotonic. Without joint-limit avoidance ($k_{\mathrm{jl}}=0.0$), the mean length is 0.80\,m and the mean proximity is 78.60\%. Increasing the gain steadily improves both metrics, reaching 0.88\,m mean length and 86.07\% mean proximity at $k_{\mathrm{jl}}=5.0$. The improvement from $k_{\mathrm{jl}}=0.2$ to $k_{\mathrm{jl}}=1.0$ is already substantial, raising the mean realized length from 0.843\,m to 0.882\,m, while the additional gain from $1.0$ to $5.0$ is comparatively small. This indicates that moderate joint-limit awareness is the main ingredient, whereas very aggressive pushing away from boundaries mainly refines tail cases.
+
+This suggests that joint-limit-aware null-space control is not merely a safety heuristic, but a direct contributor to long-horizon rollout quality. The gain also saturates between $k_{\mathrm{jl}}=1.0$ and $5.0$, indicating that stronger avoidance mainly improves robustness once the mechanism is already active.
+
+\subsection{\xinyi{Failure Analysis}}
+\xinyitodo{This subsection analyzes the remaining failures after preference-guided sampling, Jacobian correction, and post-hoc filtering. The key goal is to identify dominant causes with visual evidence. Representative examples should include boundary overestimation by the ranking model, samples that drift too far from the feasible manifold for correction to recover, and rollouts that remain feasible locally but terminate early because of unfavorable geometry. As a contrast, we can also discuss DPO-style failure: direct preference optimization tends to over-concentrate probability mass on a narrow subset of apparently high-reward seeds, reducing multimodality and making the generator brittle in sparse or boundary regions.}
+
+Even after all safeguards, three failure modes remain: residual scoring error, geometric drift, and boundary sensitivity. Some candidate configurations still receive high SelRank scores despite mediocre rollout length, especially in sparse regions. Others drift too far from the task-consistent manifold for local Jacobian correction to recover. A third group appears promising locally but fails quickly near joint limits or near-singular postures. The batch statistics make this visible: under the default evaluation setting, raw pre-correction position error still reaches 135.45\,mm in the worst case, and a nontrivial subset of corrected candidate configurations terminates immediately with zero realized rollout length. Candidate-level visualizations further show that the dominant termination reasons are joint-limit hits and position-tracking failure, with self-collision appearing less frequently but still present near boundary configurations.
+
+These failures suggest that the main bottleneck is no longer feasibility generation alone, but learning a globally reliable preference field over a constrained joint manifold. This also explains why test-time guidance is preferable to directly collapsing the distribution through aggressive preference optimization: preserving multiple feasible modes makes it possible to reject misranked or boundary-sensitive candidate configurations instead of committing to them prematurely.
+
+\section{Conclusion}
+This paper presents a preference-guided diffusion framework for redundant inverse kinematics in precise straight-line path-following. The method combines physically grounded dataset construction, task-conditioned kinematic inpainting, contrastive ranking-based guidance, Jacobian repair, and explicit failure protection within a single inference pipeline. As a result, inverse kinematics is no longer treated as a purely instantaneous feasibility problem, but as a long-horizon configuration selection problem in which future straight-line rollout potential is embedded into current-time generation.
+
+Future work will proceed in four directions. First, the current potential label is based on finite-horizon rollout length, and future work may replace or augment it with learned longer-horizon value estimation. Second, the present framework selects a candidate configuration for future execution, and can be extended toward closed-loop sequential decision making. Third, the method is currently validated on the Franka Research 3 platform and should be tested on broader classes of redundant manipulators and obstacle-rich scenes. Fourth, the current contrastive preference model does not explicitly quantify uncertainty, and incorporating uncertainty-aware ranking may improve robustness in sparse or out-of-distribution regions.
+
+%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%
+
+\appendices
+\section{Hyperparameter Summary}
+Table~\ref{tab:all_hparams} summarizes the main hyperparameters used in dataset generation, SelRank training, and diffusion-based evaluation. These values are taken directly from the implementation and are provided to clarify the practical operating regime of the reported experiments.
+
+\begin{table}[!t]
+\caption{Main hyperparameters used in the reported FR3 experiments.}
+\label{tab:all_hparams}
+\centering
+\begin{tabular}{@{}lll@{}}
+\toprule
+\textbf{Stage} & \textbf{Hyper-parameter} & \textbf{Value} \\
+\midrule
+\multirow{10}{*}{Dataset / Rollout} & Batch size & 1000 \\
+ & Number of trajectories & 100,000 \\
+ & Integration step $\Delta t$ & 0.01 \\
+ & Task speed & 0.1 m/s \\
+ & Damping coefficient $\mu$ & $10^{-3}$ \\
+ & Null-space gain & 0.6 \\
+ & Joint-limit gain & 0.2 \\
+ & Orientation threshold $\theta_{\max}$ & $30^\circ$ \\
+ & Boundary gain & 10.0 \\
+ & Directional manipulability threshold & 0.01 \\
+ & Maximum rollout steps & 2000 \\
+\midrule
+\multirow{7}{*}{SelRank Training} & Batch size & 512 \\
+ & Epochs & 1000 \\
+ & Learning rate & $2\times 10^{-4}$ \\
+ & Weight decay & $10^{-4}$ \\
+ & Pair threshold & 0.05 \\
+ & Pair margin & 0.05 \\
+ & Loss weights $(\lambda_{\mathrm{rank}}, \lambda_{\mathrm{mse}})$ & $(1.0, 0.2)$ \\
+\midrule
+\multirow{7}{*}{Diffusion Evaluation} & Diffusion steps & 32 \\
+ & Training epochs & 200 \\
+ & Training batch size & 512 \\
+ & Inference samples per task & 128 \\
+ & Sampling temperature & 1.0 \\
+ & Jacobian correction iterations & 50 \\
+ & Jacobian correction damping & $10^{-3}$ \\
+\bottomrule
+\end{tabular}
+\end{table}
+
+
+
+%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%
+% \clearpage
+\normalem
+\bibliographystyle{IEEEtran}
+\bibliography{citations.bib}
+
+
+\end{document}

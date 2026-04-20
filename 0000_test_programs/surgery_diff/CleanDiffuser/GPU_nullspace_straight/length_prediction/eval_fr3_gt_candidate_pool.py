@@ -43,6 +43,7 @@ def parse_args() -> argparse.Namespace:
     )
     parser.add_argument('--output-json', type=Path, default=CURRENT_DIR / 'eval_fr3_gt_candidate_pool_summary.json')
     parser.add_argument('--cases-jsonl', type=Path, default=CURRENT_DIR / 'eval_fr3_gt_candidate_pool_cases.jsonl')
+    parser.add_argument('--resume', action='store_true', help='Resume from the existing cases-jsonl by skipping the already completed leading tasks.')
     return parser.parse_args()
 
 
@@ -91,6 +92,22 @@ def load_tasks_from_jsonl(path: Path, num_cases: int | None = None) -> list[dict
     if not tasks:
         raise RuntimeError(f'No tasks loaded from {path}')
     return tasks
+
+
+def load_existing_cases(path: Path) -> list[dict]:
+    if not path.exists():
+        return []
+    cases: list[dict] = []
+    with path.open('r', encoding='utf-8') as fh:
+        for line_idx, line in enumerate(fh, start=1):
+            text = line.strip()
+            if not text:
+                continue
+            try:
+                cases.append(json.loads(text))
+            except json.JSONDecodeError as exc:
+                raise RuntimeError(f'Failed to parse existing JSON on line {line_idx} of {path}: {exc}') from exc
+    return cases
 
 
 def rollout_task_batch(
@@ -243,14 +260,36 @@ def main() -> None:
     input_tasks = load_tasks_from_jsonl(args.tasks_jsonl)
     num_cases = len(input_tasks)
     task_batch_size = max(1, int(args.task_batch_size))
-    args.cases_jsonl.write_text('')
-    cases: list[dict] = []
+    existing_cases = load_existing_cases(args.cases_jsonl) if args.resume else []
+    completed_count = len(existing_cases)
+    if args.resume:
+        if completed_count > num_cases:
+            raise RuntimeError(
+                f'Existing cases-jsonl has {completed_count} rows, but only {num_cases} tasks are available in {args.tasks_jsonl}.'
+            )
+        if completed_count == num_cases:
+            summary = {
+                'args': to_jsonable(vars(args)),
+                'task_source': 'random',
+                'num_cases': int(len(existing_cases)),
+                'scalar_fields': scalar_fields,
+                'metrics': summarize_scalar_fields(existing_cases, scalar_fields),
+                'metrics_by_category': summarize_by_category(existing_cases, scalar_fields),
+            }
+            args.output_json.write_text(json.dumps(to_jsonable(summary), indent=2, ensure_ascii=False))
+            print(f'[resume] all {num_cases} tasks are already present in {args.cases_jsonl}')
+            print(json.dumps(to_jsonable(summary), indent=2, ensure_ascii=False))
+            return
+        print(f'[resume] loaded {completed_count} existing cases from {args.cases_jsonl}; continuing from task {completed_count + 1}/{num_cases}')
+    else:
+        args.cases_jsonl.write_text('')
+    cases: list[dict] = list(existing_cases)
     start_time = time.perf_counter()
 
     print(f'[setup] loading exact task list from {args.tasks_jsonl}')
     print(f'[setup] evaluating num_cases={num_cases} num_candidates={args.num_candidates} task_batch_size={task_batch_size}')
 
-    for batch_start in range(0, num_cases, task_batch_size):
+    for batch_start in range(completed_count, num_cases, task_batch_size):
         batch_end = min(batch_start + task_batch_size, num_cases)
         batch_tasks = input_tasks[batch_start:batch_end]
         print(f'[batch] tasks {batch_start + 1}-{batch_end}/{num_cases}: sampling candidate pools')
