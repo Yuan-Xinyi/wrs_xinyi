@@ -10,64 +10,14 @@ import jax
 import jax2torch
 import numpy as np
 import torch
-
-import wrs.basis.robot_math as rm
-import wrs.neuro._kinematics.jlchain as jlc
 from wrs.robot_sim.robots.franka_research_3.sphere_collision_checker import SphereCollisionChecker
+
+from pen_fr3_robot import PEN_LENGTH, PenFrankaResearch3GPU
 
 
 PROJECT_ROOT = Path(__file__).resolve().parents[4]
 DEFAULT_URDF = PROJECT_ROOT / "wrs" / "robot_sim" / "robots" / "franka_research_3" / "franka_research_3_ccsphere.urdf"
-PEN_LENGTH = 0.15
 DEFAULT_OUTPUT = Path(__file__).resolve().parent / "pen_fr3_plane_trajectories.hdf5"
-
-
-class PenFrankaResearch3GPU:
-    def __init__(self, device: torch.device):
-        self.device = device
-        self.robot = jlc.JLChain(n_dof=7, pos=torch.zeros(3, device=device), rotmat=torch.eye(3, device=device))
-        self._build_robot()
-        self.robot.finalize()
-
-    def _build_robot(self) -> None:
-        r = self.robot
-        d = self.device
-
-        r.jnts[0].loc_pos = torch.tensor([0.0, 0.0, 0.333], dtype=torch.float32, device=d)
-        r.jnts[0].loc_motion_ax = torch.tensor([0.0, 0.0, 1.0], dtype=torch.float32, device=d)
-        r.jnts[0].motion_range = torch.tensor([-2.8973, 2.8973], dtype=torch.float32, device=d)
-
-        r.jnts[1].loc_pos = torch.tensor([0.0, 0.0, 0.0], dtype=torch.float32, device=d)
-        r.jnts[1].loc_rotmat = torch.tensor(rm.rotmat_from_euler(-np.pi / 2, 0.0, 0.0), dtype=torch.float32, device=d)
-        r.jnts[1].loc_motion_ax = torch.tensor([0.0, 0.0, 1.0], dtype=torch.float32, device=d)
-        r.jnts[1].motion_range = torch.tensor([-1.8326, 1.8326], dtype=torch.float32, device=d)
-
-        r.jnts[2].loc_pos = torch.tensor([0.0, -0.316, 0.0], dtype=torch.float32, device=d)
-        r.jnts[2].loc_rotmat = torch.tensor(rm.rotmat_from_euler(np.pi / 2, 0.0, 0.0), dtype=torch.float32, device=d)
-        r.jnts[2].loc_motion_ax = torch.tensor([0.0, 0.0, 1.0], dtype=torch.float32, device=d)
-        r.jnts[2].motion_range = torch.tensor([-2.8972, 2.8972], dtype=torch.float32, device=d)
-
-        r.jnts[3].loc_pos = torch.tensor([0.0825, 0.0, 0.0], dtype=torch.float32, device=d)
-        r.jnts[3].loc_rotmat = torch.tensor(rm.rotmat_from_euler(np.pi / 2, 0.0, 0.0), dtype=torch.float32, device=d)
-        r.jnts[3].loc_motion_ax = torch.tensor([0.0, 0.0, 1.0], dtype=torch.float32, device=d)
-        r.jnts[3].motion_range = torch.tensor([-3.0718, -0.1222], dtype=torch.float32, device=d)
-
-        r.jnts[4].loc_pos = torch.tensor([-0.0825, 0.384, 0.0], dtype=torch.float32, device=d)
-        r.jnts[4].loc_rotmat = torch.tensor(rm.rotmat_from_euler(-np.pi / 2, 0.0, 0.0), dtype=torch.float32, device=d)
-        r.jnts[4].loc_motion_ax = torch.tensor([0.0, 0.0, 1.0], dtype=torch.float32, device=d)
-        r.jnts[4].motion_range = torch.tensor([-2.8798, 2.8798], dtype=torch.float32, device=d)
-
-        r.jnts[5].loc_pos = torch.tensor([0.0, 0.0, 0.0], dtype=torch.float32, device=d)
-        r.jnts[5].loc_rotmat = torch.tensor(rm.rotmat_from_euler(np.pi / 2, 0.0, 0.0), dtype=torch.float32, device=d)
-        r.jnts[5].loc_motion_ax = torch.tensor([0.0, 0.0, 1.0], dtype=torch.float32, device=d)
-        r.jnts[5].motion_range = torch.tensor([0.4364, 4.6251], dtype=torch.float32, device=d)
-
-        r.jnts[6].loc_pos = torch.tensor([0.088, 0.0, 0.0], dtype=torch.float32, device=d)
-        r.jnts[6].loc_rotmat = torch.tensor(rm.rotmat_from_euler(np.pi / 2, 0.0, 0.0), dtype=torch.float32, device=d)
-        r.jnts[6].loc_motion_ax = torch.tensor([0.0, 0.0, 1.0], dtype=torch.float32, device=d)
-        r.jnts[6].motion_range = torch.tensor([-3.0543, 3.0543], dtype=torch.float32, device=d)
-
-        r._loc_flange_pos = torch.tensor([0.0, 0.0, 0.2104 + PEN_LENGTH], dtype=torch.float32, device=d)
 
 
 def normalize_batch(x: torch.Tensor) -> torch.Tensor:
@@ -157,6 +107,8 @@ class TrackerConfig:
     null_gain: float = 0.6
     joint_limit_gain: float = 0.2
     theta_max_deg: float = 30.0
+    angle_margin_deg: float = 8.0
+    angle_null_gain: float = 0.4
     joint_margin_ratio: float = 0.05
     boundary_gain: float = 10.0
     max_steps: int = 2000
@@ -174,6 +126,7 @@ class PlaneConstrainedTracker:
         self.sphere_link_indices = torch.tensor(sphere_link_indices, dtype=torch.long, device=tensor_device)
         self.config = config
         self.theta_cos = float(np.cos(np.deg2rad(config.theta_max_deg)))
+        self.theta_margin_cos = float(np.cos(np.deg2rad(config.theta_max_deg + config.angle_margin_deg)))
         max_link_index = int(np.max(sphere_link_indices))
         protected_from_plane = max(2, max_link_index - 1)
         self.keep_mask = self.sphere_link_indices < protected_from_plane
@@ -280,6 +233,15 @@ class PlaneConstrainedTracker:
             )[0]
             if grad_mu is None:
                 grad_mu = torch.zeros_like(q_eval)
+            grad_cos = torch.autograd.grad(
+                cos_theta.sum(),
+                q_eval,
+                retain_graph=False,
+                create_graph=False,
+                allow_unused=True,
+            )[0]
+            if grad_cos is None:
+                grad_cos = torch.zeros_like(q_eval)
             on_boundary = (cos_theta <= self.theta_cos).view(-1, 1, 1)
             j_task = torch.cat([j_pos, j_g * on_boundary], dim=1)
             j_pinv = damped_pseudoinverse_batch(j_task, self.config.damping)
@@ -294,7 +256,14 @@ class PlaneConstrainedTracker:
             center = 0.5 * (lower + upper)
             span = (upper - lower).clamp_min(1e-6)
             q_dot_joint = -self.config.joint_limit_gain * (q_eval.detach() - center) / span
-            q_dot = q_dot_task + (projector @ (self.config.null_gain * grad_mu + q_dot_joint).unsqueeze(-1)).squeeze(-1)
+            angle_gate = torch.clamp(
+                (self.theta_margin_cos - cos_theta) / max(self.theta_margin_cos - self.theta_cos, 1e-6),
+                min=0.0,
+                max=1.0,
+            ).unsqueeze(-1)
+            q_dot_angle = self.config.angle_null_gain * angle_gate * grad_cos
+            q_dot_null = self.config.null_gain * grad_mu + q_dot_joint + q_dot_angle
+            q_dot = q_dot_task + (projector @ q_dot_null.unsqueeze(-1)).squeeze(-1)
             q_next = q + self.config.dt * q_dot
 
             margin_ok = joint_margin_mask(self.robot, q_next, self.config.joint_margin_ratio)
@@ -365,6 +334,8 @@ def init_hdf5(path: Path, config: TrackerConfig) -> None:
         f.attrs["dt"] = config.dt
         f.attrs["task_speed"] = config.task_speed
         f.attrs["theta_max_deg"] = config.theta_max_deg
+        f.attrs["angle_margin_deg"] = config.angle_margin_deg
+        f.attrs["angle_null_gain"] = config.angle_null_gain
         f.attrs["joint_margin_ratio"] = config.joint_margin_ratio
         f.attrs["plane_clearance_m"] = 0.0
         f.attrs["robot_name"] = "pen_fr3"
@@ -389,6 +360,36 @@ def append_trajectories_hdf5(path: Path, trajectories: list[dict]) -> int:
         return int(f.attrs["num_trajectories"])
 
 
+def robot_visualization_test() -> None:
+    import wrs.modeling.geometric_model as mgm
+    import wrs.visualization.panda.world as wd
+    from wrs.robot_sim.robots.franka_research_3.franka_research_3 import FrankaResearch3
+
+    world = wd.World(cam_pos=[2.0, -1.8, 1.2], lookat_pos=[0.2, 0.0, 0.4])
+    mgm.gen_frame().attach_to(world)
+
+    robot = FrankaResearch3(name="pen", enable_cc=True)
+    robot.gen_meshmodel(alpha=0.6, toggle_tcp_frame=True, toggle_jnt_frames=False).attach_to(world)
+
+    flange_pos = robot.manipulator.gl_flange_pos
+    flange_rotmat = robot.manipulator.gl_flange_rotmat
+    pen_tip = flange_pos + flange_rotmat[:, 2] * PEN_LENGTH
+    mgm.gen_stick(
+        spos=flange_pos,
+        epos=pen_tip,
+        radius=0.006,
+        rgb=np.array([0.15, 0.15, 0.15]),
+        alpha=0.95,
+    ).attach_to(world)
+    mgm.gen_sphere(pen_tip, radius=0.0065, rgb=np.array([0.15, 0.15, 0.15]), alpha=0.95).attach_to(world)
+    mgm.gen_frame(pos=pen_tip, rotmat=flange_rotmat, ax_length=0.08).attach_to(world)
+
+    print(f"[robot-vis] pen length = {PEN_LENGTH:.3f} m")
+    print(f"[robot-vis] flange_pos = {np.array2string(flange_pos, precision=4, suppress_small=True)}")
+    print(f"[robot-vis] pen_tip    = {np.array2string(pen_tip, precision=4, suppress_small=True)}")
+    world.run()
+
+
 def parse_args() -> argparse.Namespace:
     parser = argparse.ArgumentParser(description="Generate FR3 plane-constrained straight-line trajectories.")
     parser.add_argument("--output", type=Path, default=DEFAULT_OUTPUT)
@@ -396,14 +397,21 @@ def parse_args() -> argparse.Namespace:
     parser.add_argument("--num-trajectories", type=int, default=1000)
     parser.add_argument("--batch-size", type=int, default=32)
     parser.add_argument("--seed", type=int, default=0)
-    parser.add_argument("--theta-max-deg", type=float, default=30.0)
+    parser.add_argument("--theta-max-deg", type=float, default=45.0)
+    parser.add_argument("--angle-margin-deg", type=float, default=15.0)
+    parser.add_argument("--angle-null-gain", type=float, default=0.4)
     parser.add_argument("--joint-margin-ratio", type=float, default=0.05)
     parser.add_argument("--max-steps", type=int, default=2000)
+    parser.add_argument("--robot-vis-test", action="store_true", help="Only visualize the pen robot and exit.")
     return parser.parse_args()
 
 
 def main() -> None:
     args = parse_args()
+    if args.robot_vis_test:
+        robot_visualization_test()
+        return
+
     np.random.seed(args.seed)
     torch.manual_seed(args.seed)
 
@@ -422,6 +430,8 @@ def main() -> None:
         sphere_link_indices=np.asarray(cc.sphere_link_indices, dtype=np.int64),
         config=TrackerConfig(
             theta_max_deg=float(args.theta_max_deg),
+            angle_margin_deg=float(args.angle_margin_deg),
+            angle_null_gain=float(args.angle_null_gain),
             joint_margin_ratio=float(args.joint_margin_ratio),
             max_steps=int(args.max_steps),
         ),

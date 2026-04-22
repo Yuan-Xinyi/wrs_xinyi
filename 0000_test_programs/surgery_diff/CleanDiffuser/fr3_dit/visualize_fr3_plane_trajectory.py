@@ -10,10 +10,9 @@ import numpy as np
 import wrs.modeling.collision_model as mcm
 import wrs.modeling.geometric_model as mgm
 import wrs.visualization.panda.world as wd
-from wrs.robot_sim.robots.franka_research_3.franka_research_3 import FrankaResearch3
 
+from pen_fr3_robot import PEN_LENGTH, PenFrankaResearch3
 
-PEN_LENGTH = 0.15
 DEFAULT_H5 = Path(__file__).resolve().parent / "pen_fr3_plane_trajectories.hdf5"
 
 
@@ -65,20 +64,6 @@ def load_trajectory(path: Path, traj_idx: int | None, seed: int | None) -> tuple
     return traj_idx, traj
 
 
-def attach_pen(world, robot: FrankaResearch3, rgb: np.ndarray, alpha: float) -> None:
-    flange_pos = robot.manipulator.gl_flange_pos
-    flange_rotmat = robot.manipulator.gl_flange_rotmat
-    pen_tip = flange_pos + flange_rotmat[:, 2] * PEN_LENGTH
-    mgm.gen_stick(
-        spos=flange_pos,
-        epos=pen_tip,
-        radius=0.006,
-        rgb=rgb,
-        alpha=alpha,
-    ).attach_to(world)
-    mgm.gen_sphere(pen_tip, radius=0.0065, rgb=rgb, alpha=min(0.95, alpha + 0.2)).attach_to(world)
-
-
 def main() -> None:
     args = parse_args()
     traj_idx, traj = load_trajectory(args.h5, args.traj_idx, args.seed)
@@ -93,6 +78,12 @@ def main() -> None:
         f"[pen traj {traj_idx}] num_points={traj['num_points']} "
         f"total_projected_length={traj['total_projected_length']:.4f}m "
         f"termination={traj['termination_reason']} ({traj['termination_code']})"
+    )
+    print(
+        f"[termination] reason={traj['termination_reason']} "
+        f"code={traj['termination_code']} "
+        f"length={traj['total_projected_length']:.4f}m "
+        f"num_points={traj['num_points']}"
     )
     print(f"start_q      = {np.array2string(traj['start_q'], precision=4, suppress_small=True)}")
     print(f"plane_point  = {np.array2string(plane_point, precision=4, suppress_small=True)}")
@@ -109,7 +100,7 @@ def main() -> None:
         pos=plane_center,
         rotmat=plane_rotmat,
         rgb=[0.80, 0.85, 0.90],
-        alpha=0.22,
+        alpha=1,
     ).attach_to(world)
 
     mgm.gen_sphere(plane_point, radius=0.01, rgb=np.array([0.0, 0.7, 1.0]), alpha=1.0).attach_to(world)
@@ -129,16 +120,21 @@ def main() -> None:
     mgm.gen_sphere(tcp_pos[0], radius=0.008, rgb=np.array([0.15, 0.45, 1.0]), alpha=0.95).attach_to(world)
     mgm.gen_sphere(tcp_pos[-1], radius=0.009, rgb=np.array([0.10, 0.85, 0.20]), alpha=0.95).attach_to(world)
 
-    robot = FrankaResearch3(name="pen", enable_cc=True)
+    robot = PenFrankaResearch3(name="pen", enable_cc=True)
     stride = max(1, int(args.stride))
     pose_indices = list(range(0, q_path.shape[0], stride))
     if pose_indices[-1] != q_path.shape[0] - 1:
         pose_indices.append(q_path.shape[0] - 1)
+    
+    # dynamic simulation
+    import utils
+    utils.visualize_anime_path(world, robot, q_path[pose_indices])
+
+    # static simulation
     for order, idx in enumerate(pose_indices):
-        alpha = 0.05
+        alpha = 1 if idx == 0 or idx == pose_indices[-1] else 0.05
         robot.goto_given_conf(q_path[idx].astype(np.float32))
-        robot.gen_meshmodel(rgb=np.array([1.0, 0.40, 0.10]), alpha=float(alpha), toggle_tcp_frame=(idx == pose_indices[-1])).attach_to(world)
-        attach_pen(world, robot, rgb=np.array([0.20, 0.20, 0.20]), alpha=max(0.15, float(alpha) + 0.10))
+        robot.gen_meshmodel(alpha=float(alpha), toggle_tcp_frame=(idx == pose_indices[-1])).attach_to(world)
 
     world.run()
 
