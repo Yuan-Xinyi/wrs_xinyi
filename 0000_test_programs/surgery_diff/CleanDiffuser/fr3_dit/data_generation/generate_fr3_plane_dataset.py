@@ -12,12 +12,12 @@ import numpy as np
 import torch
 from wrs.robot_sim.robots.franka_research_3.sphere_collision_checker import SphereCollisionChecker
 
-from pen_fr3_robot import PEN_LENGTH, PenFrankaResearch3GPU
+from fr3_dit.core.pen_fr3_robot import PEN_LENGTH, PenFrankaResearch3GPU
 
 
-PROJECT_ROOT = Path(__file__).resolve().parents[4]
+PROJECT_ROOT = Path(__file__).resolve().parents[5]
 DEFAULT_URDF = PROJECT_ROOT / "wrs" / "robot_sim" / "robots" / "franka_research_3" / "franka_research_3_ccsphere.urdf"
-DEFAULT_OUTPUT = Path(__file__).resolve().parent / "pen_fr3_plane_trajectories.hdf5"
+DEFAULT_OUTPUT = Path(__file__).resolve().parents[1] / "data" / "pen_fr3_plane_trajectories.hdf5"
 
 
 def normalize_batch(x: torch.Tensor) -> torch.Tensor:
@@ -116,6 +116,22 @@ class TrackerConfig:
     pos_error_threshold: float = 0.01
 
 
+@dataclass
+class DeskConfig:
+    """Fixed desk plane shared by every sampled trajectory.
+
+    Convention: ``normal`` is the physical OUTWARD normal of the tabletop (the side the
+    robot reaches from). The pen is driven to point opposite ``normal``. ``center`` MUST
+    sit below every non-pen robot link so that plane-clearance passes; for a base-at-origin
+    FR3 that means ``center[2] <= 0``.
+    """
+    center: tuple[float, float, float] = (0.5, 0.0, -0.05)
+    normal: tuple[float, float, float] = (0.0, 0.0, 1.0)
+    x_half: float = 0.20
+    y_half: float = 0.20
+    pos_tol: float = 0.02         # max TCP-to-desk offset accepted at start (m)
+
+
 class PlaneConstrainedTracker:
     def __init__(self, robot, self_collision_fn, sphere_positions_fn, sphere_radii: np.ndarray, sphere_link_indices: np.ndarray, config: TrackerConfig):
         self.robot = robot
@@ -182,6 +198,98 @@ class PlaneConstrainedTracker:
             torch.cat(d_list, dim=0),
             torch.cat(n_list, dim=0),
             torch.cat(s_list, dim=0),
+        )
+
+    def sample_desk_valid_batch(
+        self, batch_size: int, desk: DeskConfig, device: torch.device
+    ) -> tuple[torch.Tensor, torch.Tensor, torch.Tensor, torch.Tensor, torch.Tensor]:
+        """Rejection-sample valid starts on a single shared desk plane.
+
+        Convention: ``desk.normal`` is the physical OUTWARD normal (points away from the
+        desk surface, e.g. +Z for a horizontal tabletop). The pen points INTO the desk,
+        so TCP_z is driven toward ``-desk.normal``. Internally we store
+        ``plane_normal = -desk.normal`` (the pen-axis convention used by the tracker),
+        which together with the existing ``plane_side = -1`` keeps the arm on the
+        +desk.normal side (above the tabletop).
+        """
+        desk_center_t = torch.tensor(desk.center, dtype=torch.float32, device=device)
+        desk_normal_t = torch.tensor(desk.normal, dtype=torch.float32, device=device)
+        desk_normal_t = desk_normal_t / desk_normal_t.norm().clamp_min(1e-12)
+        pen_axis = -desk_normal_t  # pen points INTO the desk
+        helper = torch.tensor([1.0, 0.0, 0.0], dtype=torch.float32, device=device)
+        if abs(float(desk_normal_t[0])) >= 0.9:
+            helper = torch.tensor([0.0, 1.0, 0.0], dtype=torch.float32, device=device)
+        dx = torch.linalg.cross(helper, desk_normal_t); dx = dx / dx.norm().clamp_min(1e-12)
+        dy = torch.linalg.cross(desk_normal_t, dx)
+        cos_theta_max = float(np.cos(np.deg2rad(self.config.theta_max_deg)))
+
+        q_list, p_list, d_list = [], [], []
+        remaining = batch_size
+        oversample = max(4096, batch_size * 128)
+        trial = 0
+        while remaining > 0:
+            trial += 1
+            q = self.robot.rand_conf_batch(oversample).to(device)
+            q = q[joint_margin_mask(self.robot, q, self.config.joint_margin_ratio)]
+            if q.shape[0] == 0:
+                print(f"[desk-sample] trial={trial} after-margin=0/{oversample}")
+                continue
+            tcp_pos, tcp_rot = self.robot.fk_batch(q)
+            tcp_z = tcp_rot[:, :, 2]
+            cos_theta = torch.sum(tcp_z * pen_axis.unsqueeze(0), dim=-1)
+            aligned = cos_theta > cos_theta_max
+
+            offset = tcp_pos - desk_center_t.unsqueeze(0)
+            plane_dist = torch.sum(offset * desk_normal_t.unsqueeze(0), dim=-1)
+            lx = torch.sum(offset * dx.unsqueeze(0), dim=-1)
+            ly = torch.sum(offset * dy.unsqueeze(0), dim=-1)
+            on_desk = (
+                (plane_dist.abs() < desk.pos_tol)
+                & (lx.abs() < desk.x_half)
+                & (ly.abs() < desk.y_half)
+            )
+
+            # Early filter: keep only configs that pass the cheap gates before running
+            # expensive collision + plane-clearance checks (100× speed-up at typical yields).
+            pre_mask = aligned & on_desk
+            if not pre_mask.any():
+                print(f"[desk-sample] trial={trial} after-margin={q.shape[0]}/{oversample} aligned/on_desk=0")
+                continue
+            q_f = q[pre_mask]
+            lx_f, ly_f = lx[pre_mask], ly[pre_mask]
+            plane_point = (
+                desk_center_t.unsqueeze(0)
+                + lx_f.unsqueeze(-1) * dx.unsqueeze(0)
+                + ly_f.unsqueeze(-1) * dy.unsqueeze(0)
+            )
+            pen_axis_batch = pen_axis.unsqueeze(0).expand(q_f.shape[0], 3)
+            directions = project_to_plane_batch(torch.randn_like(pen_axis_batch), pen_axis_batch)
+            coll = self.self_collision_fn(q_f)
+            plane_side = -torch.ones(q_f.shape[0], device=device, dtype=torch.float32)
+            plane_ok = self.plane_clearance_mask(q_f, plane_point, pen_axis_batch, plane_side)
+
+            # Only collision-level gating (on-desk / alignment already applied above).
+            valid = (coll <= 0.0) & plane_ok
+            print(
+                f"[desk-sample] trial={trial} margin={q.shape[0]}/{oversample} "
+                f"pre={q_f.shape[0]} coll_ok={int((coll<=0).sum().item())} "
+                f"plane_ok={int(plane_ok.sum().item())} valid={int(valid.sum().item())} "
+                f"collected={batch_size - remaining}/{batch_size}"
+            )
+            if valid.any():
+                take = min(int(valid.sum().item()), remaining)
+                idx = torch.where(valid)[0][:take]
+                q_list.append(q_f[idx])
+                p_list.append(plane_point[idx])
+                d_list.append(directions[idx])
+                remaining -= take
+        n_total = sum(t.shape[0] for t in q_list)
+        return (
+            torch.cat(q_list, dim=0),
+            torch.cat(p_list, dim=0),
+            torch.cat(d_list, dim=0),
+            pen_axis.unsqueeze(0).expand(n_total, 3).contiguous(),
+            -torch.ones(n_total, dtype=torch.float32, device=device),
         )
 
     def collect_batch_trajectories(
@@ -402,6 +510,25 @@ def parse_args() -> argparse.Namespace:
     parser.add_argument("--angle-null-gain", type=float, default=0.4)
     parser.add_argument("--joint-margin-ratio", type=float, default=0.05)
     parser.add_argument("--max-steps", type=int, default=2000)
+    # Fixed-desk (IK-targeted) sampling is the default.
+    parser.add_argument("--random-plane", action="store_true",
+                        help="Legacy: per-trajectory random plane (rejection sampler).")
+    parser.add_argument("--desk-center", type=float, nargs=3, default=[0.5, 0.0, -0.05],
+                        metavar=("CX", "CY", "CZ"),
+                        help="World-frame center of the shared desk plane (meters). CZ must sit "
+                             "below every non-pen robot link for plane-clearance to pass.")
+    parser.add_argument("--desk-normal", type=float, nargs=3, default=[0.0, 0.0, 1.0],
+                        metavar=("NX", "NY", "NZ"),
+                        help="World-frame normal of the shared desk plane.")
+    parser.add_argument("--desk-x-half", type=float, default=0.20,
+                        help="Half-width along the desk's local x-axis (meters).")
+    parser.add_argument("--desk-y-half", type=float, default=0.20,
+                        help="Half-width along the desk's local y-axis (meters).")
+    parser.add_argument("--desk-pos-tol", type=float, default=0.02,
+                        help="Max TCP-to-desk offset accepted at start (meters).")
+    parser.add_argument("--min-length-m", type=float, default=0.3,
+                        help="Drop trajectories whose total_projected_length is below this (meters). "
+                             "The save counter only advances on trajectories that pass.")
     parser.add_argument("--robot-vis-test", action="store_true", help="Only visualize the pen robot and exit.")
     return parser.parse_args()
 
@@ -437,7 +564,26 @@ def main() -> None:
         ),
     )
 
+    desk = DeskConfig(
+        center=tuple(args.desk_center),
+        normal=tuple(args.desk_normal),
+        x_half=float(args.desk_x_half),
+        y_half=float(args.desk_y_half),
+        pos_tol=float(args.desk_pos_tol),
+    )
+
     init_hdf5(args.output, tracker.config)
+    with h5py.File(args.output, "a") as f:
+        if args.random_plane:
+            f.attrs["sampling_mode"] = "random_plane"
+        else:
+            f.attrs["sampling_mode"] = "fixed_desk"
+            f.attrs["desk_center"] = np.asarray(desk.center, dtype=np.float32)
+            f.attrs["desk_normal"] = np.asarray(desk.normal, dtype=np.float32)
+            f.attrs["desk_x_half"] = desk.x_half
+            f.attrs["desk_y_half"] = desk.y_half
+            f.attrs["desk_pos_tol"] = desk.pos_tol
+
     total_written = 0
     batch_idx = 0
     while total_written < int(args.num_trajectories):
@@ -445,15 +591,30 @@ def main() -> None:
         remaining = int(args.num_trajectories) - total_written
         take = min(int(args.batch_size), remaining)
         print(f"[batch] {batch_idx} target_batch={take} collected_total={total_written}/{int(args.num_trajectories)}")
-        q0, plane_point, direction, plane_normal, plane_side = tracker.sample_valid_batch(take, device)
+        if args.random_plane:
+            q0, plane_point, direction, plane_normal, plane_side = tracker.sample_valid_batch(take, device)
+        else:
+            q0, plane_point, direction, plane_normal, plane_side = tracker.sample_desk_valid_batch(take, desk, device)
         batch_trajs = tracker.collect_batch_trajectories(q0, plane_point, direction, plane_normal, plane_side)
-        batch_lengths = np.asarray([float(t["total_projected_length"]) for t in batch_trajs], dtype=np.float32)
-        print(
-            f"[length] batch={batch_idx} mean={float(batch_lengths.mean()):.4f}m "
-            f"median={float(np.median(batch_lengths)):.4f}m min={float(batch_lengths.min()):.4f}m "
-            f"max={float(batch_lengths.max()):.4f}m first3={batch_lengths[:3].tolist()}"
-        )
-        total_written = append_trajectories_hdf5(args.output, batch_trajs)
+        batch_lengths_all = np.asarray([float(t["total_projected_length"]) for t in batch_trajs], dtype=np.float32)
+        # Length filter: only keep trajectories at least --min-length-m meters long.
+        kept = [t for t in batch_trajs if float(t["total_projected_length"]) >= args.min_length_m]
+        dropped = len(batch_trajs) - len(kept)
+        if kept:
+            batch_lengths = np.asarray([float(t["total_projected_length"]) for t in kept], dtype=np.float32)
+            print(
+                f"[length] batch={batch_idx} kept={len(kept)}/{len(batch_trajs)} "
+                f"(dropped {dropped} < {args.min_length_m}m) "
+                f"mean={float(batch_lengths.mean()):.4f}m median={float(np.median(batch_lengths)):.4f}m "
+                f"min={float(batch_lengths.min()):.4f}m max={float(batch_lengths.max()):.4f}m"
+            )
+        else:
+            print(
+                f"[length] batch={batch_idx} kept=0/{len(batch_trajs)} "
+                f"(all dropped < {args.min_length_m}m; raw max={float(batch_lengths_all.max()):.4f}m)"
+            )
+        if kept:
+            total_written = append_trajectories_hdf5(args.output, kept)
         print(f"[save] collected={total_written}/{int(args.num_trajectories)}")
 
     print(f"[done] wrote {total_written} trajectories to {args.output}")

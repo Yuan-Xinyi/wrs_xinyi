@@ -11,9 +11,9 @@ import wrs.modeling.collision_model as mcm
 import wrs.modeling.geometric_model as mgm
 import wrs.visualization.panda.world as wd
 
-from pen_fr3_robot import PEN_LENGTH, PenFrankaResearch3
+from fr3_dit.core.pen_fr3_robot import PEN_LENGTH, PenFrankaResearch3
 
-DEFAULT_H5 = Path(__file__).resolve().parent / "pen_fr3_plane_trajectories.hdf5"
+DEFAULT_H5 = Path(__file__).resolve().parents[1] / "data" / "pen_fr3_plane_trajectories.hdf5"
 
 
 def parse_args() -> argparse.Namespace:
@@ -127,8 +127,8 @@ def main() -> None:
         pose_indices.append(q_path.shape[0] - 1)
     
     # dynamic simulation
-    import utils
-    utils.visualize_anime_path(world, robot, q_path[pose_indices])
+    from fr3_dit.core import viz_utils
+    viz_utils.visualize_anime_path(world, robot, q_path[pose_indices])
 
     # static simulation
     for order, idx in enumerate(pose_indices):

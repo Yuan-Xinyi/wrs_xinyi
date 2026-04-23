@@ -15,7 +15,7 @@ import wrs.visualization.panda.world as wd
 import wrs.basis.robot_math as rm
 from wrs.robot_sim.robots.franka_research_3.sphere_collision_checker import SphereCollisionChecker
 
-from generate_fr3_plane_dataset import (
+from fr3_dit.data_generation.generate_fr3_plane_dataset import (
     DEFAULT_URDF,
     PlaneConstrainedTracker,
     TrackerConfig,
@@ -23,7 +23,7 @@ from generate_fr3_plane_dataset import (
     joint_margin_mask,
     position_jacobian_batch,
 )
-from pen_fr3_robot import PEN_LENGTH, PenFrankaResearch3, PenFrankaResearch3GPU
+from fr3_dit.core.pen_fr3_robot import PEN_LENGTH, PenFrankaResearch3, PenFrankaResearch3GPU
 
 
 def parse_args() -> argparse.Namespace:
@@ -41,7 +41,7 @@ def parse_args() -> argparse.Namespace:
     parser.add_argument("--show-bottomk", type=int, default=3)
     parser.add_argument("--ik-max-trials", type=int, default=512)
     parser.add_argument("--ik-seeds-per-pose", type=int, default=6)
-    parser.add_argument("--curve-out", type=Path, default=Path(__file__).resolve().parent / "same_task_start_conf_gap_curves.svg")
+    parser.add_argument("--curve-out", type=Path, default=Path(__file__).resolve().parent / "outputs" / "same_task_start_conf_gap_curves.svg")
     parser.add_argument("--no-vis", action="store_true")
     return parser.parse_args()
 
