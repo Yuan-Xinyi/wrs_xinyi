@@ -40,6 +40,8 @@ def parse_args() -> argparse.Namespace:
                         help="Composite task index. If omitted, pick one at random.")
     parser.add_argument("--seed", type=int, default=None)
     parser.add_argument("--stride", type=int, default=10)
+    parser.add_argument("--speed", type=float, default=1.0,
+                        help="Animation speed multiplier (2.0 = 2x faster).")
     parser.add_argument("--only-composites", action="store_true",
                         help="Only pick tasks with seg_count >= 2.")
     parser.add_argument("--min-segs", type=int, default=1,
@@ -226,7 +228,8 @@ def main() -> None:
     if pose_indices[-1] != q_path.shape[0] - 1:
         pose_indices.append(q_path.shape[0] - 1)
     from fr3_dit.core import viz_utils
-    viz_utils.visualize_anime_path(world, robot, q_path[pose_indices])
+    frame_delay = max(0.02, 0.2 / max(args.speed, 1e-3))
+    viz_utils.visualize_anime_path(world, robot, q_path[pose_indices], frame_delay=frame_delay)
 
 
 if __name__ == "__main__":

@@ -1,7 +1,7 @@
 import wrs.modeling.geometric_model as mgm
 
 
-def visualize_anime_path(base, robot, path):
+def visualize_anime_path(base, robot, path, frame_delay: float = 0.2):
     class Data(object):
         def __init__(self):
             self.counter = 0
@@ -39,7 +39,7 @@ def visualize_anime_path(base, robot, path):
 
     def start_animation(task):
         base.taskMgr.doMethodLater(
-            0.2,
+            float(frame_delay),
             update,
             "update",
             extraArgs=[robot, anime_data],
