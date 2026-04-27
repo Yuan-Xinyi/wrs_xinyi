@@ -1,12 +1,18 @@
 #!/usr/bin/env python3
-"""Train the q₀-predicting DiT.
+"""Train the q₀-predicting DiT with **Conditional Flow Matching** instead of DDPM.
 
-For each composite task in the filtered HDF5 we only need:
-  - the variable-length token sequence (conditioning)
-  - the scalar ``start_q`` (7-D initial joint config, target)
+Same model architecture (TaskCondDiTq0), same conditioning, same data, same CFG
+dropout, same TCP/q7 losses, same mirror augmentation. Only the noise objective
+and the sampler differ:
 
-v-prediction + CFG dropout (p=0.1) + FR3 joint-limit normalization to keep
-everything in [-1, 1].
+    DDPM v-pred (train_dit_q0.py)              ↔     CFM (this file)
+    -------------------------------------       -----------------------------
+    1000-step cosine β-schedule                       continuous t ∈ [0, 1]
+    target = α·ε − σ·x₀                                target = x_data − noise
+    sampler = DDIM 50 steps                            sampler = Euler ODE 5–15 steps
+
+Designed for head-to-head comparison: parameter-matched, data-matched, runs in
+the same harness, only the time-noise model differs.
 """
 from __future__ import annotations
 
@@ -22,19 +28,22 @@ import torch.nn.functional as F
 from torch.utils.data import DataLoader, Dataset
 
 from fr3_dit.training.task_cond_dit_q0 import (
-    DDPMCosineSchedule,
     DiTq0Config,
     TaskCondDiTq0,
     denormalize_q,
     normalize_q,
-    q_sample,
-    v_target_from,
+)
+from fr3_dit.training.flow_matching_q0 import (
+    T_SCALE,
+    cfm_sample,
+    t_to_model_index,
+    x_data_from_velocity,
 )
 from fr3_dit.core.pen_fr3_robot import PenFrankaResearch3GPU
 
 
 DEFAULT_DATA = Path(__file__).resolve().parents[1] / "data" / "pen_fr3_composite_tasks_50k_minseg10_anchored.hdf5"
-DEFAULT_CKPT_DIR = Path(__file__).resolve().parents[1] / "experiments" / "outputs" / "dit_q0_v3_ckpts"
+DEFAULT_CKPT_DIR = Path(__file__).resolve().parents[1] / "experiments" / "outputs" / "dit_q0_fm_ckpts"
 
 # Token slot offsets inside the 32-D token vector
 DIR_LOCAL_OFFSET = 3   # right after the 3-dim kind_onehot
@@ -113,21 +122,15 @@ class StartQDataset(Dataset):
         token_mask[:n_tok] = 1.0
 
         q0_raw = self.start_q[task_idx].copy()
-        tcp_gt = self.tcp_target[task_idx].copy()  # (3,) world
+        tcp_gt = self.tcp_target[task_idx].copy()
 
-        # Canonicalize q7 (pen self-rotation): the original sampled q7 was task-irrelevant
-        # noise. Snapping it to 0 turns "predict random q7" into the well-defined function
-        # "predict q7 = 0", which the model can actually fit and which automatically
-        # eliminates the ~20% out-of-limit rate observed in v3.
+        # Canonicalize q7 (task-irrelevant pen self-rotation) to 0.
         q0_raw[6] = 0.0
 
-        # Mirror augmentation across desk's xz plane (y → -y).
         if self.mirror_prob > 0.0 and np.random.rand() < self.mirror_prob:
             q0_raw = q0_raw * _FLIP_MULT
             tcp_gt[1] = -tcp_gt[1]
             tokens[0, DIR_LOCAL_OFFSET + 1] = -tokens[0, DIR_LOCAL_OFFSET + 1]
-            # Tokens describe shape in a per-task local frame that mirrors with the world,
-            # so segment dir_local / corner axis_local entries are invariant under mirror.
 
         q0_norm = normalize_q(q0_raw).astype(np.float32)
 
@@ -156,7 +159,7 @@ def update_ema(ema: dict, model: TaskCondDiTq0, decay: float) -> None:
             ema[n].mul_(decay).add_(p.detach(), alpha=1 - decay)
 
 
-def save_ckpt(path: Path, model, optimizer, ema, step, cfg, schedule, args) -> None:
+def save_ckpt(path: Path, model, optimizer, ema, step, cfg, args) -> None:
     path.parent.mkdir(parents=True, exist_ok=True)
     torch.save({
         "step": step,
@@ -164,7 +167,8 @@ def save_ckpt(path: Path, model, optimizer, ema, step, cfg, schedule, args) -> N
         "ema": ema,
         "optimizer": optimizer.state_dict(),
         "cfg": cfg.__dict__,
-        "T": schedule.T,
+        "objective": "cfm",
+        "t_scale": T_SCALE,
         "args": vars(args),
     }, path)
 
@@ -199,8 +203,7 @@ def parse_args() -> argparse.Namespace:
     p.add_argument("--lambda-orient", type=float, default=2.0,
                    help="Weight on the TCP_z direction (pen-into-desk) loss.")
     p.add_argument("--mask-q7", action="store_true", default=False,
-                   help="Zero-out q7 in the v-loss. Default off because data now canonicalizes q7=0 "
-                        "and the model can learn that explicitly.")
+                   help="Zero-out q7 in the loss. Default off because data canonicalizes q7=0.")
     p.add_argument("--num-workers", type=int, default=4)
     p.add_argument("--log-every", type=int, default=50)
     p.add_argument("--val-every", type=int, default=1000)
@@ -238,24 +241,21 @@ def main() -> None:
         act_dim=7, token_dim=seed_ds.token_dim, max_tokens=args.max_tokens,
         d_model=args.d_model, n_head=args.n_head,
         n_enc_layers=args.n_enc_layers, n_dec_layers=args.n_dec_layers,
-        dropout=args.dropout, diffusion_steps=args.diffusion_steps, pred_type="v",
+        dropout=args.dropout, diffusion_steps=T_SCALE, pred_type="cfm",
     )
     model = TaskCondDiTq0(cfg).to(device)
-    schedule = DDPMCosineSchedule(T=args.diffusion_steps).to(device)
     n_params = sum(p.numel() for p in model.parameters()) / 1e6
     print(
         f"[model] TaskCondDiTq0 d_model={args.d_model} enc={args.n_enc_layers} dec={args.n_dec_layers} "
-        f"params={n_params:.2f}M  pred=v  cfg_drop={args.cfg_drop_prob}"
+        f"params={n_params:.2f}M  objective=CFM  cfg_drop={args.cfg_drop_prob}  t_scale={T_SCALE}"
     )
 
     # Differentiable FR3 FK on GPU (used for the TCP-space auxiliary loss).
     fr3 = PenFrankaResearch3GPU(device)
-    # Per-joint loss weight: zero out q7 if requested.
     q_weight = torch.ones(7, device=device)
     if args.mask_q7:
         q_weight[6] = 0.0
-        print(f"[loss] mask_q7=on → v-loss weights={q_weight.tolist()}")
-    # TCP_z target: pen points opposite the desk's outward normal.
+        print(f"[loss] mask_q7=on → loss weights={q_weight.tolist()}")
     with h5py.File(args.data, "r") as fh:
         desk_normal_np = np.asarray(fh["meta"].attrs["source_desk_normal"], dtype=np.float32)
     desk_normal_np = desk_normal_np / max(float(np.linalg.norm(desk_normal_np)), 1e-12)
@@ -291,36 +291,34 @@ def main() -> None:
         tcp_gt = batch["tcp_gt"].to(device, non_blocking=True)  # (B, 3) world
         B = q0.shape[0]
 
-        # Diffusion forward + v-target
-        t = torch.randint(0, schedule.T, (B,), device=device)
-        xt, eps = q_sample(q0, t, schedule)
-        v_gt = v_target_from(q0, eps, t, schedule)
+        # CFM linear-path interpolation: x_t and target velocity u_target
+        t_continuous = torch.rand(B, device=device)              # uniform in [0, 1]
+        xt, u_gt = cfm_sample(q0, t_continuous)                  # xt, target = x_data − noise
+        t_idx = t_to_model_index(t_continuous)                   # for sinusoidal embedding
 
         # CFG dropout: flip each sample to unconditional with prob p
         uncond_mask = torch.rand(B, device=device) < args.cfg_drop_prob
 
         with torch.amp.autocast("cuda", enabled=args.amp and args.device == "cuda"):
-            v_pred = model(xt, t, tokens, token_mask, uncond_mask=uncond_mask)
+            u_pred = model(xt, t_idx, tokens, token_mask, uncond_mask=uncond_mask)
 
-            # v-loss with optional q7 masking
-            v_sq = (v_pred - v_gt) ** 2                          # (B, 7)
-            loss_v = (v_sq * q_weight).sum(dim=-1).mean() / q_weight.sum()
+            # CFM loss with optional q7 masking
+            u_sq = (u_pred - u_gt) ** 2                          # (B, 7)
+            loss_v = (u_sq * q_weight).sum(dim=-1).mean() / q_weight.sum()
 
-            # TCP auxiliary loss: recover x0_hat from v_pred, denormalize, FK, MSE on
-            # both TCP position and TCP_z direction (pen-into-desk).
-            bar = schedule.alphas_cumprod.gather(0, t).view(-1, 1)
-            alpha_t = bar.sqrt()
-            sigma_t = (1 - bar).sqrt()
-            x0_hat = alpha_t * xt - sigma_t * v_pred             # (B, 7) normalized
+            # TCP auxiliary: recover x_data prediction from velocity field, FK,
+            # supervise both TCP position and TCP_z direction (pen-into-desk).
+            x0_hat = x_data_from_velocity(xt, t_continuous, u_pred)     # (B, 7) normalized
             q0_pred_raw = denormalize_q(x0_hat)
             tcp_pred, tcp_rot_pred = fr3.robot.fk_batch(q0_pred_raw)
-            tcp_z_pred = tcp_rot_pred[:, :, 2]                   # (B, 3) world
+            tcp_z_pred = tcp_rot_pred[:, :, 2]                          # (B, 3)
 
             tcp_sq = ((tcp_pred - tcp_gt) ** 2).sum(dim=-1)
             orient_sq = ((tcp_z_pred - tcp_z_target.unsqueeze(0)) ** 2).sum(dim=-1)
-            w = alpha_t.squeeze(-1) ** 2
-            loss_tcp = (w * tcp_sq).mean()
-            loss_orient = (w * orient_sq).mean()
+            # Uniform weighting across t (no t² bias) so the velocity field gets supervision
+            # at every noise level — Euler integration from t=0 needs accurate u everywhere.
+            loss_tcp = tcp_sq.mean()
+            loss_orient = orient_sq.mean()
 
             loss = loss_v + args.lambda_tcp * loss_tcp + args.lambda_orient * loss_orient
 
@@ -352,26 +350,23 @@ def main() -> None:
                 for vb in val_loader:
                     x0v = vb["q0"].to(device)
                     tcp_gt_v = vb["tcp_gt"].to(device)
-                    tv = torch.randint(0, schedule.T, (x0v.shape[0],), device=device)
-                    xtv, epsv = q_sample(x0v, tv, schedule)
-                    vgt = v_target_from(x0v, epsv, tv, schedule)
+                    tv_cont = torch.rand(x0v.shape[0], device=device)
+                    xtv, u_gt_v = cfm_sample(x0v, tv_cont)
+                    tv_idx = t_to_model_index(tv_cont)
                     um = torch.rand(x0v.shape[0], device=device) < args.cfg_drop_prob
-                    vp = model(xtv, tv,
+                    up = model(xtv, tv_idx,
                                vb["tokens"].to(device),
                                vb["token_mask"].to(device),
                                uncond_mask=um)
-                    vsq = ((vp - vgt) ** 2 * q_weight).sum(dim=-1).mean() / q_weight.sum()
-                    bar = schedule.alphas_cumprod.gather(0, tv).view(-1, 1)
-                    a_v, s_v = bar.sqrt(), (1 - bar).sqrt()
-                    x0_hat_v = a_v * xtv - s_v * vp
+                    vsq = ((up - u_gt_v) ** 2 * q_weight).sum(dim=-1).mean() / q_weight.sum()
+                    x0_hat_v = x_data_from_velocity(xtv, tv_cont, up)
                     tcp_pred_v, tcp_rot_pred_v = fr3.robot.fk_batch(denormalize_q(x0_hat_v))
                     tcp_z_pred_v = tcp_rot_pred_v[:, :, 2]
-                    tcp_sq = ((tcp_pred_v - tcp_gt_v) ** 2).sum(dim=-1)
-                    ori_sq = ((tcp_z_pred_v - tcp_z_target.unsqueeze(0)) ** 2).sum(dim=-1)
-                    w_v = a_v.squeeze(-1) ** 2
+                    tcp_sq_v = ((tcp_pred_v - tcp_gt_v) ** 2).sum(dim=-1)
+                    ori_sq_v = ((tcp_z_pred_v - tcp_z_target.unsqueeze(0)) ** 2).sum(dim=-1)
                     v_losses.append(vsq.item())
-                    tcp_losses.append((w_v * tcp_sq).mean().item())
-                    ori_losses.append((w_v * ori_sq).mean().item())
+                    tcp_losses.append(tcp_sq_v.mean().item())
+                    ori_losses.append(ori_sq_v.mean().item())
                     if len(v_losses) >= 20:
                         break
             v_avg = float(np.mean(v_losses))
@@ -384,10 +379,10 @@ def main() -> None:
 
         if step % args.ckpt_every == 0 or step == args.num_steps:
             p = args.ckpt_dir / f"step_{step:06d}.pt"
-            save_ckpt(p, model, optimizer, ema, step, cfg, schedule, args)
+            save_ckpt(p, model, optimizer, ema, step, cfg, args)
             print(f"[ckpt] saved {p}")
 
-    save_ckpt(args.ckpt_dir / "final.pt", model, optimizer, ema, step, cfg, schedule, args)
+    save_ckpt(args.ckpt_dir / "final.pt", model, optimizer, ema, step, cfg, args)
     print(f"[done] final → {args.ckpt_dir/'final.pt'}")
 
 

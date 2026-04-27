@@ -1,14 +1,14 @@
 #!/usr/bin/env python3
-"""Inference + evaluation for the q₀-predicting DiT.
+"""Inference for the q₀-DiT trained with **Conditional Flow Matching**.
 
-Given a task (tokens), sample one or more q₀ candidates and optionally evaluate them
-by running the GPU-batched plane-constrained tracker from each predicted q₀ to see
-how far along the stroke it can go.
+Identical I/O to ``infer_dit_q0.py``, but uses the FM Euler ODE sampler instead
+of DDIM. Default num-steps = 10 (matches typical CFM throughput); cfg-w default
+3.0 for parity with DDPM run.
 
 Outputs (under fr3_dit/experiments/outputs/):
-  infer_q0_task<idx>_bars.svg         — per-joint GT vs predicted q₀ bar plot
-  infer_q0_task<idx>_meta.json        — metrics + prediction values
-  infer_q0_task<idx>_q0_pred.npy      — (n_samples, 7) candidate q₀ array
+  infer_q0_fm_task<idx>_bars.svg
+  infer_q0_fm_task<idx>_meta.json
+  infer_q0_fm_task<idx>_q0_pred.npy
 """
 from __future__ import annotations
 
@@ -24,17 +24,16 @@ import numpy as np
 import torch
 
 from fr3_dit.training.task_cond_dit_q0 import (
-    DDPMCosineSchedule,
     DiTq0Config,
     TaskCondDiTq0,
     FR3_JOINT_LIMITS,
-    ddim_sample_q0,
     denormalize_q,
 )
+from fr3_dit.training.flow_matching_q0 import euler_sample_cfm
 
 
-DEFAULT_DATA = Path(__file__).resolve().parents[1] / "data" / "pen_fr3_composite_tasks_50k_minseg10.hdf5"
-DEFAULT_CKPT = Path(__file__).resolve().parents[1] / "experiments" / "outputs" / "dit_q0_ckpts" / "final.pt"
+DEFAULT_DATA = Path(__file__).resolve().parents[1] / "data" / "pen_fr3_composite_tasks_50k_minseg10_anchored.hdf5"
+DEFAULT_CKPT = Path(__file__).resolve().parents[1] / "experiments" / "outputs" / "dit_q0_fm_ckpts" / "final.pt"
 DEFAULT_OUT_DIR = Path(__file__).resolve().parents[1] / "experiments" / "outputs"
 
 
@@ -47,15 +46,16 @@ def parse_args() -> argparse.Namespace:
     p.add_argument("--use-ema", action="store_true", default=True)
     p.add_argument("--n-samples", type=int, default=8,
                    help="Number of q₀ candidates to draw (diffusion is multi-modal).")
-    p.add_argument("--sampler-steps", type=int, default=50)
-    p.add_argument("--eta", type=float, default=0.0)
+    p.add_argument("--sampler-steps", type=int, default=10,
+                   help="Number of Euler ODE steps for CFM sampling (typically 5–15).")
     p.add_argument("--cfg-w", type=float, default=3.0,
                    help="Classifier-free guidance weight; 0 = no guidance.")
-    p.add_argument("--clip-x0", type=float, default=1.2)
+    p.add_argument("--clip-x0", type=float, default=1.2,
+                   help="Clamp the predicted x_data each step to stabilize the velocity field.")
     p.add_argument("--no-snap-q7", action="store_true", default=False,
                    help="Disable q7→0 post-processing snap (training canonicalizes q7=0).")
-    p.add_argument("--out-prefix", type=str, default="infer_q0",
-                   help="Filename prefix for outputs (e.g. 'infer_q0_v5' to avoid clobbering older runs).")
+    p.add_argument("--out-prefix", type=str, default="infer_q0_fm",
+                   help="Filename prefix for outputs (e.g. 'infer_q0_fm_v5' to avoid clobbering older runs).")
     p.add_argument("--seed", type=int, default=0)
     p.add_argument("--device", type=str, default="cuda" if torch.cuda.is_available() else "cpu")
     return p.parse_args()
@@ -89,7 +89,7 @@ def load_task(h5_path: Path, task_idx: int, max_tokens: int) -> dict:
     }
 
 
-def load_ckpt(ckpt_path: Path, device: torch.device, use_ema: bool) -> tuple[TaskCondDiTq0, DiTq0Config, DDPMCosineSchedule, int]:
+def load_ckpt(ckpt_path: Path, device: torch.device, use_ema: bool) -> tuple[TaskCondDiTq0, DiTq0Config, int]:
     ckpt = torch.load(ckpt_path, map_location=device, weights_only=False)
     cfg = DiTq0Config(**ckpt["cfg"])
     model = TaskCondDiTq0(cfg).to(device)
@@ -100,8 +100,7 @@ def load_ckpt(ckpt_path: Path, device: torch.device, use_ema: bool) -> tuple[Tas
                     p.copy_(ckpt["ema"][n].to(device))
     else:
         model.load_state_dict(ckpt["model"])
-    schedule = DDPMCosineSchedule(T=int(ckpt["T"])).to(device)
-    return model.eval(), cfg, schedule, int(ckpt.get("step", -1))
+    return model.eval(), cfg, int(ckpt.get("step", -1))
 
 
 def plot_q0_bars(gt: np.ndarray, preds: np.ndarray, out: Path, title: str) -> None:
@@ -132,8 +131,8 @@ def main() -> None:
     device = torch.device(args.device)
 
     print(f"[ckpt] loading {args.ckpt}")
-    model, cfg, schedule, step = load_ckpt(args.ckpt, device, args.use_ema)
-    print(f"[ckpt] step={step} d_model={cfg.d_model} enc={cfg.n_enc_layers} dec={cfg.n_dec_layers} T={schedule.T}")
+    model, cfg, step = load_ckpt(args.ckpt, device, args.use_ema)
+    print(f"[ckpt] step={step} d_model={cfg.d_model} enc={cfg.n_enc_layers} dec={cfg.n_dec_layers} (CFM)")
 
     task = load_task(args.data, args.task_idx, cfg.max_tokens)
     print(
@@ -144,12 +143,12 @@ def main() -> None:
     tokens_t = torch.from_numpy(task["tokens"]).unsqueeze(0).expand(args.n_samples, -1, -1).contiguous().to(device)
     token_mask_t = torch.from_numpy(task["token_mask"]).unsqueeze(0).expand(args.n_samples, -1).contiguous().to(device)
 
-    print(f"[sample] DDIM steps={args.sampler_steps} eta={args.eta} cfg_w={args.cfg_w} n={args.n_samples}")
-    q0_norm = ddim_sample_q0(
-        model, schedule, tokens_t, token_mask_t,
+    print(f"[sample] CFM Euler steps={args.sampler_steps} cfg_w={args.cfg_w} n={args.n_samples}")
+    q0_norm = euler_sample_cfm(
+        model, tokens_t, token_mask_t,
         shape=(args.n_samples, 7), device=device,
-        num_steps=args.sampler_steps, eta=args.eta,
-        cfg_w=args.cfg_w, clip_x0=args.clip_x0,
+        num_steps=args.sampler_steps,
+        cfg_w=args.cfg_w, clip_x_data=args.clip_x0,
     )
     q0_raw = denormalize_q(q0_norm).cpu().numpy()  # (n, 7)
 
@@ -189,7 +188,7 @@ def main() -> None:
             "n_tokens": int(task["n_tokens"]),
             "total_length_m": float(task["total_length"]),
             "ckpt_step": step,
-            "sampler": {"steps": args.sampler_steps, "eta": args.eta,
+            "sampler": {"objective": "cfm", "steps": args.sampler_steps,
                         "cfg_w": args.cfg_w, "clip_x0": args.clip_x0, "seed": args.seed},
             "gt_q0_rad": gt.tolist(),
             "pred_q0_rad": q0_raw.tolist(),

@@ -1,3 +1,5 @@
+import numpy as np
+
 import wrs.modeling.geometric_model as mgm
 
 
@@ -48,4 +50,68 @@ def visualize_anime_path(base, robot, path, frame_delay: float = 0.2):
         return task.done
 
     base.taskMgr.doMethodLater(1.0, start_animation, "start_animation_delay")
+    base.run()
+
+
+def visualize_anime_dual(base, entries, frame_delay: float = 0.05):
+    """Animate multiple robots in lock-step, each with its own trajectory.
+
+    ``entries`` is a list of dicts:
+        {"robot": <PenFrankaResearch3>, "path": np.ndarray (T, 7),
+         "rgb": (3,) or None, "alpha": float, "name": str (optional)}
+
+    Trajectories are right-padded with their last frame so the animation runs
+    for max(len(path)) steps. After all frames the loop restarts.
+    """
+    if not entries:
+        raise ValueError("entries must be non-empty")
+
+    paths = []
+    for e in entries:
+        p = np.asarray(e["path"], dtype=np.float32)
+        if p.ndim != 2 or p.shape[1] != 7:
+            raise ValueError(f"path shape must be (T, 7), got {p.shape}")
+        paths.append(p)
+    n_frames = max(p.shape[0] for p in paths)
+    rgbs = [e.get("rgb") for e in entries]
+    alphas = [float(e.get("alpha", 1.0)) for e in entries]
+
+    class Data:
+        def __init__(self):
+            self.counter = 0
+            self.current_models = [None] * len(entries)
+
+    state = Data()
+
+    def update(task):
+        if state.counter >= n_frames:
+            for m in state.current_models:
+                if m is not None:
+                    m.detach()
+            state.counter = 0
+            return task.again
+
+        for i, e in enumerate(entries):
+            if state.current_models[i] is not None:
+                state.current_models[i].detach()
+            idx = min(state.counter, paths[i].shape[0] - 1)
+            conf = paths[i][idx].astype(np.float32)
+            e["robot"].goto_given_conf(conf)
+            kwargs = {"alpha": alphas[i]}
+            if rgbs[i] is not None:
+                kwargs["rgb"] = np.asarray(rgbs[i], dtype=np.float32)
+            mdl = e["robot"].gen_meshmodel(**kwargs)
+            mdl.attach_to(base)
+            state.current_models[i] = mdl
+
+        state.counter += 1
+        return task.again
+
+    def start_animation(task):
+        base.taskMgr.doMethodLater(
+            float(frame_delay), update, "dual_update", appendTask=True,
+        )
+        return task.done
+
+    base.taskMgr.doMethodLater(1.0, start_animation, "dual_start_delay")
     base.run()

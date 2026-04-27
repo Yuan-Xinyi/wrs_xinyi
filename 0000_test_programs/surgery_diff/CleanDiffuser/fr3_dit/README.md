@@ -8,16 +8,29 @@ Pipeline for FR3 plane-constrained trajectory generation, topological stitching,
 fr3_dit/
 ├── core/                 # Robot model + visualization helpers
 │   ├── pen_fr3_robot.py     # PEN_LENGTH, PenFrankaResearch3 / PenFrankaResearch3GPU
-│   └── viz_utils.py         # visualize_anime_path
+│   └── viz_utils.py         # visualize_anime_path + visualize_anime_dual (multi-robot)
 ├── data_generation/      # Phase 0: collect raw plane-constrained straight trajectories
 │   └── generate_fr3_plane_dataset.py
 ├── stitching/            # Phase 1+2: anchor-based stitching → composite tasks + tokens
-│   └── stitch_composite_tasks.py
-├── training/             # Phase 3: DiT training-side data
-│   └── composite_task_dataset.py
-├── visualization/        # Viewers for raw + composite trajectories
+│   ├── stitch_composite_tasks.py
+│   ├── filter_min_subseg_length.py        # drop tasks with any subseg < threshold
+│   └── add_spatial_anchor.py              # stamp path-start XY into start tokens
+├── training/             # Phase 3: DiT training, inference, and tracker eval
+│   ├── composite_task_dataset.py
+│   ├── task_cond_dit.py                       # v1 full-trajectory DiT
+│   ├── task_cond_dit_q0.py                    # v3+ q₀-only DiT (DDPM v-pred + CFG + joint-limit norm)
+│   ├── flow_matching_q0.py                    # CFM helpers + Euler ODE sampler
+│   ├── train_dit.py / train_dit_q0.py         # DDPM training (v1 / v3+ ; v5 adds TCP-orient loss + q7 canon)
+│   ├── train_dit_q0_fm.py                     # CFM training (v4 parallel branch ; v5 same upgrades)
+│   ├── infer_dit.py / infer_dit_q0.py         # DDPM inference + plotting (v5: q7→0 snap)
+│   ├── infer_dit_q0_fm.py                     # CFM inference (Euler ODE sampler; v5: q7→0 snap)
+│   ├── ik_refine.py                           # farsighted-IK helper: refine q0 seed to exact target TCP
+│   └── eval_tracker.py                        # rollout each q₀ through tracker, report completion %
+├── visualization/        # Viewers for raw + composite trajectories + DiT predictions
 │   ├── visualize_fr3_plane_trajectory.py
-│   └── visualize_composite_task.py
+│   ├── visualize_composite_task.py
+│   ├── visualize_q0_compare.py        # static GT vs predicted q0 robot poses
+│   └── visualize_q0_rollout.py        # animate tracker rollout from a predicted q0
 ├── experiments/          # Ablations
 │   ├── test_same_task_start_conf_gap.py
 │   └── outputs/             # gitignored
@@ -99,6 +112,69 @@ python -m fr3_dit.training.composite_task_dataset --batch-size 4 --num-batches 2
 
 Use `CompositeTaskDataset` + `dit_collate` from `fr3_dit.training.composite_task_dataset`.
 
+### Phase 4 — q₀-DiT training (DDPM v-pred + CFM)
+
+```bash
+# 1) Filter composite HDF5: keep only tasks with every sub-segment ≥ 10 cm
+python -m fr3_dit.stitching.filter_min_subseg_length \
+    --input fr3_dit/data/pen_fr3_composite_tasks_50k.hdf5 --min-m 0.10
+
+# 2) Stamp the path-start XY into every START token (spatial anchor)
+python -m fr3_dit.stitching.add_spatial_anchor \
+    --input fr3_dit/data/pen_fr3_composite_tasks_50k_minseg10.hdf5
+
+# 3a) DDPM v-prediction training (v5 — adds TCP-orient loss + q7 canonicalization)
+python -m fr3_dit.training.train_dit_q0 \
+    --data fr3_dit/data/pen_fr3_composite_tasks_50k_minseg10_anchored.hdf5 \
+    --num-steps 40000 --batch-size 512 \
+    --lambda-tcp 5.0 --lambda-orient 2.0 --mirror-prob 0.5 \
+    --ckpt-dir fr3_dit/experiments/outputs/dit_q0_v5_ckpts
+
+# 3b) Conditional Flow Matching training (parallel branch ; v5 same upgrades, uniform t-weighting)
+python -m fr3_dit.training.train_dit_q0_fm \
+    --data fr3_dit/data/pen_fr3_composite_tasks_50k_minseg10_anchored.hdf5 \
+    --num-steps 40000 --batch-size 512 \
+    --lambda-tcp 5.0 --lambda-orient 2.0 --mirror-prob 0.5 \
+    --ckpt-dir fr3_dit/experiments/outputs/dit_q0_fm_v5_ckpts
+
+# 4) Inference (one task, 8 candidates, classifier-free guidance w=3)
+# Both inference scripts snap q7→0 by default (training canonicalizes q7=0; pass --no-snap-q7 to disable).
+# Use --out-prefix to keep different versions' outputs side-by-side without clobbering.
+python -m fr3_dit.training.infer_dit_q0    --task-idx 234088 --n-samples 8 --cfg-w 3.0 \
+    --out-prefix infer_q0_v5     # DDPM v5, 50 DDIM steps
+python -m fr3_dit.training.infer_dit_q0_fm --task-idx 234088 --n-samples 8 --cfg-w 3.0 \
+    --out-prefix infer_q0_fm_v5  # CFM v5, 10 Euler steps
+
+# 5) Tracker-based completion eval (real metric)
+# --prefix matches whatever --out-prefix you used at inference time.
+# --refine-ik runs wrs IK from each predicted q0 (seed) → exact path-start TCP before rollout,
+# isolating "good IK seed" (DiT job) from "TCP precision" (IK job). Run both modes for the
+# three-axis evaluation: TCP error / raw rollout / IK-refined rollout.
+# --angle-attract-gain enables a stronger always-on interior attractor (pulls TCP_z toward
+# -desk_normal proportional to angle deviation in radians) to suppress angle drift
+# accumulation that otherwise causes late-segment angle_violation. Eval default 5.0
+# (data-gen used 0.0).
+# --angle-null-gain ramps up the boundary brake (eval default 1.0; data-gen used 0.4).
+python -m fr3_dit.training.eval_tracker \
+    --task-indices 234088 127753 59086 \
+    --prefix infer_q0_v5_task \
+    --report-out /tmp/eval_v5.json
+python -m fr3_dit.training.eval_tracker \
+    --task-indices 234088 127753 59086 \
+    --prefix infer_q0_v5_task \
+    --refine-ik \
+    --report-out /tmp/eval_v5_refined.json
+```
+
+Notes:
+- Both training scripts share the same model architecture (`task_cond_dit_q0.TaskCondDiTq0`); the only difference is the noise objective (DDPM v-pred vs CFM linear-path velocity).
+- CFM inference defaults to **10 Euler steps** vs DDPM's 50 DDIM steps → ~5× faster sampling.
+- **v5 training** adds two improvements applied to both branches:
+  - TCP-orient loss (`--lambda-orient`, default 2.0): supervises the predicted TCP_z direction toward `−desk_normal` (pen pointing into desk) to suppress `angle_violation` failures.
+  - q7 canonicalization: `StartQDataset` zeroes q7 before normalization (pen self-rotation is task-irrelevant null-space). Inference scripts snap `q7→0` post-sample by default to eliminate q7 OOL violations; pass `--no-snap-q7` to disable.
+  - The DDPM branch keeps `α²` time-weighting on TCP/orient (clean-side emphasis); the CFM branch uses **uniform** weighting since Euler integration from t=0 needs accurate `u` at every noise level.
+- `eval_tracker.py` re-runs `PlaneConstrainedTracker` from each predicted q₀ segment-by-segment, reporting **per-task best-of-N completion %** and full-task success rate, which is the metric that ultimately matters.
+
 ### Visualization
 
 ```bash
@@ -116,6 +192,27 @@ python -m fr3_dit.visualization.visualize_composite_task --min-segs 3 --seed 42 
 
 # Specific task index
 python -m fr3_dit.visualization.visualize_composite_task --task-idx 200
+
+# === Predicted q0 demo: GT (green) + DiT-predicted candidates (red, ranked) ===
+# Requires running infer_dit_q0[_fm] first with the same --out-prefix.
+python -m fr3_dit.visualization.visualize_q0_compare \
+    --task-idx 234088 --out-prefix infer_q0_v5 --n-show 4
+
+# === Rollout demo: actually run the tracker from a predicted q0 and animate ===
+# Black trace = rollout TCP path; red sphere = failure point (if any). Per-segment
+# success/failure with termination label is printed to stdout. --rank-k 0 = best
+# of N by RMSE; --rank-k -1 = use GT q0 instead (sanity baseline).
+# --refine-ik runs wrs IK to snap TCP to the exact path-start (preserving seed
+# orientation) before rollout — matches eval_tracker --refine-ik.
+# --angle-attract-gain enables a stronger always-on interior attractor (pulls TCP_z
+# toward -desk_normal proportional to angle deviation in radians) to suppress angle
+# drift accumulation that otherwise causes late-segment angle_violation. Default 5.0
+# (data-gen used 0.0).
+# --angle-null-gain ramps up the boundary brake (default 1.0; data-gen used 0.4).
+# --playback-stride subsamples the rollout for animation (default 5 = 5× faster than
+# full-rate playback; pass 1 to step through every tracker frame).
+python -m fr3_dit.visualization.visualize_q0_rollout \
+    --task-idx 234088 --out-prefix infer_q0_v5 --rank-k 0 --refine-ik
 ```
 
 ### Experiments

@@ -23,7 +23,7 @@ from fr3_dit.core.pen_fr3_robot import PenFrankaResearch3
 
 
 DEFAULT_OUT_DIR = Path(__file__).resolve().parents[1] / "experiments" / "outputs"
-DEFAULT_DATA = Path(__file__).resolve().parents[1] / "data" / "pen_fr3_composite_tasks_50k_minseg10.hdf5"
+DEFAULT_DATA = Path(__file__).resolve().parents[1] / "data" / "pen_fr3_composite_tasks_50k_minseg10_anchored.hdf5"
 
 
 def parse_args() -> argparse.Namespace:
@@ -32,6 +32,8 @@ def parse_args() -> argparse.Namespace:
                    help="Task index (must have run infer_dit_q0 already).")
     p.add_argument("--out-dir", type=Path, default=DEFAULT_OUT_DIR)
     p.add_argument("--data", type=Path, default=DEFAULT_DATA)
+    p.add_argument("--out-prefix", type=str, default="infer_q0_v5",
+                   help="Filename prefix used at inference time (e.g. 'infer_q0_v5', 'infer_q0', 'infer_q0_fm_v5').")
     p.add_argument("--n-show", type=int, default=4,
                    help="How many of the 8 candidates to render.")
     return p.parse_args()
@@ -49,11 +51,13 @@ def main() -> None:
     args = parse_args()
     idx = int(args.task_idx)
 
-    npy_path = args.out_dir / f"infer_q0_task{idx:06d}_q0_pred.npy"
-    meta_path = args.out_dir / f"infer_q0_task{idx:06d}_meta.json"
+    npy_path = args.out_dir / f"{args.out_prefix}_task{idx:06d}_q0_pred.npy"
+    meta_path = args.out_dir / f"{args.out_prefix}_task{idx:06d}_meta.json"
     if not npy_path.exists():
         raise FileNotFoundError(
-            f"{npy_path} not found. Run `python -m fr3_dit.training.infer_dit_q0 --task-idx {idx}` first."
+            f"{npy_path} not found. Run inference first, e.g.\n"
+            f"  python -m fr3_dit.training.infer_dit_q0 --task-idx {idx} --out-prefix {args.out_prefix} \\\n"
+            f"      --ckpt fr3_dit/experiments/outputs/dit_q0_v5_ckpts/final.pt"
         )
 
     q0_preds = np.load(npy_path).astype(np.float32)  # (n, 7)

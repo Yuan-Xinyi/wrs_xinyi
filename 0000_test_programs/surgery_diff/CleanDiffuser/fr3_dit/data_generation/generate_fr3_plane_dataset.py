@@ -109,6 +109,7 @@ class TrackerConfig:
     theta_max_deg: float = 30.0
     angle_margin_deg: float = 8.0
     angle_null_gain: float = 0.4
+    angle_attract_gain: float = 0.0
     joint_margin_ratio: float = 0.05
     boundary_gain: float = 10.0
     max_steps: int = 2000
@@ -364,12 +365,23 @@ class PlaneConstrainedTracker:
             center = 0.5 * (lower + upper)
             span = (upper - lower).clamp_min(1e-6)
             q_dot_joint = -self.config.joint_limit_gain * (q_eval.detach() - center) / span
-            angle_gate = torch.clamp(
+            # Boundary gate: ramps 0→1 between margin and theta_cos. Brakes when near/past cone edge.
+            boundary_gate = torch.clamp(
                 (self.theta_margin_cos - cos_theta) / max(self.theta_margin_cos - self.theta_cos, 1e-6),
                 min=0.0,
                 max=1.0,
             ).unsqueeze(-1)
-            q_dot_angle = self.config.angle_null_gain * angle_gate * grad_cos
+            # Interior attractor: always-on pull toward perfect alignment, scales with deviation.
+            # Off by default (gain=0) to preserve original data-gen behavior; enable at eval/viz time.
+            # Use the angle in radians (≈ θ) instead of (1-cos θ ≈ θ²/2). Linear gate gives
+            # a meaningful pull even at small deviations (mid-cone), where the quadratic form
+            # is essentially zero and lets drift accumulate.
+            theta_rad = torch.acos(torch.clamp(cos_theta, min=-1.0 + 1e-6, max=1.0 - 1e-6))
+            interior_gate = theta_rad.unsqueeze(-1)
+            q_dot_angle = (
+                self.config.angle_null_gain * boundary_gate
+                + self.config.angle_attract_gain * interior_gate
+            ) * grad_cos
             q_dot_null = self.config.null_gain * grad_mu + q_dot_joint + q_dot_angle
             q_dot = q_dot_task + (projector @ q_dot_null.unsqueeze(-1)).squeeze(-1)
             q_next = q + self.config.dt * q_dot
