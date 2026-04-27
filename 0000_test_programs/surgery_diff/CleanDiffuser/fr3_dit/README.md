@@ -26,6 +26,15 @@ fr3_dit/
 │   ├── infer_dit_q0_fm.py                     # CFM inference (Euler ODE sampler; v5: q7→0 snap)
 │   ├── ik_refine.py                           # farsighted-IK helper: refine q0 seed to exact target TCP
 │   └── eval_tracker.py                        # rollout each q₀ through tracker, report completion %
+├── calligraphy/          # Phase 5: write Chinese characters using DiT as stroke-feasibility prior
+│   ├── character_def.py        # canonical polyline definitions (e.g., "万" = 3 strokes)
+│   ├── polyline_to_tokens.py   # convert a polyline + scene placement → 32-D token sequence
+│   ├── feasibility_check.py    # tokens → DiT N candidates → IK refine → tracker → bool
+│   ├── dataset_bounds.py       # read training-data segment-length histogram → analytical bounds
+│   ├── retrieve_strokes.py     # kNN over training tasks: closest-shape match + similarity transform
+│   ├── find_max_line.py        # 1-D bisection on length of a single straight stroke
+│   ├── find_max_size.py        # 1-D bisection on character size at fixed placement
+│   └── draw_character.py       # orchestrator: full character execution + viz
 ├── visualization/        # Viewers for raw + composite trajectories + DiT predictions
 │   ├── visualize_fr3_plane_trajectory.py
 │   ├── visualize_composite_task.py
@@ -152,8 +161,8 @@ python -m fr3_dit.training.infer_dit_q0_fm --task-idx 234088 --n-samples 8 --cfg
 # three-axis evaluation: TCP error / raw rollout / IK-refined rollout.
 # --angle-attract-gain enables a stronger always-on interior attractor (pulls TCP_z toward
 # -desk_normal proportional to angle deviation in radians) to suppress angle drift
-# accumulation that otherwise causes late-segment angle_violation. Eval default 5.0
-# (data-gen used 0.0).
+# accumulation that otherwise causes late-segment angle_violation. Eval default 2.0
+# (data-gen used 0.0; 5.0 turned out too aggressive after IK refine — wrist self-collided).
 # --angle-null-gain ramps up the boundary brake (eval default 1.0; data-gen used 0.4).
 python -m fr3_dit.training.eval_tracker \
     --task-indices 234088 127753 59086 \
@@ -206,13 +215,60 @@ python -m fr3_dit.visualization.visualize_q0_compare \
 # orientation) before rollout — matches eval_tracker --refine-ik.
 # --angle-attract-gain enables a stronger always-on interior attractor (pulls TCP_z
 # toward -desk_normal proportional to angle deviation in radians) to suppress angle
-# drift accumulation that otherwise causes late-segment angle_violation. Default 5.0
-# (data-gen used 0.0).
+# drift accumulation that otherwise causes late-segment angle_violation. Default 2.0
+# (data-gen used 0.0; 5.0 was too aggressive after IK refine — wrist self-collided).
 # --angle-null-gain ramps up the boundary brake (default 1.0; data-gen used 0.4).
 # --playback-stride subsamples the rollout for animation (default 5 = 5× faster than
 # full-rate playback; pass 1 to step through every tracker frame).
 python -m fr3_dit.visualization.visualize_q0_rollout \
     --task-idx 234088 --out-prefix infer_q0_v5 --rank-k 0 --refine-ik
+```
+
+### Calligraphy: write a Chinese character (DiT-as-stroke-prior)
+
+```bash
+# Default: 中 character at 8 cm size, centered on the desk.
+# For each stroke, oracle samples N=8 q0 candidates with DiT, IK-refines each to the
+# exact stroke start TCP, runs the tracker, and picks whichever candidate completes.
+# Between strokes, joint-space interpolation provides the pen-lift transition.
+python -m fr3_dit.calligraphy.draw_character --char 中 --size 0.08
+
+# Other characters defined in character_def.py: 一, 二, 十, 万, 日, 中
+python -m fr3_dit.calligraphy.draw_character --char 万 --size 0.10 --theta-deg 0
+
+# Skip animation (just print per-stroke feasibility) — useful for size sweeps.
+python -m fr3_dit.calligraphy.draw_character --char 中 --size 0.06 --no-animate
+
+# Faster oracle: rank candidates by DiT self-score (option B) and only roll out the top 2.
+# ~4x speedup on 8 candidates with negligible hit-rate loss when score is informative.
+python -m fr3_dit.calligraphy.draw_character --char 中 --size 0.08 --top-k-rollout 2
+
+# Find the maximum writable size for a character via 1-D bisection (no grid search).
+# Reports max size_m at the chosen placement; ~30s with --top-k-rollout=2.
+python -m fr3_dit.calligraphy.find_max_size --char 中
+
+# Simplest baseline: the longest single straight stroke writable from a fixed start
+# point in a fixed in-plane direction. ~20s.
+python -m fr3_dit.calligraphy.find_max_line --x 0.5 --y 0.0 --direction-deg 0
+
+# Most elegant: read training-data segment-length distribution → analytical bounds.
+# No oracle calls, no rollouts — under 1 second.
+python -m fr3_dit.calligraphy.dataset_bounds                          # print bounds
+python -m fr3_dit.calligraphy.dataset_bounds --query-line 0.25        # is 25cm line writable?
+python -m fr3_dit.calligraphy.dataset_bounds --query-char 中 --size 0.15
+
+# Retrieval: for a target stroke, find the closest training task by intrinsic shape
+# (seg_count, lengths, corner angles) and align it (translate+rotate+uniform-scale)
+# to the target geometry. The aligned polyline can then feed the existing DiT
+# pipeline — guaranteed in-distribution because we started from a known-feasible
+# training shape and only made a small similarity transform.
+
+# Whole character: top-1 retrieval per stroke, single overlay figure
+# (target = gray dashed; retrieved raw = dotted; adjusted = solid stroke colors).
+python -m fr3_dit.calligraphy.retrieve_strokes --char 中 --size 0.15 --save-plot
+
+# Single-stroke detail: top-K matches with per-stroke comparison plots.
+python -m fr3_dit.calligraphy.retrieve_strokes --char 中 --size 0.15 --stroke 4 --save-plot --k 3
 ```
 
 ### Experiments

@@ -61,10 +61,11 @@ def parse_args() -> argparse.Namespace:
     p.add_argument("--theta-max-deg", type=float, default=30.0)
     p.add_argument("--angle-null-gain", type=float, default=1.0,
                    help="Boundary brake gain (active near/past theta_max cone). data-gen used 0.4.")
-    p.add_argument("--angle-attract-gain", type=float, default=5.0,
+    p.add_argument("--angle-attract-gain", type=float, default=2.0,
                    help="Always-on interior attractor gain — pulls TCP_z toward -desk_normal "
                         "proportional to angle deviation (radians), suppressing angle drift "
-                        "accumulation. data-gen default 0.0; eval default 5.0.")
+                        "accumulation. data-gen default 0.0; eval default 2.0 (5.0 was too "
+                        "aggressive after IK refine — pushed wrist into self-collision).")
     p.add_argument("--length-ref", type=float, default=0.30,
                    help="Length normalization used when generating the tokens.")
     p.add_argument("--report-out", type=Path, default=None,
@@ -234,7 +235,9 @@ def main() -> None:
                 "local_origin": local_origin,
             }
 
-    pen_robot_cpu = PenFrankaResearch3(name="pen_ik", enable_cc=False) if args.refine_ik else None
+    # Use canonical name "pen" so this instance shares the SELIK CVT cache with the rest
+    # of the project (avoid the ~60s rebuild whenever a new identifier_str hits disk).
+    pen_robot_cpu = PenFrankaResearch3(name="pen", enable_cc=False) if args.refine_ik else None
     if args.refine_ik:
         print("[setup] --refine-ik on: per-candidate wrs IK from predicted q0 seed → exact path-start TCP")
 

@@ -65,10 +65,10 @@ def parse_args() -> argparse.Namespace:
     p.add_argument("--angle-null-gain", type=float, default=1.0,
                    help="Strength of boundary brake (active near/past the theta_max cone). "
                         "Default 1.0 (training/data-gen used 0.4).")
-    p.add_argument("--angle-attract-gain", type=float, default=5.0,
+    p.add_argument("--angle-attract-gain", type=float, default=2.0,
                    help="Always-on interior attractor: pulls TCP_z toward -desk_normal at every step "
-                        "proportional to angle deviation (radians). Default 5.0 (was 1.5 with the "
-                        "old quadratic gate — bumped after switching to linear-radians gate).")
+                        "proportional to angle deviation (radians). Default 2.0 (5.0 was too aggressive "
+                        "after IK refine — pushed wrist into self-collision in batch eval).")
     p.add_argument("--max-steps-buffer", type=int, default=30)
     p.add_argument("--frame-delay", type=float, default=0.01,
                    help="Seconds between animation frames (smaller = faster playback). Default 0.01.")
@@ -225,7 +225,7 @@ def main() -> None:
 
     # --- Optional IK refine (preserve seed's TCP rotation, snap TCP to local_origin) ---
     if args.refine_ik:
-        ik_robot = PenFrankaResearch3(name="ik", enable_cc=False)
+        ik_robot = PenFrankaResearch3(name="pen", enable_cc=False)
         q_ref, ok, info = refine_q0_seed(
             ik_robot, q0, task["local_origin"],
             target_rotmat=None, desk_normal=task["desk_normal"],
