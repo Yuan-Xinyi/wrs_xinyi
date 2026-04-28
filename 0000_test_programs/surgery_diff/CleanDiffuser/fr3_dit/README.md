@@ -19,13 +19,17 @@ fr3_dit/
 │   ├── composite_task_dataset.py
 │   ├── task_cond_dit.py                       # v1 full-trajectory DiT
 │   ├── task_cond_dit_q0.py                    # v3+ q₀-only DiT (DDPM v-pred + CFG + joint-limit norm)
+│   ├── task_cond_dit_q0_v6.py                 # v6 token-aligned per-keypoint q sequence prediction
 │   ├── flow_matching_q0.py                    # CFM helpers + Euler ODE sampler
 │   ├── train_dit.py / train_dit_q0.py         # DDPM training (v1 / v3+ ; v5 adds TCP-orient loss + q7 canon)
 │   ├── train_dit_q0_fm.py                     # CFM training (v4 parallel branch ; v5 same upgrades)
+│   ├── train_dit_q0_v6.py                     # v6 sequence prediction (v + tcp + orient + smooth + margin)
 │   ├── infer_dit.py / infer_dit_q0.py         # DDPM inference + plotting (v5: q7→0 snap)
 │   ├── infer_dit_q0_fm.py                     # CFM inference (Euler ODE sampler; v5: q7→0 snap)
+│   ├── infer_dit_q0_v6.py                     # v6 keypoint sampling + IK refine + Cartesian IK interp
 │   ├── ik_refine.py                           # farsighted-IK helper: refine q0 seed to exact target TCP
-│   └── eval_tracker.py                        # rollout each q₀ through tracker, report completion %
+│   ├── eval_tracker.py                        # rollout each q₀ through tracker, report completion %
+│   └── eval_v6.py                             # v6: validate IK-interpolated trajectory directly (no tracker)
 ├── calligraphy/          # Phase 5: write Chinese characters using DiT as stroke-feasibility prior
 │   ├── character_def.py        # canonical polyline definitions (e.g., "万" = 3 strokes)
 │   ├── polyline_to_tokens.py   # convert a polyline + scene placement → 32-D token sequence
@@ -145,6 +149,39 @@ python -m fr3_dit.training.train_dit_q0_fm \
     --num-steps 40000 --batch-size 512 \
     --lambda-tcp 5.0 --lambda-orient 2.0 --mirror-prob 0.5 \
     --ckpt-dir fr3_dit/experiments/outputs/dit_q0_fm_v5_ckpts
+
+# 3c) v6 — token-aligned per-keypoint q sequence prediction (5-loss objective:
+#       v + tcp + orient + smoothness + joint-margin). Replaces v5's tracker-rollout
+#       dependency: at inference each keypoint is IK-refined and Cartesian-interpolated
+#       between, no tracker drift. Slower training (sps≈0.7 vs 1.2 for v5) due to
+#       per-token output head + extra loss terms.
+python -m fr3_dit.training.train_dit_q0_v6 \
+    --data fr3_dit/data/pen_fr3_composite_tasks_50k_minseg10_anchored.hdf5 \
+    --num-steps 60000 --batch-size 512 \
+    --lambda-tcp 5.0 --lambda-orient 2.0 --lambda-smooth 1.0 --lambda-margin 0.5 \
+    --mirror-prob 0.5 \
+    --ckpt-dir fr3_dit/experiments/outputs/dit_q0_v6_ckpts
+
+# v7: same script, switched to hinge orient loss + tighter joint margin (only
+# penalize cone-violators / out-of-margin samples). Pair with stronger λ since
+# in-distribution samples now contribute zero loss.
+python -m fr3_dit.training.train_dit_q0_v6 \
+    --data fr3_dit/data/pen_fr3_composite_tasks_50k_minseg10_anchored.hdf5 \
+    --num-steps 50000 --batch-size 512 \
+    --orient-loss hinge --theta-max-deg 30.0 \
+    --lambda-tcp 5.0 --lambda-orient 10.0 \
+    --lambda-smooth 2.0 --lambda-margin 2.0 --margin-threshold 0.80 \
+    --mirror-prob 0.5 \
+    --ckpt-dir fr3_dit/experiments/outputs/dit_q0_v7_ckpts
+
+# 4c) v6 inference (DDIM sampling → keypoint sequence → IK refine → Cartesian IK interp)
+python -m fr3_dit.training.infer_dit_q0_v6 --task-idx 234088 --n-samples 8 --cfg-w 3.0
+
+# 5c) v6 evaluation (no tracker; validate IK-interpolated trajectory feasibility per frame)
+python -m fr3_dit.training.eval_v6 \
+    --task-indices 234088 127753 59086 \
+    --prefix infer_q0_v6 \
+    --report-out /tmp/eval_v6.json
 
 # 4) Inference (one task, 8 candidates, classifier-free guidance w=3)
 # Both inference scripts snap q7→0 by default (training canonicalizes q7=0; pass --no-snap-q7 to disable).
