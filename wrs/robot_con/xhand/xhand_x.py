@@ -103,7 +103,8 @@ class XHandX:
 
 # **Example Usage**
 if __name__ == "__main__":
-    hand = XHandX(port="COM3", baudrate=3000000)
+    # hand = XHandX(port="COM3", baudrate=3000000)
+    hand = XHandX(port="/dev/ttyUSB0", baudrate=3000000)
     hand.get_version()
     hand.goto_given_conf([0.5]*12)
     # Close connection

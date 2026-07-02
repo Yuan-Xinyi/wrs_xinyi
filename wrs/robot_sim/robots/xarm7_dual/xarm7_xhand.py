@@ -12,10 +12,14 @@ class XArm7XHR(sari.SglArmRobotInterface):
         super().__init__(pos=pos, rotmat=rotmat, name=name, enable_cc=enable_cc)
         self.manipulator = manipulator.XArm7(pos=self.pos, rotmat=self.rotmat, name=name + "_manipulator",
                                              enable_cc=False)
+        # the real xhand is mounted rotated 90 deg about the flange z-axis (approach
+        # axis) relative to the model default; bake that into the coupling offset so
+        # the sim hand orientation matches the real hand (verified visually).
         self.end_effector = end_effector.XHandRight(pos=self.manipulator.gl_flange_pos,
                                                     rotmat=self.manipulator.gl_flange_rotmat,
                                                     coupling_offset_pos=rm.zeros(3),
-                                                    coupling_offset_rotmat=rm.eye(3),
+                                                    coupling_offset_rotmat=rm.rotmat_from_axangle(
+                                                        rm.vec(0, 0, 1), -rm.pi / 2),
                                                     name=name + "_eef")
         # tool center point
         self.manipulator.loc_tcp_pos = self.end_effector.loc_acting_center_pos

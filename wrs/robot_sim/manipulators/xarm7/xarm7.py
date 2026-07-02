@@ -109,10 +109,16 @@ if __name__ == '__main__':
 
     '''random a joint configuration and calculate the target by FK'''
     jnt_values = arm.rand_conf()
+    jnt_values = np.array([0.0, -0.7494, 0.0, 1.1920, 0.0, 1.9414, 0.0])
+
+
+    # [0.0, -0.5236, 0.0, 2.3562, 0.0, 2.8798, 0.0]
+    print(repr(jnt_values))
     arm.goto_given_conf(jnt_values=jnt_values)
     arm.gen_meshmodel(alpha=0.3, rgb=[0,1,0]).attach_to(base)
     tgt_pos, tgt_rotmat = arm.fk(jnt_values=jnt_values)
     mcm.mgm.gen_dashed_frame(pos=tgt_pos, rotmat=tgt_rotmat).attach_to(base)
+    base.run()
 
     '''calculate the predicted joint configuration by IK'''
     result = arm.ik(tgt_pos=tgt_pos, tgt_rotmat=tgt_rotmat)

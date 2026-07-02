@@ -71,6 +71,11 @@ class ManualCalibrationBase(ABC):
         self.move_resolution = move_resolution
         self.rotation_resolution = rotation_resolution
 
+        # gui sliders for x/y/z + roll/pitch/yaw (an alternative to keyboard nudging)
+        self._sliders = []
+        self._slider_value_labels = []
+        self.setup_sliders()
+
         # add task
         taskMgr.doMethodLater(.05, self.sync_rbt, "sync rbt", )
         taskMgr.doMethodLater(.02, self.adjust, "manual adjust the mph")
@@ -156,6 +161,49 @@ class ManualCalibrationBase(ABC):
         self._key['z_cw'] = z_cw
         self._key['z_ccw'] = z_ccw
 
+    def setup_sliders(self, pos_range=0.3, rot_range=np.pi):
+        """
+        Build 6 GUI sliders (x, y, z, roll, pitch, yaw) to adjust the calibration
+        matrix instead of nudging it with the keyboard. Each slider is centered on
+        the current value of self._init_calib_mat; dragging any of them rebuilds the
+        matrix, redraws the point cloud and saves the result.
+        :param pos_range: half-span of the translation sliders in meters
+        :param rot_range: half-span of the rotation sliders in radians
+        """
+        from direct.gui.DirectGui import DirectSlider, DirectLabel
+        pos = self._init_calib_mat[:3, 3]
+        rpy = rm.rotmat_to_euler(self._init_calib_mat[:3, :3])
+        names = ['x', 'y', 'z', 'roll', 'pitch', 'yaw']
+        values = [*pos, *rpy]
+        ranges = [pos_range] * 3 + [rot_range] * 3
+        self._sliders = []
+        self._slider_value_labels = []
+        for i, (name, val, rng) in enumerate(zip(names, values, ranges)):
+            y = 0.75 - i * 0.14
+            DirectLabel(text=name, scale=0.05, pos=(-1.25, 0, y),
+                        text_fg=(1, 1, 1, 1), frameColor=(0, 0, 0, 0),
+                        text_align=0, parent=base.aspect2d)
+            slider = DirectSlider(range=(val - rng, val + rng), value=val,
+                                  pageSize=rng * 0.02, scale=0.22, pos=(-0.95, 0, y),
+                                  command=self._on_slider_change, parent=base.aspect2d)
+            value_label = DirectLabel(text=f"{val:.4f}", scale=0.045, pos=(-0.6, 0, y),
+                                      text_fg=(1, 1, 0.6, 1), frameColor=(0, 0, 0, 0),
+                                      text_align=0, parent=base.aspect2d)
+            self._sliders.append(slider)
+            self._slider_value_labels.append(value_label)
+
+    def _on_slider_change(self):
+        if not self._sliders:
+            return
+        vals = [s['value'] for s in self._sliders]
+        pos = np.array(vals[:3])
+        rotmat = rm.rotmat_from_euler(*vals[3:])
+        self._init_calib_mat = rm.homomat_from_posrot(pos, rotmat)
+        for label, val in zip(self._slider_value_labels, vals):
+            label['text'] = f"{val:.4f}"
+        self.plot()
+        self.save()
+
     def sync_pcd(self, task):
         """
         Synchronize the real robot and the simulation robot
@@ -239,9 +287,9 @@ class ManualCalibrationBase(ABC):
 
 if __name__ == "__main__":
 
-    class XArmLite6ManualCalib(ManualCalibrationBase):
+    class XArm7ManualCalib(ManualCalibrationBase):
         """
-        Eye in hand example
+        Eye to hand example (xArm7 + xHand + RealSense D405 fixed in the world)
         """
 
         def get_pcd(self):
@@ -252,15 +300,13 @@ if __name__ == "__main__":
             return self._rbt_x.get_jnt_values()
 
         def align_pcd(self, pcd):
-            r2cam_mat = self._init_calib_mat
-            rbt_pose = self._rbt_x.get_pose()
-            w2r_mat = rm.homomat_from_posrot(*rbt_pose)
-            w2c_mat = w2r_mat.dot(r2cam_mat)
-            return rm.transform_points_by_homomat(w2c_mat, points=pcd)
+            # eye-to-hand: the camera is fixed in the world, so init_calib_mat is
+            # directly the camera->world transform and does NOT depend on robot pose.
+            return rm.transform_points_by_homomat(self._init_calib_mat, points=pcd)
 
     import wrs.visualization.panda.world as wd
     from wrs.drivers.devices.realsense.realsense_d400s import RealSenseD400
-    from wrs.robot_sim.robots.xarmlite6_wg import x6wg2
+    from wrs.robot_sim.robots.xarm7_dual.xarm7_xhand import XArm7XHR
     from wrs.robot_con.xarm_lite6.xarm_lite6_x import XArmLite6X
 
     base = wd.World(cam_pos=rm.vec(2, 0, 1.5), lookat_pos=rm.vec(0, 0, 0))
@@ -268,8 +314,11 @@ if __name__ == "__main__":
     # the first frame contains no data information
     rs_pipe.get_pcd_texture_depth()
     rs_pipe.get_pcd_texture_depth()
-    rbtx = XArmLite6X(ip='192.168.1.152', has_gripper=True)
-    rbt = x6wg2.XArmLite6WG2()
+    # XArmLite6X wraps the generic XArmAPI, so it also drives xArm7; just connect
+    # without the Lite6 gripper and override ndof to 7 so get_jnt_values returns all joints.
+    rbtx = XArmLite6X(ip='192.168.1.205', has_gripper=False)
+    rbtx.ndof = 7
+    rbt = XArm7XHR()
 
     import json
     import numpy as np
@@ -285,12 +334,12 @@ if __name__ == "__main__":
         init_calib_mat = None
         print("No previous calibration found, using identity.")
 
-    xarm_mc = XArmLite6ManualCalib(
+    xarm_mc = XArm7ManualCalib(
         rbt_s=rbt,
         rbt_x=rbtx,
         sensor_hdl=rs_pipe,
         init_calib_mat=init_calib_mat
     )
 
-    # xarm_mc = XArmLite6ManualCalib(rbt_s=rbt, rbt_x=rbtx, sensor_hdl=rs_pipe)
+    # xarm_mc = XArm7ManualCalib(rbt_s=rbt, rbt_x=rbtx, sensor_hdl=rs_pipe)
     base.run()
